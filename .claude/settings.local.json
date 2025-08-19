@@ -5,7 +5,8 @@
       "WebFetch(domain:medium.com)",
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(./setup.sh:*)"
     ],
     "deny": [],
     "ask": []

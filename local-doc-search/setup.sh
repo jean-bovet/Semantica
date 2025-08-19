@@ -35,7 +35,14 @@ pip install --upgrade pip --quiet
 
 # Install dependencies
 echo -e "\n5. Installing dependencies..."
-pip install -r requirements.txt
+if pip install -r requirements.txt; then
+    echo "✓ All dependencies installed successfully"
+else
+    echo "⚠️  Some dependencies failed to install"
+    echo "   You may need to install them manually or use different versions"
+    echo "   Try: pip install --upgrade setuptools wheel"
+    echo "   Then: pip install -r requirements.txt"
+fi
 
 # Create necessary directories
 echo -e "\n6. Creating data directories..."
