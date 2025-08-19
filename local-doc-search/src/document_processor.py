@@ -86,17 +86,31 @@ class DocumentProcessor:
         return text
     
     def _extract_text_file(self, file_path: str) -> str:
+        # Try multiple encodings to be more robust
+        encodings_to_try = []
+        
+        # First try to detect encoding
         try:
             with open(file_path, 'rb') as file:
                 raw_data = file.read()
                 detected = chardet.detect(raw_data)
-                encoding = detected['encoding'] or 'utf-8'
-            
-            with open(file_path, 'r', encoding=encoding) as file:
-                return file.read()
-        except Exception as e:
-            print(f"Error reading text file {file_path}: {e}")
-            return ""
+                if detected['encoding']:
+                    encodings_to_try.append(detected['encoding'])
+        except:
+            pass
+        
+        # Add common encodings as fallbacks
+        encodings_to_try.extend(['utf-8', 'latin-1', 'cp1252', 'ascii'])
+        
+        for encoding in encodings_to_try:
+            try:
+                with open(file_path, 'r', encoding=encoding, errors='replace') as file:
+                    return file.read()
+            except:
+                continue
+        
+        # If all encodings fail, return empty string
+        return ""
     
     def _extract_docx_text(self, file_path: str) -> str:
         try:
