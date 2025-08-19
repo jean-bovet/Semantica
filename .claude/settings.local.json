@@ -6,7 +6,14 @@
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
       "Bash(python:*)",
-      "Bash(./setup.sh:*)"
+      "Bash(./setup.sh:*)",
+      "Bash(./build_simple.sh)",
+      "Bash(rm:*)",
+      "Bash(swift build:*)",
+      "Bash(open:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(log show:*)"
     ],
     "deny": [],
     "ask": []
