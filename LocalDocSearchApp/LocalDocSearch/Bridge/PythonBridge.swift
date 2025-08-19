@@ -12,7 +12,7 @@ class PythonBridge {
     private init() {}
     
     func initialize() async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             pythonQueue.async { [weak self] in
                 guard let self = self else {
                     continuation.resume(throwing: PythonBridgeError.initializationFailed)
@@ -34,7 +34,7 @@ class PythonBridge {
                     
                     self.isInitialized = true
                     continuation.resume()
-                } catch {
+                } catch let error {
                     continuation.resume(throwing: PythonBridgeError.moduleImportFailed(error.localizedDescription))
                 }
             }
@@ -53,34 +53,30 @@ class PythonBridge {
                     return
                 }
                 
-                do {
-                    // Call Python search method
-                    let pythonResults = engine.search(query, k: 20, display_results: false)
+                // Call Python search method
+                let pythonResults = engine.search(query, k: 20, display_results: false)
+                
+                // Convert Python results to Swift
+                var swiftResults: [SearchResult] = []
+                
+                for result in pythonResults {
+                    let chunk = result[0]
+                    let score = Double(result[1]) ?? 0.0
                     
-                    // Convert Python results to Swift
-                    var swiftResults: [SearchResult] = []
+                    let searchResult = SearchResult(
+                        id: UUID().uuidString,
+                        fileName: String(chunk.metadata["file_name"]) ?? "Unknown",
+                        filePath: String(chunk.metadata["file_path"]) ?? "",
+                        preview: String(chunk.content) ?? "",
+                        score: score,
+                        pageNumber: nil, // Simplified for now
+                        fileType: self.extractFileType(from: String(chunk.metadata["file_name"]) ?? "")
+                    )
                     
-                    for result in pythonResults {
-                        let chunk = result[0]
-                        let score = Double(result[1]) ?? 0.0
-                        
-                        let searchResult = SearchResult(
-                            id: UUID().uuidString,
-                            fileName: String(chunk.metadata["file_name"]) ?? "Unknown",
-                            filePath: String(chunk.metadata["file_path"]) ?? "",
-                            preview: String(chunk.content) ?? "",
-                            score: score,
-                            pageNumber: Python.int(chunk.metadata["page_number"]).map { Int($0) },
-                            fileType: self.extractFileType(from: String(chunk.metadata["file_name"]) ?? "")
-                        )
-                        
-                        swiftResults.append(searchResult)
-                    }
-                    
-                    continuation.resume(returning: swiftResults)
-                } catch {
-                    continuation.resume(throwing: PythonBridgeError.searchFailed(error.localizedDescription))
+                    swiftResults.append(searchResult)
                 }
+                
+                continuation.resume(returning: swiftResults)
             }
         }
     }
@@ -97,30 +93,20 @@ class PythonBridge {
                     return
                 }
                 
-                do {
-                    // Call Python indexing method
-                    engine.index_directory(url.path)
-                    
-                    // Get statistics
-                    let stats = engine.indexer.get_statistics()
-                    
-                    let result = IndexingResult(
-                        documentsProcessed: Int(stats["total_documents"]) ?? 0,
-                        chunksCreated: Int(stats["total_chunks"]) ?? 0,
-                        success: true,
-                        error: nil
-                    )
-                    
-                    continuation.resume(returning: result)
-                } catch {
-                    let result = IndexingResult(
-                        documentsProcessed: 0,
-                        chunksCreated: 0,
-                        success: false,
-                        error: error.localizedDescription
-                    )
-                    continuation.resume(returning: result)
-                }
+                // Call Python indexing method
+                engine.index_directory(url.path)
+                
+                // Get statistics
+                let stats = engine.indexer.get_statistics()
+                
+                let result = IndexingResult(
+                    documentsProcessed: Int(stats["total_documents"]) ?? 0,
+                    chunksCreated: Int(stats["total_chunks"]) ?? 0,
+                    success: true,
+                    error: nil
+                )
+                
+                continuation.resume(returning: result)
             }
         }
     }
@@ -137,21 +123,17 @@ class PythonBridge {
                     return
                 }
                 
-                do {
-                    let stats = engine.indexer.get_statistics()
-                    
-                    let statistics = IndexStatistics(
-                        totalDocuments: Int(stats["total_documents"]) ?? 0,
-                        totalChunks: Int(stats["total_chunks"]) ?? 0,
-                        indexSize: Int64(stats["index_size"]) ?? 0,
-                        embeddingDimension: Int(stats["embedding_dimension"]) ?? 0,
-                        lastUpdated: String(stats["last_updated"]) ?? ""
-                    )
-                    
-                    continuation.resume(returning: statistics)
-                } catch {
-                    continuation.resume(throwing: PythonBridgeError.statisticsFailed(error.localizedDescription))
-                }
+                let stats = engine.indexer.get_statistics()
+                
+                let statistics = IndexStatistics(
+                    totalDocuments: Int(stats["total_documents"]) ?? 0,
+                    totalChunks: Int(stats["total_chunks"]) ?? 0,
+                    indexSize: Int64(stats["index_size"]) ?? 0,
+                    embeddingDimension: Int(stats["embedding_dimension"]) ?? 0,
+                    lastUpdated: String(stats["last_updated"]) ?? ""
+                )
+                
+                continuation.resume(returning: statistics)
             }
         }
     }
@@ -168,12 +150,8 @@ class PythonBridge {
                     return
                 }
                 
-                do {
-                    engine.clear_index()
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: PythonBridgeError.clearIndexFailed(error.localizedDescription))
-                }
+                engine.clear_index()
+                continuation.resume()
             }
         }
     }

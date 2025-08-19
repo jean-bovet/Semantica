@@ -28,7 +28,7 @@ struct ContentView: View {
             .navigationTitle("Local Document Search")
             .navigationSubtitle("\(searchEngine.statistics.totalDocuments) documents indexed")
         }
-        .onChange(of: appState.focusSearch) { _, newValue in
+        .onChange(of: appState.focusSearch) { newValue in
             if newValue {
                 searchFieldFocused = true
                 appState.focusSearch = false
@@ -195,14 +195,14 @@ struct SearchResultRow: View {
             HStack {
                 Label(result.relativePath, systemImage: "folder")
                     .font(.caption)
-                    .foregroundColor(.tertiary)
+                    .foregroundColor(.secondary)
                 
                 Spacer()
                 
                 if let pageNumber = result.pageNumber {
                     Text("Page \(pageNumber)")
                         .font(.caption)
-                        .foregroundColor(.tertiary)
+                        .foregroundColor(.secondary)
                 }
             }
         }

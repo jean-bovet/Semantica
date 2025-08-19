@@ -1,14 +1,16 @@
 """
-Setup script for bundling Python search engine with py2app
+Simplified setup script for copying Python files
+This creates a standalone Python module directory instead of using py2app
 """
 
-from setuptools import setup
 import os
 import shutil
 from pathlib import Path
 
-# Copy Python source files from the CLI project
-def copy_python_sources():
+def setup_python_bundle():
+    """Copy Python source files and create a simple bundle"""
+    
+    # Source and destination directories
     source_dir = Path("../local-doc-search/src")
     dest_dir = Path("LocalDocSearch/python_src")
     
@@ -18,65 +20,30 @@ def copy_python_sources():
     # Copy all Python files
     for py_file in source_dir.glob("*.py"):
         shutil.copy2(py_file, dest_dir)
+        print(f"Copied {py_file.name}")
+    
+    # Copy config file
+    config_source = Path("../local-doc-search/config.yaml")
+    if config_source.exists():
+        shutil.copy2(config_source, dest_dir)
+        print("Copied config.yaml")
     
     # Create __init__.py if it doesn't exist
-    (dest_dir / "__init__.py").touch()
+    init_file = dest_dir / "__init__.py"
+    if not init_file.exists():
+        init_file.touch()
+        print("Created __init__.py")
     
-    print(f"Copied Python sources to {dest_dir}")
+    print(f"\n✓ Python sources prepared in {dest_dir}")
+    return True
 
-# Run the copy before setup
-copy_python_sources()
-
-APP = ['LocalDocSearch/python_src/search.py']
-DATA_FILES = []
-OPTIONS = {
-    'packages': [
-        'numpy',
-        'faiss',
-        'sentence_transformers',
-        'torch',
-        'transformers',
-        'langchain',
-        'langchain_community',
-        'PyPDF2',
-        'docx',
-        'chardet',
-        'yaml',
-        'tqdm',
-        'ollama',
-    ],
-    'includes': [
-        'document_processor',
-        'embeddings',
-        'indexer',
-    ],
-    'frameworks': [],
-    'resources': ['LocalDocSearch/python_src'],
-    'plist': {
-        'CFBundleName': 'LocalDocSearch Python Engine',
-        'CFBundleVersion': '1.0.0',
-        'PyRuntimeLocations': [
-            '@executable_path/../Frameworks/Python.framework/Versions/3.11/Python',
-            '/System/Library/Frameworks/Python.framework/Versions/3.11/Python'
-        ]
-    },
-    'bdist_base': 'build',
-    'dist_dir': 'LocalDocSearch/Resources',
-    'compressed': True,
-    'optimize': 2,
-    'arch': 'universal2',  # Build for both Intel and Apple Silicon
-    'semi_standalone': False,
-    'site_packages': True,
-}
-
-setup(
-    name='LocalDocSearchEngine',
-    app=APP,
-    data_files=DATA_FILES,
-    options={'py2app': OPTIONS},
-    setup_requires=['py2app'],
-    version='1.0.0',
-    description='Python search engine for LocalDocSearch app',
-    author='Your Name',
-    python_requires='>=3.9',
-)
+if __name__ == "__main__":
+    success = setup_python_bundle()
+    if success:
+        print("\nNext steps:")
+        print("1. The Python files are ready in LocalDocSearch/python_src/")
+        print("2. Build the Swift app with: swift build -c release")
+        print("3. Create the app bundle manually")
+    else:
+        print("\nError: Failed to set up Python bundle")
+        exit(1)

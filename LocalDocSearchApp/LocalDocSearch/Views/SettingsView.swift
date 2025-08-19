@@ -88,7 +88,7 @@ struct SearchSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .onChange(of: settings.searchResultsLimit) { _, _ in
+        .onChange(of: settings.searchResultsLimit) { _ in
             settings.saveSettings()
         }
     }
@@ -154,16 +154,16 @@ struct IndexingSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .onChange(of: settings.embeddingModel) { _, _ in
+        .onChange(of: settings.embeddingModel) { _ in
             settings.saveSettings()
         }
-        .onChange(of: settings.chunkSize) { _, _ in
+        .onChange(of: settings.chunkSize) { _ in
             settings.saveSettings()
         }
-        .onChange(of: settings.chunkOverlap) { _, _ in
+        .onChange(of: settings.chunkOverlap) { _ in
             settings.saveSettings()
         }
-        .onChange(of: settings.useCache) { _, _ in
+        .onChange(of: settings.useCache) { _ in
             settings.saveSettings()
         }
     }
