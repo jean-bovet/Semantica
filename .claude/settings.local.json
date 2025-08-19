@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:medium.com)"
+      "WebFetch(domain:medium.com)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []
