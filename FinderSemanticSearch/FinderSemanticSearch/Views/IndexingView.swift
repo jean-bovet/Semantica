@@ -19,37 +19,40 @@ struct IndexingView: View {
                 .font(.largeTitle)
                 .bold()
             
-            // Drag and Drop Area
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
-                    .foregroundColor(isDragging ? .accentColor : .secondary)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(isDragging ? Color.accentColor.opacity(0.1) : Color.clear)
-                    )
-                
-                VStack(spacing: 12) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.system(size: 48))
+            // Show drop zone only when not indexing
+            if !viewModel.isIndexing {
+                // Drag and Drop Area
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [10]))
                         .foregroundColor(isDragging ? .accentColor : .secondary)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(isDragging ? Color.accentColor.opacity(0.1) : Color.clear)
+                        )
                     
-                    Text("Drop a folder here")
-                        .font(.title2)
-                    
-                    Text("or")
-                        .foregroundColor(.secondary)
-                    
-                    Button("Choose Folder") {
-                        chooseFolder()
+                    VStack(spacing: 12) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 48))
+                            .foregroundColor(isDragging ? .accentColor : .secondary)
+                        
+                        Text("Drop a folder here")
+                            .font(.title2)
+                        
+                        Text("or")
+                            .foregroundColor(.secondary)
+                        
+                        Button("Choose Folder") {
+                            chooseFolder()
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
-            }
-            .frame(height: 200)
-            .onDrop(of: [.fileURL], isTargeted: $isDragging) { providers in
-                handleDrop(providers: providers)
-                return true
+                .frame(height: 200)
+                .onDrop(of: [.fileURL], isTargeted: $isDragging) { providers in
+                    handleDrop(providers: providers)
+                    return true
+                }
             }
             
             // Indexed Folders List
@@ -78,10 +81,31 @@ struct IndexingView: View {
                 }
             }
             
-            // Status
+            // Status and Progress
             if viewModel.isIndexing {
-                ProgressView("Indexing...")
-                    .progressViewStyle(.linear)
+                VStack(spacing: 12) {
+                    // Show current file being processed
+                    if !viewModel.currentIndexingFile.isEmpty {
+                        Text("Processing: \(viewModel.currentIndexingFile)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    
+                    // Progress bar with determinate progress
+                    if viewModel.indexingTotalFiles > 0 {
+                        ProgressView(value: Double(viewModel.indexingCurrentFile), 
+                                   total: Double(viewModel.indexingTotalFiles)) {
+                            Text("Indexing: \(viewModel.indexingCurrentFile) of \(viewModel.indexingTotalFiles) files")
+                        }
+                        .progressViewStyle(.linear)
+                    } else {
+                        ProgressView("Indexing...")
+                            .progressViewStyle(.linear)
+                    }
+                }
+                .padding(.vertical, 8)
             }
             
             // Actions

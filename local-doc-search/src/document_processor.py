@@ -32,23 +32,49 @@ class DocumentProcessor:
         
         all_chunks = []
         files = list(directory.rglob("*"))
-        valid_files = [f for f in files if f.suffix.lower() in self.supported_extensions]
+        
+        # Filter out files in hidden directories (starting with '.')
+        valid_files = []
+        for f in files:
+            # Check if any parent directory is hidden
+            if any(part.startswith('.') for part in f.parts):
+                continue
+            # Check if file has supported extension
+            if f.suffix.lower() in self.supported_extensions:
+                valid_files.append(f)
         
         if self.json_mode:
             print(json.dumps({"status": "documents_found", "count": len(valid_files)}), flush=True)
         else:
             print(f"Found {len(valid_files)} documents to process")
         
-        for file_path in tqdm(valid_files, desc="Processing documents", disable=self.json_mode):
-            try:
-                chunks = self.process_file(str(file_path))
-                all_chunks.extend(chunks)
-            except Exception as e:
-                if self.json_mode:
+        # Process files with progress reporting
+        if self.json_mode:
+            for idx, file_path in enumerate(valid_files):
+                # Report progress for each file (to stdout for the bridge to capture)
+                print(json.dumps({
+                    "status": "processing_file", 
+                    "current": idx + 1,
+                    "total": len(valid_files),
+                    "file": str(file_path.name)
+                }), flush=True)
+                
+                try:
+                    chunks = self.process_file(str(file_path))
+                    all_chunks.extend(chunks)
+                except Exception as e:
+                    # Error messages still go to stdout as status
                     print(json.dumps({"status": "processing_error", "file": str(file_path), "error": str(e)}), flush=True)
-                else:
+                    continue
+        else:
+            # Use tqdm for non-JSON mode
+            for file_path in tqdm(valid_files, desc="Processing documents"):
+                try:
+                    chunks = self.process_file(str(file_path))
+                    all_chunks.extend(chunks)
+                except Exception as e:
                     print(f"Error processing {file_path}: {e}")
-                continue
+                    continue
         
         return all_chunks
     

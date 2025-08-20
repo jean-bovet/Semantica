@@ -105,12 +105,36 @@ class EmbeddingGenerator:
                                                  batch_size: int) -> List[np.ndarray]:
         embeddings = []
         
-        for i in tqdm(range(0, len(texts), batch_size), 
-                     desc="Generating embeddings",
-                     disable=self.json_mode):
+        # Calculate total number of batches for progress reporting
+        total_batches = (len(texts) + batch_size - 1) // batch_size
+        
+        for batch_idx, i in enumerate(range(0, len(texts), batch_size)):
             batch = texts[i:i + batch_size]
+            
+            # Report progress in JSON mode
+            if self.json_mode:
+                current_batch = batch_idx + 1
+                # Report which chunk we're processing (approximate)
+                current_text_idx = min(i + batch_size // 2, len(texts) - 1)
+                print(json.dumps({
+                    "status": "generating_embeddings",
+                    "current": current_batch,
+                    "total": total_batches,
+                    "file": f"Batch {current_batch}/{total_batches} (chunks {i+1}-{min(i+batch_size, len(texts))})"
+                }), flush=True)
+            
             batch_embeddings = self.model.encode(batch)
             embeddings.extend(batch_embeddings)
+            
+            # Use tqdm only when not in JSON mode
+            if not self.json_mode and batch_idx == 0:
+                from tqdm import tqdm
+                pbar = tqdm(total=total_batches, desc="Generating embeddings")
+            elif not self.json_mode:
+                pbar.update(1)
+        
+        if not self.json_mode and total_batches > 0:
+            pbar.close()
         
         return embeddings
     

@@ -127,7 +127,13 @@ class PythonCLIBridge: ObservableObject {
                 errorPipe.fileHandleForReading.readabilityHandler = { handle in
                     let data = handle.availableData
                     if !data.isEmpty, let error = String(data: data, encoding: .utf8) {
-                        print("Python stderr: \(error)")
+                        // Filter out common PDF warnings that are not actual errors
+                        let trimmed = error.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty && 
+                           !trimmed.contains("FloatObject") &&  // PDF warning
+                           !trimmed.contains("invalid; use") {  // PDF warning continuation
+                            print("Python stderr: \(error)")
+                        }
                     }
                 }
             }
@@ -171,7 +177,7 @@ class PythonCLIBridge: ObservableObject {
         }
     }
     
-    func indexFolder(_ url: URL) async throws -> (documents: Int, chunks: Int) {
+    func indexFolder(_ url: URL, progressHandler: ((Int, Int, String) -> Void)? = nil) async throws -> (documents: Int, chunks: Int) {
         print("PythonCLIBridge: Indexing folder: \(url.path)")
         
         guard isRunning else {
@@ -186,7 +192,12 @@ class PythonCLIBridge: ObservableObject {
         
         print("PythonCLIBridge: Sending index command: \(command)")
         
-        let response = try await sendCommandAndWait(command)
+        let response: CLIResponse
+        if let progressHandler = progressHandler {
+            response = try await sendCommandAndWaitWithProgress(command, progressHandler: progressHandler)
+        } else {
+            response = try await sendCommandAndWait(command)
+        }
         
         print("PythonCLIBridge: Received response: success=\(response.success)")
         
@@ -330,6 +341,127 @@ class PythonCLIBridge: ObservableObject {
                         }
                     }
                     
+                } catch {
+                    continuation.resume(throwing: BridgeError.commandFailed(error.localizedDescription))
+                }
+            }
+        }
+    }
+    
+    private func sendCommandAndWaitWithProgress(_ command: [String: Any], progressHandler: ((Int, Int, String) -> Void)?) async throws -> CLIResponse {
+        print("PythonCLIBridge: sendCommandAndWaitWithProgress called")
+        guard isRunning else {
+            print("PythonCLIBridge: Process not running")
+            throw BridgeError.notRunning
+        }
+        
+        let inputPipe = self.inputPipe
+        let outputPipe = self.outputPipe
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                guard let inputPipe = inputPipe, let outputPipe = outputPipe else {
+                    continuation.resume(throwing: BridgeError.notRunning)
+                    return
+                }
+                
+                do {
+                    let jsonData = try JSONSerialization.data(withJSONObject: command)
+                    inputPipe.fileHandleForWriting.write(jsonData)
+                    inputPipe.fileHandleForWriting.write("\n".data(using: .utf8)!)
+                    
+                    print("PythonCLIBridge: Command sent, waiting for response with progress...")
+                    
+                    var buffer = Data()
+                    let fileHandle = outputPipe.fileHandleForReading
+                    var hasResumed = false
+                    
+                    while !hasResumed {
+                        let chunk = fileHandle.availableData
+                        if chunk.isEmpty {
+                            Thread.sleep(forTimeInterval: 0.01)
+                            continue
+                        }
+                        
+                        buffer.append(chunk)
+                        
+                        // Try to parse complete JSON objects from buffer
+                        if let string = String(data: buffer, encoding: .utf8) {
+                            // Split by newlines to get individual JSON objects
+                            let lines = string.components(separatedBy: "\n")
+                            
+                            // Keep the last incomplete line in buffer
+                            if lines.count > 1 {
+                                // Process all complete lines
+                                for i in 0..<(lines.count - 1) {
+                                    let line = lines[i]
+                                    if line.isEmpty { continue }
+                                    
+                                    if let lineData = line.data(using: .utf8) {
+                                        // First try to decode as CLIResponse
+                                        if let response = try? JSONDecoder().decode(CLIResponse.self, from: lineData) {
+                                            print("PythonCLIBridge: Got final response")
+                                            continuation.resume(returning: response)
+                                            hasResumed = true
+                                            return
+                                        }
+                                        
+                                        // Otherwise, try to parse as status message
+                                        if let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                                           let status = json["status"] as? String {
+                                            
+                                            print("PythonCLIBridge: Got status: \(status)")
+                                            
+                                            // Handle different status types
+                                            switch status {
+                                            case "processing_file":
+                                                if let current = json["current"] as? Int,
+                                                   let total = json["total"] as? Int,
+                                                   let file = json["file"] as? String {
+                                                    DispatchQueue.main.async {
+                                                        progressHandler?(current, total, file)
+                                                    }
+                                                }
+                                            case "generating_embeddings":
+                                                if let current = json["current"] as? Int,
+                                                   let total = json["total"] as? Int,
+                                                   let file = json["file"] as? String {
+                                                    print("PythonCLIBridge: Generating embeddings - \(file)")
+                                                    DispatchQueue.main.async {
+                                                        progressHandler?(current, total, "Generating embeddings: \(file)")
+                                                    }
+                                                }
+                                            case "documents_found":
+                                                if let count = json["count"] as? Int {
+                                                    print("PythonCLIBridge: Found \(count) documents")
+                                                    // Initialize progress with total count
+                                                    DispatchQueue.main.async {
+                                                        progressHandler?(0, count, "Starting...")
+                                                    }
+                                                }
+                                            default:
+                                                print("PythonCLIBridge: Other status: \(line)")
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Keep the last (possibly incomplete) line
+                                if let lastLine = lines.last,
+                                   let lastLineData = lastLine.data(using: .utf8) {
+                                    buffer = lastLineData
+                                } else {
+                                    buffer = Data()
+                                }
+                            }
+                        }
+                        
+                        // Timeout check
+                        if buffer.count > 1_000_000 {
+                            continuation.resume(throwing: BridgeError.timeout)
+                            return
+                        }
+                    }
                 } catch {
                     continuation.resume(throwing: BridgeError.commandFailed(error.localizedDescription))
                 }

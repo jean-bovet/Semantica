@@ -19,6 +19,11 @@ class SearchViewModel: ObservableObject {
     @Published var statistics: IndexStatistics?
     @Published var indexedFolders: [URL] = []
     
+    // Progress tracking for indexing
+    @Published var indexingTotalFiles: Int = 0
+    @Published var indexingCurrentFile: Int = 0
+    @Published var currentIndexingFile: String = ""
+    
     private let bridge = PythonCLIBridge()
     private var searchCancellable: AnyCancellable?
     
@@ -80,10 +85,23 @@ class SearchViewModel: ObservableObject {
         isIndexing = true
         errorMessage = nil
         
+        // Reset progress tracking
+        indexingTotalFiles = 0
+        indexingCurrentFile = 0
+        currentIndexingFile = ""
+        
         print("Starting to index folder: \(url.path)")
         
         do {
-            let result = try await bridge.indexFolder(url)
+            let result = try await bridge.indexFolder(url) { [weak self] current, total, fileName in
+                // Update progress on main thread
+                Task { @MainActor in
+                    self?.indexingCurrentFile = current
+                    self?.indexingTotalFiles = total
+                    self?.currentIndexingFile = fileName
+                }
+            }
+            
             indexedFolders.append(url)
             await refreshStatistics()
             
@@ -105,7 +123,11 @@ class SearchViewModel: ObservableObject {
             errorMessage = "Indexing failed: \(error.localizedDescription)"
         }
         
+        // Reset progress tracking
         isIndexing = false
+        indexingTotalFiles = 0
+        indexingCurrentFile = 0
+        currentIndexingFile = ""
     }
     
     // MARK: - Management
