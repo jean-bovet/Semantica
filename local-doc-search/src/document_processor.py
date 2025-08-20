@@ -1,13 +1,15 @@
 import os
 import json
 import hashlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from pathlib import Path
 import chardet
 import PyPDF2
 from docx import Document as DocxDocument
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 
 @dataclass
@@ -19,18 +21,20 @@ class DocumentChunk:
     
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False):
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False, num_workers: int = 4):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.supported_extensions = {'.pdf', '.txt', '.docx', '.doc', '.md'}
         self.json_mode = json_mode
+        self.num_workers = num_workers
+        self._progress_lock = threading.Lock()
+        self._processed_count = 0
     
     def process_directory(self, directory_path: str) -> List[DocumentChunk]:
         directory = Path(directory_path)
         if not directory.exists():
             raise ValueError(f"Directory {directory_path} does not exist")
         
-        all_chunks = []
         files = list(directory.rglob("*"))
         
         # Filter out files in hidden directories (starting with '.')
@@ -48,35 +52,79 @@ class DocumentProcessor:
         else:
             print(f"Found {len(valid_files)} documents to process")
         
-        # Process files with progress reporting
+        # Reset progress counter
+        self._processed_count = 0
+        total_files = len(valid_files)
+        
+        # Process files with multi-threading
+        all_chunks = []
+        
         if self.json_mode:
-            for idx, file_path in enumerate(valid_files):
-                # Report progress for each file (to stdout for the bridge to capture)
-                print(json.dumps({
-                    "status": "processing_file", 
-                    "current": idx + 1,
-                    "total": len(valid_files),
-                    "file": str(file_path.name)
-                }), flush=True)
+            # Use ThreadPoolExecutor for concurrent processing
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                # Submit all files for processing
+                future_to_file = {
+                    executor.submit(self._process_file_with_progress, str(file_path), idx, total_files): file_path
+                    for idx, file_path in enumerate(valid_files)
+                }
                 
-                try:
-                    chunks = self.process_file(str(file_path))
-                    all_chunks.extend(chunks)
-                except Exception as e:
-                    # Error messages still go to stdout as status
-                    print(json.dumps({"status": "processing_error", "file": str(file_path), "error": str(e)}), flush=True)
-                    continue
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    file_path = future_to_file[future]
+                    try:
+                        chunks = future.result()
+                        if chunks:
+                            all_chunks.extend(chunks)
+                    except Exception as e:
+                        # Error messages still go to stdout as status
+                        print(json.dumps({"status": "processing_error", "file": str(file_path), "error": str(e)}), flush=True)
         else:
-            # Use tqdm for non-JSON mode
-            for file_path in tqdm(valid_files, desc="Processing documents"):
-                try:
-                    chunks = self.process_file(str(file_path))
-                    all_chunks.extend(chunks)
-                except Exception as e:
-                    print(f"Error processing {file_path}: {e}")
-                    continue
+            # Use ThreadPoolExecutor with tqdm for non-JSON mode
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                futures = []
+                for file_path in valid_files:
+                    future = executor.submit(self.process_file, str(file_path))
+                    futures.append((future, file_path))
+                
+                # Use tqdm to show progress
+                for future, file_path in tqdm(futures, desc="Processing documents"):
+                    try:
+                        chunks = future.result()
+                        if chunks:
+                            all_chunks.extend(chunks)
+                    except Exception as e:
+                        print(f"Error processing {file_path}: {e}")
         
         return all_chunks
+    
+    def _process_file_with_progress(self, file_path: str, file_idx: int, total_files: int) -> List[DocumentChunk]:
+        """Process a file and report progress in thread-safe manner"""
+        try:
+            # Process the file first
+            chunks = self.process_file(file_path)
+            
+            # Report progress after successful processing
+            with self._progress_lock:
+                self._processed_count += 1
+                current = self._processed_count
+                print(json.dumps({
+                    "status": "processing_file", 
+                    "current": current,
+                    "total": total_files,
+                    "file": os.path.basename(file_path)
+                }), flush=True)
+            
+            return chunks
+        except Exception as e:
+            # Report error in thread-safe manner
+            with self._progress_lock:
+                self._processed_count += 1
+                print(json.dumps({
+                    "status": "processing_error", 
+                    "file": os.path.basename(file_path), 
+                    "error": str(e)
+                }), flush=True)
+            raise
     
     def process_file(self, file_path: str) -> List[DocumentChunk]:
         file_path_obj = Path(file_path)

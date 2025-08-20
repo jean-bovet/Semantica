@@ -18,7 +18,8 @@ class DocumentSearchEngine:
                  index_dir: str = "./data/index",
                  embedding_model_type: str = "sentence-transformer",
                  embedding_model_name: Optional[str] = None,
-                 json_mode: bool = False):
+                 json_mode: bool = False,
+                 num_workers: int = 4):
         
         self.json_mode = json_mode
         self.console = Console()
@@ -35,9 +36,12 @@ class DocumentSearchEngine:
             json_mode=json_mode
         )
         
-        self.document_processor = DocumentProcessor(json_mode=json_mode)
+        self.document_processor = DocumentProcessor(
+            json_mode=json_mode,
+            num_workers=num_workers
+        )
     
-    def index_directory(self, directory_path: str, batch_size: int = 32):
+    def index_directory(self, directory_path: str, batch_size: int = 64):
         if self.json_mode:
             print(json.dumps({"status": "indexing_directory", "path": directory_path}), flush=True)
         else:

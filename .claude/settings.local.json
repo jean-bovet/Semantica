@@ -22,7 +22,8 @@
       "Bash(cp:*)",
       "Bash(/usr/bin/python3:*)",
       "Bash(killall:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(/tmp/test_speed.sh:*)"
     ],
     "deny": [],
     "ask": [],

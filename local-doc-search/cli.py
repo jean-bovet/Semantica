@@ -27,7 +27,8 @@ def get_search_engine(ctx, json_mode=False):
             index_dir=config['index_dir'],
             embedding_model_type=config['embedding_model_type'],
             embedding_model_name=config.get('embedding_model_name'),
-            json_mode=json_mode
+            json_mode=json_mode,
+            num_workers=config.get('num_workers', 4)
         )
     return ctx.obj['search_engine']
 
@@ -59,11 +60,14 @@ def cli(ctx):
 @cli.command()
 @click.option('--folder', '-f', required=True, type=click.Path(exists=True), 
               help='Path to folder containing documents')
-@click.option('--batch-size', '-b', default=32, help='Batch size for embedding generation')
+@click.option('--batch-size', '-b', default=64, help='Batch size for embedding generation')
+@click.option('--workers', '-w', default=4, help='Number of parallel workers for file processing')
 @click.option('--json', 'json_output', is_flag=True, help='Output in JSON format')
 @click.pass_context
-def index(ctx, folder, batch_size, json_output):
+def index(ctx, folder, batch_size, workers, json_output):
     """Index all documents in a folder"""
+    # Temporarily set num_workers in config for this command
+    ctx.obj['config']['num_workers'] = workers
     search_engine = get_search_engine(ctx, json_mode=json_output)
     
     if json_output:
