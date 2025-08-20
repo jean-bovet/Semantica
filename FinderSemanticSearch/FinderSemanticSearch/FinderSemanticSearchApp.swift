@@ -13,5 +13,19 @@ struct FinderSemanticSearchApp: App {
         WindowGroup {
             ContentView()
         }
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Index Folder...") {
+                    NotificationCenter.default.post(name: .indexFolder, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: [.command])
+            }
+        }
     }
+}
+
+extension Notification.Name {
+    static let indexFolder = Notification.Name("indexFolder")
 }

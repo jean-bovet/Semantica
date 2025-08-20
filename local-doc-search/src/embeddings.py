@@ -5,25 +5,35 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
-import ollama
 from tqdm import tqdm
+
+# Optional import for Ollama support
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
 
 
 class EmbeddingGenerator:
     def __init__(self, 
                  model_type: str = "sentence-transformer",
                  model_name: Optional[str] = None,
-                 cache_dir: str = "./data/embeddings_cache"):
+                 cache_dir: str = "./data/embeddings_cache",
+                 json_mode: bool = False):
         
         self.model_type = model_type
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.json_mode = json_mode
         
         if model_type == "sentence-transformer":
             self.model_name = model_name or "all-MiniLM-L6-v2"
             self.model = SentenceTransformer(self.model_name)
             self.embedding_dim = self.model.get_sentence_embedding_dimension()
         elif model_type == "ollama":
+            if not OLLAMA_AVAILABLE:
+                raise ValueError("Ollama is not installed. Please install with 'pip install ollama' or use sentence-transformer model type instead.")
             self.model_name = model_name or "nomic-embed-text"
             self._check_ollama_model()
             test_embedding = self._get_ollama_embedding("test")
@@ -37,12 +47,21 @@ class EmbeddingGenerator:
             model_names = [model['name'] for model in models['models']]
             
             if not any(self.model_name in name for name in model_names):
-                print(f"Model {self.model_name} not found. Pulling it now...")
+                if self.json_mode:
+                    print(json.dumps({"status": "pulling_model", "model": self.model_name}), flush=True)
+                else:
+                    print(f"Model {self.model_name} not found. Pulling it now...")
                 ollama.pull(self.model_name)
-                print(f"Model {self.model_name} pulled successfully")
+                if self.json_mode:
+                    print(json.dumps({"status": "model_pulled", "model": self.model_name}), flush=True)
+                else:
+                    print(f"Model {self.model_name} pulled successfully")
         except Exception as e:
-            print(f"Error checking/pulling Ollama model: {e}")
-            print("Make sure Ollama is running (ollama serve)")
+            if self.json_mode:
+                print(json.dumps({"status": "ollama_error", "error": str(e)}), flush=True)
+            else:
+                print(f"Error checking/pulling Ollama model: {e}")
+                print("Make sure Ollama is running (ollama serve)")
             raise
     
     def generate_embeddings(self, texts: List[str], 
@@ -87,7 +106,8 @@ class EmbeddingGenerator:
         embeddings = []
         
         for i in tqdm(range(0, len(texts), batch_size), 
-                     desc="Generating embeddings"):
+                     desc="Generating embeddings",
+                     disable=self.json_mode):
             batch = texts[i:i + batch_size]
             batch_embeddings = self.model.encode(batch)
             embeddings.extend(batch_embeddings)
@@ -97,7 +117,7 @@ class EmbeddingGenerator:
     def _generate_ollama_embeddings(self, texts: List[str]) -> List[np.ndarray]:
         embeddings = []
         
-        for text in tqdm(texts, desc="Generating Ollama embeddings"):
+        for text in tqdm(texts, desc="Generating Ollama embeddings", disable=self.json_mode):
             embedding = self._get_ollama_embedding(text)
             embeddings.append(embedding)
         
@@ -111,7 +131,10 @@ class EmbeddingGenerator:
             )
             return np.array(response['embedding'])
         except Exception as e:
-            print(f"Error generating embedding with Ollama: {e}")
+            if self.json_mode:
+                print(json.dumps({"status": "embedding_error", "error": str(e)}), flush=True)
+            else:
+                print(f"Error generating embedding with Ollama: {e}")
             raise
     
     def generate_query_embedding(self, query: str) -> np.ndarray:
@@ -156,14 +179,20 @@ class EmbeddingGenerator:
                 with open(cache_file, 'wb') as f:
                     pickle.dump(embedding, f)
             except Exception as e:
-                print(f"Error saving embedding to cache: {e}")
+                if self.json_mode:
+                    print(json.dumps({"status": "cache_error", "error": str(e)}), flush=True)
+                else:
+                    print(f"Error saving embedding to cache: {e}")
     
     def clear_cache(self):
         import shutil
         if self.cache_dir.exists():
             shutil.rmtree(self.cache_dir)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            print("Embedding cache cleared")
+            if self.json_mode:
+                print(json.dumps({"status": "cache_cleared"}), flush=True)
+            else:
+                print("Embedding cache cleared")
 
 
 if __name__ == "__main__":

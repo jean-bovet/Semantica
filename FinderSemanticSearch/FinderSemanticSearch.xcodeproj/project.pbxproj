@@ -102,6 +102,7 @@
 				A7F614E62E54CFA700FA87E8 /* Sources */,
 				A7F614E72E54CFA700FA87E8 /* Frameworks */,
 				A7F614E82E54CFA700FA87E8 /* Resources */,
+				A7F615202E55E84B00FA87E8 /* Copy Python CLI */,
 			);
 			buildRules = (
 			);
@@ -230,6 +231,33 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A7F615202E55E84B00FA87E8 /* Copy Python CLI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/../local-doc-search/cli.py",
+				"$(PROJECT_DIR)/../local-doc-search/cli_standalone.py",
+				"$(PROJECT_DIR)/../local-doc-search/config.yaml",
+			);
+			name = "Copy Python CLI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/cli.py",
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/cli_standalone.py",
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/config.yaml",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "#!/bin/bash\nSOURCE_DIR=\"${PROJECT_DIR}/../local-doc-search\"\nDEST_DIR=\"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/python_cli\"\nif [ ! -d \"$SOURCE_DIR\" ]; then\n    echo \"Error: Python CLI source not found at $SOURCE_DIR\"\n    exit 1\nfi\nmkdir -p \"$DEST_DIR\"\ncp \"$SOURCE_DIR/cli.py\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/cli_standalone.py\" \"$DEST_DIR/\"\ncp -r \"$SOURCE_DIR/src\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/config.yaml\" \"$DEST_DIR/\"\necho \"Python CLI successfully copied to: $DEST_DIR\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A7F614E62E54CFA700FA87E8 /* Sources */ = {

@@ -10,10 +10,11 @@ from document_processor import DocumentChunk
 
 
 class FAISSIndexer:
-    def __init__(self, index_dir: str = "./data/index", embedding_dim: int = 384):
+    def __init__(self, index_dir: str = "./data/index", embedding_dim: int = 384, json_mode: bool = False):
         self.index_dir = Path(index_dir)
         self.index_dir.mkdir(parents=True, exist_ok=True)
         self.embedding_dim = embedding_dim
+        self.json_mode = json_mode
         
         self.index_path = self.index_dir / "faiss.index"
         self.metadata_path = self.index_dir / "metadata.json"
@@ -53,14 +54,20 @@ class FAISSIndexer:
         self.chunks = []
         self.document_ids = set()
         
-        print(f"Created new {index_type} index with dimension {self.embedding_dim}")
+        if self.json_mode:
+            print(json.dumps({"status": "index_created", "type": index_type, "dimension": self.embedding_dim}), flush=True)
+        else:
+            print(f"Created new {index_type} index with dimension {self.embedding_dim}")
     
     def add_documents(self, chunks: List[DocumentChunk], embeddings: np.ndarray):
         if len(chunks) != len(embeddings):
             raise ValueError("Number of chunks must match number of embeddings")
         
         if len(chunks) == 0:
-            print("No chunks to add")
+            if self.json_mode:
+                print(json.dumps({"status": "no_chunks"}), flush=True)
+            else:
+                print("No chunks to add")
             return
         
         if embeddings.shape[1] != self.embedding_dim:
@@ -71,7 +78,10 @@ class FAISSIndexer:
         embeddings = embeddings.astype('float32')
         
         if isinstance(self.index, faiss.IndexIVFFlat) and not self.index.is_trained:
-            print("Training IVF index...")
+            if self.json_mode:
+                print(json.dumps({"status": "training_index"}), flush=True)
+            else:
+                print("Training IVF index...")
             self.index.train(embeddings)
         
         self.index.add(embeddings)
@@ -84,11 +94,17 @@ class FAISSIndexer:
         self.metadata["total_chunks"] = len(self.chunks)
         self.metadata["last_updated"] = datetime.now().isoformat()
         
-        print(f"Added {len(chunks)} chunks to index. Total chunks: {len(self.chunks)}")
+        if self.json_mode:
+            print(json.dumps({"status": "chunks_added", "added": len(chunks), "total": len(self.chunks)}), flush=True)
+        else:
+            print(f"Added {len(chunks)} chunks to index. Total chunks: {len(self.chunks)}")
     
     def search(self, query_embedding: np.ndarray, k: int = 10) -> List[Tuple[DocumentChunk, float]]:
         if self.index is None or self.index.ntotal == 0:
-            print("Index is empty")
+            if self.json_mode:
+                print(json.dumps({"status": "index_empty"}), flush=True)
+            else:
+                print("Index is empty")
             return []
         
         query_embedding = np.array([query_embedding]).astype('float32')
@@ -110,7 +126,10 @@ class FAISSIndexer:
         return results
     
     def save_index(self):
-        print("Saving index...")
+        if self.json_mode:
+            print(json.dumps({"status": "saving_index"}), flush=True)
+        else:
+            print("Saving index...")
         
         faiss.write_index(self.index, str(self.index_path))
         
@@ -127,13 +146,19 @@ class FAISSIndexer:
         with open(self.config_path, 'w') as f:
             json.dump(config, f, indent=2)
         
-        print(f"Index saved to {self.index_dir}")
+        if self.json_mode:
+            print(json.dumps({"status": "index_saved", "path": str(self.index_dir)}), flush=True)
+        else:
+            print(f"Index saved to {self.index_dir}")
     
     def load_index(self):
         if not self.index_path.exists():
             raise ValueError(f"No index found at {self.index_path}")
         
-        print("Loading existing index...")
+        if self.json_mode:
+            print(json.dumps({"status": "loading_index"}), flush=True)
+        else:
+            print("Loading existing index...")
         
         self.index = faiss.read_index(str(self.index_path))
         
@@ -150,7 +175,10 @@ class FAISSIndexer:
         
         self.document_ids = {chunk.document_id for chunk in self.chunks}
         
-        print(f"Loaded index with {len(self.chunks)} chunks from {len(self.document_ids)} documents")
+        if self.json_mode:
+            print(json.dumps({"status": "index_loaded", "chunks": len(self.chunks), "documents": len(self.document_ids)}), flush=True)
+        else:
+            print(f"Loaded index with {len(self.chunks)} chunks from {len(self.document_ids)} documents")
     
     def clear_index(self):
         self.create_new_index(self.metadata.get("index_type", "Flat"))
@@ -159,18 +187,27 @@ class FAISSIndexer:
             if file.exists():
                 file.unlink()
         
-        print("Index cleared")
+        if self.json_mode:
+            print(json.dumps({"status": "index_cleared"}), flush=True)
+        else:
+            print("Index cleared")
     
     def remove_document(self, document_id: str):
         if document_id not in self.document_ids:
-            print(f"Document {document_id} not found in index")
+            if self.json_mode:
+                print(json.dumps({"status": "document_not_found", "document_id": document_id}), flush=True)
+            else:
+                print(f"Document {document_id} not found in index")
             return
         
         indices_to_keep = [i for i, chunk in enumerate(self.chunks) 
                           if chunk.document_id != document_id]
         
         if len(indices_to_keep) == len(self.chunks):
-            print(f"No chunks found for document {document_id}")
+            if self.json_mode:
+                print(json.dumps({"status": "no_chunks_found", "document_id": document_id}), flush=True)
+            else:
+                print(f"No chunks found for document {document_id}")
             return
         
         new_chunks = [self.chunks[i] for i in indices_to_keep]
@@ -198,7 +235,10 @@ class FAISSIndexer:
         self.metadata["total_chunks"] = len(self.chunks)
         self.metadata["last_updated"] = datetime.now().isoformat()
         
-        print(f"Removed document {document_id}. Remaining chunks: {len(self.chunks)}")
+        if self.json_mode:
+            print(json.dumps({"status": "document_removed", "document_id": document_id, "remaining_chunks": len(self.chunks)}), flush=True)
+        else:
+            print(f"Removed document {document_id}. Remaining chunks: {len(self.chunks)}")
     
     def get_statistics(self) -> Dict[str, Any]:
         return {

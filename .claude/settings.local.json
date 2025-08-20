@@ -13,9 +13,20 @@
       "Bash(open:*)",
       "Bash(grep:*)",
       "Bash(cat:*)",
-      "Bash(log show:*)"
+      "Bash(log show:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(pyinstaller:*)",
+      "Bash(pkill:*)",
+      "Bash(cp:*)",
+      "Bash(/usr/bin/python3:*)",
+      "Bash(killall:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/bovet/Library/Developer/Xcode/DerivedData/FinderSemanticSearch-gtlaoioydnkoqrcienkqagvtjjxd/Build/Products/Debug/FinderSemanticSearch.app/Contents/Resources"
+    ]
   }
 }

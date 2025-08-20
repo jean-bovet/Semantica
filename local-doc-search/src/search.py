@@ -1,4 +1,5 @@
 import os
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import numpy as np
@@ -16,32 +17,45 @@ class DocumentSearchEngine:
     def __init__(self, 
                  index_dir: str = "./data/index",
                  embedding_model_type: str = "sentence-transformer",
-                 embedding_model_name: Optional[str] = None):
+                 embedding_model_name: Optional[str] = None,
+                 json_mode: bool = False):
         
+        self.json_mode = json_mode
         self.console = Console()
         
         self.embedding_generator = EmbeddingGenerator(
             model_type=embedding_model_type,
-            model_name=embedding_model_name
+            model_name=embedding_model_name,
+            json_mode=json_mode
         )
         
         self.indexer = FAISSIndexer(
             index_dir=index_dir,
-            embedding_dim=self.embedding_generator.embedding_dim
+            embedding_dim=self.embedding_generator.embedding_dim,
+            json_mode=json_mode
         )
         
-        self.document_processor = DocumentProcessor()
+        self.document_processor = DocumentProcessor(json_mode=json_mode)
     
     def index_directory(self, directory_path: str, batch_size: int = 32):
-        self.console.print(f"[bold blue]Indexing directory:[/bold blue] {directory_path}")
+        if self.json_mode:
+            print(json.dumps({"status": "indexing_directory", "path": directory_path}), flush=True)
+        else:
+            self.console.print(f"[bold blue]Indexing directory:[/bold blue] {directory_path}")
         
         chunks = self.document_processor.process_directory(directory_path)
         
         if not chunks:
-            self.console.print("[yellow]No documents found to index[/yellow]")
+            if self.json_mode:
+                print(json.dumps({"status": "no_documents_found"}), flush=True)
+            else:
+                self.console.print("[yellow]No documents found to index[/yellow]")
             return
         
-        self.console.print(f"[green]Found {len(chunks)} chunks to index[/green]")
+        if self.json_mode:
+            print(json.dumps({"status": "chunks_found", "count": len(chunks)}), flush=True)
+        else:
+            self.console.print(f"[green]Found {len(chunks)} chunks to index[/green]")
         
         chunk_texts = [chunk.content for chunk in chunks]
         embeddings = self.embedding_generator.generate_embeddings(
@@ -53,12 +67,16 @@ class DocumentSearchEngine:
         
         self.indexer.save_index()
         
-        stats = self.indexer.get_statistics()
-        self._display_index_stats(stats)
+        if not self.json_mode:
+            stats = self.indexer.get_statistics()
+            self._display_index_stats(stats)
     
     def search(self, query: str, k: int = 10, display_results: bool = True) -> List[Tuple[DocumentChunk, float]]:
         if not query.strip():
-            self.console.print("[red]Empty query provided[/red]")
+            if self.json_mode:
+                print(json.dumps({"status": "empty_query"}), flush=True)
+            else:
+                self.console.print("[red]Empty query provided[/red]")
             return []
         
         query_embedding = self.embedding_generator.generate_query_embedding(query)
@@ -122,12 +140,18 @@ class DocumentSearchEngine:
         self.console.print(table)
     
     def add_document(self, file_path: str):
-        self.console.print(f"[bold blue]Adding document:[/bold blue] {file_path}")
+        if self.json_mode:
+            print(json.dumps({"status": "adding_document", "path": file_path}), flush=True)
+        else:
+            self.console.print(f"[bold blue]Adding document:[/bold blue] {file_path}")
         
         chunks = self.document_processor.process_file(file_path)
         
         if not chunks:
-            self.console.print("[yellow]No content extracted from document[/yellow]")
+            if self.json_mode:
+                print(json.dumps({"status": "no_content_extracted"}), flush=True)
+            else:
+                self.console.print("[yellow]No content extracted from document[/yellow]")
             return
         
         chunk_texts = [chunk.content for chunk in chunks]
@@ -137,7 +161,10 @@ class DocumentSearchEngine:
         
         self.indexer.save_index()
         
-        self.console.print(f"[green]Added {len(chunks)} chunks from {file_path}[/green]")
+        if self.json_mode:
+            print(json.dumps({"status": "document_added", "chunks": len(chunks), "path": file_path}), flush=True)
+        else:
+            self.console.print(f"[green]Added {len(chunks)} chunks from {file_path}[/green]")
     
     def remove_document(self, document_id: str):
         self.indexer.remove_document(document_id)
@@ -145,13 +172,17 @@ class DocumentSearchEngine:
     
     def clear_index(self):
         self.indexer.clear_index()
-        self.console.print("[green]Index cleared successfully[/green]")
+        if not self.json_mode:
+            self.console.print("[green]Index cleared successfully[/green]")
     
     def get_similar_documents(self, file_path: str, k: int = 5) -> List[Tuple[DocumentChunk, float]]:
         chunks = self.document_processor.process_file(file_path)
         
         if not chunks:
-            self.console.print("[yellow]No content extracted from document[/yellow]")
+            if self.json_mode:
+                print(json.dumps({"status": "no_content_extracted"}), flush=True)
+            else:
+                self.console.print("[yellow]No content extracted from document[/yellow]")
             return []
         
         all_results = []

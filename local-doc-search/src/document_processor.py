@@ -1,4 +1,5 @@
 import os
+import json
 import hashlib
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -18,10 +19,11 @@ class DocumentChunk:
     
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.supported_extensions = {'.pdf', '.txt', '.docx', '.doc', '.md'}
+        self.json_mode = json_mode
     
     def process_directory(self, directory_path: str) -> List[DocumentChunk]:
         directory = Path(directory_path)
@@ -32,14 +34,20 @@ class DocumentProcessor:
         files = list(directory.rglob("*"))
         valid_files = [f for f in files if f.suffix.lower() in self.supported_extensions]
         
-        print(f"Found {len(valid_files)} documents to process")
+        if self.json_mode:
+            print(json.dumps({"status": "documents_found", "count": len(valid_files)}), flush=True)
+        else:
+            print(f"Found {len(valid_files)} documents to process")
         
-        for file_path in tqdm(valid_files, desc="Processing documents"):
+        for file_path in tqdm(valid_files, desc="Processing documents", disable=self.json_mode):
             try:
                 chunks = self.process_file(str(file_path))
                 all_chunks.extend(chunks)
             except Exception as e:
-                print(f"Error processing {file_path}: {e}")
+                if self.json_mode:
+                    print(json.dumps({"status": "processing_error", "file": str(file_path), "error": str(e)}), flush=True)
+                else:
+                    print(f"Error processing {file_path}: {e}")
                 continue
         
         return all_chunks
@@ -80,7 +88,10 @@ class DocumentProcessor:
                     if page_text:
                         text += f"\n--- Page {page_num + 1} ---\n{page_text}"
         except Exception as e:
-            print(f"Error reading PDF {file_path}: {e}")
+            if self.json_mode:
+                print(json.dumps({"status": "pdf_read_error", "file": file_path, "error": str(e)}), flush=True)
+            else:
+                print(f"Error reading PDF {file_path}: {e}")
             return ""
         
         return text
