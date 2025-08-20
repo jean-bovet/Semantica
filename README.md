@@ -41,10 +41,13 @@ The application uses a hybrid architecture:
 - ✅ Document indexing from folders
 - ✅ Semantic search with natural language queries
 - ✅ Support for PDF, DOCX, TXT, and MD files
-- ✅ Real-time indexing progress updates
+- ✅ Real-time indexing progress updates with deterministic progress bar
 - ✅ Self-contained Python environment (no user installation required)
 - ✅ JSON streaming for status messages
 - ✅ Automatic dependency installation on first run
+- ✅ Hidden directory filtering (skips directories starting with ".")
+- ✅ Drag-and-drop zone that hides during indexing
+- ✅ Progress reporting for both file processing and embedding generation phases
 
 ### Technical Highlights
 - **App Sandbox**: Disabled for subprocess execution

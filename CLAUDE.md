@@ -60,6 +60,10 @@ A macOS application with semantic document search capabilities using AI-powered 
 - **Document Support**: PDF, DOCX, TXT, MD files
 - **Semantic Search**: FAISS + Sentence Transformers
 - **App Sandbox**: Disabled to allow subprocess execution
+- **Hidden Directory Filtering**: Skips directories starting with "." during indexing
+- **Deterministic Progress Bar**: Shows actual file count and progress during indexing
+- **Two-Phase Progress Reporting**: Tracks both file processing and embedding generation
+- **Dynamic UI**: Drop zone hides during indexing to prevent concurrent operations
 
 ### 🔧 Implementation Details
 - **Python Bridge**: `PythonCLIBridge.swift` manages subprocess
@@ -238,11 +242,13 @@ ruff .            # Python linting
 {"success": true, "action": "search", "results": [...]}
 ```
 
-**Status Messages (stderr):**
+**Status Messages (stdout - streamed during processing):**
 ```json
 {"status": "installing", "message": "Installing dependencies..."}
 {"status": "loading_index"}
 {"status": "documents_found", "count": 10}
+{"status": "processing_file", "current": 1, "total": 10, "file": "doc1.pdf"}
+{"status": "generating_embeddings", "current": 1, "total": 5, "file": "Batch 1/5"}
 ```
 
 ### Performance Metrics
