@@ -21,7 +21,8 @@
       "Bash(pkill:*)",
       "Bash(cp:*)",
       "Bash(/usr/bin/python3:*)",
-      "Bash(killall:*)"
+      "Bash(killall:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": [],
