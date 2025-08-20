@@ -2,6 +2,8 @@
 
 A powerful local document search engine that uses AI to index and search through your documents (PDF, Word, Text) with semantic understanding.
 
+**Note**: This search engine is integrated with the FinderSemanticSearch macOS app. For GUI usage, see the main [FSS README](../README.md).
+
 ## Features
 
 - 📁 **Multi-format Support**: Index PDF, Word (.docx), text files, and Markdown
@@ -16,24 +18,35 @@ A powerful local document search engine that uses AI to index and search through
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.9 or higher (macOS includes Python 3.9+)
 - 4GB RAM minimum (8GB recommended)
 - 2GB free disk space for models
 
+**For macOS App Users**: The FinderSemanticSearch app handles all dependencies automatically using `cli_standalone.py`.
+
 ### Installation
+
+#### Standalone CLI Usage
 
 1. Clone the repository:
 ```bash
 cd local-doc-search
 ```
 
-2. Create a virtual environment:
+2. Use the standalone script (auto-installs dependencies):
+```bash
+/usr/bin/python3 cli_standalone.py --help
+```
+
+#### Manual Installation (Development)
+
+1. Create a virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
@@ -64,6 +77,16 @@ python cli.py search "quarterly financial report"
 4. **Interactive mode**:
 ```bash
 python cli.py interactive
+```
+
+5. **JSON mode for GUI integration**:
+```bash
+python cli.py interactive --json-mode
+# Now accepts JSON commands on stdin:
+# {"action": "index", "folder": "/path/to/docs"}
+# {"action": "search", "query": "your query", "limit": 10}
+# {"action": "stats"}
+# {"action": "exit"}
 ```
 
 ## Command Reference
@@ -143,7 +166,8 @@ chunk_overlap: 200
 
 ```
 local-doc-search/
-├── cli.py                 # Main CLI interface
+├── cli.py                 # Main CLI interface with JSON mode
+├── cli_standalone.py      # Bootstrap script for auto-dependencies
 ├── config.yaml           # Configuration file
 ├── requirements.txt      # Python dependencies
 ├── src/
@@ -156,6 +180,25 @@ local-doc-search/
     ├── index/           # FAISS index files
     └── embeddings_cache/ # Cached embeddings
 ```
+
+## macOS App Integration
+
+The search engine is integrated with FinderSemanticSearch.app:
+
+1. **Auto-setup**: `cli_standalone.py` creates a virtual environment at:
+   ```
+   ~/Library/Application Support/FinderSemanticSearch/venv/
+   ```
+
+2. **JSON Protocol**: The app communicates via JSON on stdin/stdout:
+   - Commands: index, search, stats, clear, exit
+   - Status messages sent to stderr
+   - Multiple JSON objects supported for streaming
+
+3. **Bundle Structure**: Python files are copied to:
+   ```
+   FinderSemanticSearch.app/Contents/Resources/python_cli/
+   ```
 
 ## Interactive Mode Commands
 
@@ -198,9 +241,31 @@ ollama pull nomic-embed-text
 - Search speed: <100ms for most queries
 - Memory usage: ~1-2GB for typical document sets
 
+## JSON Mode API
+
+When using `--json-mode`, the CLI accepts and returns JSON:
+
+### Commands
+```json
+{"action": "index", "folder": "/path/to/folder"}
+{"action": "search", "query": "search text", "limit": 10}
+{"action": "stats"}
+{"action": "clear"}
+{"action": "exit"}
+```
+
+### Responses
+```json
+{"success": true, "action": "index", "total_documents": 50, "total_chunks": 500}
+{"success": true, "action": "search", "results": [{"file_name": "doc.pdf", "score": 0.95, "preview": "..."}]}
+{"success": true, "action": "stats", "stats": {"total_documents": 50, "total_chunks": 500}}
+```
+
 ## Future Enhancements
 
-- [ ] Web UI interface
+- [x] macOS GUI interface (FinderSemanticSearch app)
+- [x] Auto-dependency installation
+- [x] JSON streaming support
 - [ ] OCR support for scanned PDFs
 - [ ] Excel and PowerPoint support
 - [ ] Cloud storage integration

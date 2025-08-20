@@ -1,71 +1,72 @@
-# Local Document Search Project - Claude Context
+# Finder Semantic Search (FSS) - Claude Context
 
 ## Project Overview
-Building a local document search engine that uses AI to index and search documents (PDF, Word, Text) with semantic understanding. The project has two main phases:
-1. **Phase 1** (COMPLETED): Python CLI tool with local LLM capabilities
-2. **Phase 2** (PLANNED): Native macOS app with SwiftUI interface
+A macOS application with semantic document search capabilities using AI-powered embeddings. The project combines:
+1. **Python Backend** (COMPLETED): Document processing and search engine with FAISS
+2. **SwiftUI Frontend** (COMPLETED): Native macOS app with clean interface
+3. **CLI Integration** (COMPLETED): JSON-based communication between Swift and Python
 
 ## Repository Structure
 
 ```
 /Users/bovet/GitHub/FSS/
 ├── CLAUDE.md                    # This file - project context for Claude
-├── LICENSE                      # Project license
 ├── README.md                    # Main project documentation
+│
+├── FinderSemanticSearch/        # 🖥️ SWIFTUI MACOS APP
+│   ├── FinderSemanticSearch.xcodeproj
+│   ├── FinderSemanticSearch/
+│   │   ├── Services/
+│   │   │   └── PythonCLIBridge.swift  # Python process management
+│   │   ├── Views/
+│   │   │   ├── ContentView.swift      # Main app view
+│   │   │   ├── SearchView.swift       # Search interface
+│   │   │   └── IndexingView.swift     # Folder indexing UI
+│   │   ├── ViewModels/
+│   │   │   └── SearchViewModel.swift  # Business logic
+│   │   └── Models/
+│   └── INTEGRATION_PLAN.md     # Completed integration documentation
 │
 ├── specs/                       # 📋 SPECIFICATIONS & PLANNING
 │   ├── local-document-search-plan.md   # Original implementation plan
-│   ├── SWIFTUI_PYTHON_GUIDE.md        # Guide for native macOS app approach
-│   └── ML_DOWNLOAD_STRATEGY.md        # Analysis of model bundling strategies
+│   ├── SWIFTUI_PYTHON_GUIDE.md        # Current integration guide
+│   └── ML_DOWNLOAD_STRATEGY.md        # Model bundling strategies
 │
-└── local-doc-search/           # 💻 PYTHON CLI IMPLEMENTATION
-    ├── cli.py                  # Main CLI interface
+└── local-doc-search/           # 🐍 PYTHON SEARCH ENGINE
+    ├── cli.py                  # Main CLI with JSON mode
+    ├── cli_standalone.py       # Bootstrap script for auto-dependencies
     ├── config.yaml             # Configuration file
     ├── requirements.txt        # Python dependencies
-    ├── setup.sh               # One-click setup script
-    ├── .gitignore             # Git ignore rules
     │
-    ├── src/                   # Source code
+    ├── src/                   # Core search engine
     │   ├── document_processor.py  # Document parsing (PDF, Word, Text)
-    │   ├── embeddings.py          # Embedding generation (Ollama/Transformers)
+    │   ├── embeddings.py          # Embedding generation
     │   ├── indexer.py             # FAISS index management
     │   └── search.py              # Search engine logic
     │
-    ├── data/                  # Data directory (git-ignored)
-    │   ├── documents/         # Sample documents for testing
-    │   ├── index/            # FAISS index files
-    │   └── embeddings_cache/ # Cached embeddings
-    │
-    ├── venv/                 # Python virtual environment (git-ignored)
-    │
-    └── docs/                 # Additional documentation
-        ├── README.md             # CLI tool documentation
-        ├── QUICKSTART.md        # Quick start guide
-        └── SECURITY_ANALYSIS.md # Read-only guarantees analysis
+    └── data/                  # Runtime data (git-ignored)
+        ├── index/            # FAISS index files
+        └── embeddings_cache/ # Cached embeddings
 ```
 
 ## Current Status
 
-### ✅ Completed (Phase 1)
-- Python CLI tool with rich interface
-- Document processing for PDF, Word, Text files
-- Dual embedding support (Sentence Transformers + Ollama)
-- FAISS vector indexing for fast search
-- Interactive search mode
-- Comprehensive error handling
-- Read-only document guarantees
-- Setup automation script
+### ✅ Completed Features
+- **Python Search Engine**: Full document processing and semantic search
+- **SwiftUI macOS App**: Native interface with modern design
+- **CLI Integration**: JSON-based communication protocol
+- **Auto-Dependencies**: Bootstrap script installs packages automatically
+- **JSON Streaming**: Real-time progress updates during indexing
+- **Document Support**: PDF, DOCX, TXT, MD files
+- **Semantic Search**: FAISS + Sentence Transformers
+- **App Sandbox**: Disabled to allow subprocess execution
 
-### 🚧 In Progress
-- Testing and refinement of CLI tool
-- Documentation improvements
-
-### 📅 Planned (Phase 2)
-- Native macOS app using SwiftUI + PyObjC
-- Bundled Python runtime (no user installation needed)
-- App Store distribution
-- GUI with drag-and-drop indexing
-- Background model downloads
+### 🔧 Implementation Details
+- **Python Bridge**: `PythonCLIBridge.swift` manages subprocess
+- **Bootstrap**: `cli_standalone.py` creates venv at `~/Library/Application Support/`
+- **JSON Protocol**: Commands (index, search, stats, exit) and streaming responses
+- **Build Script**: Copies Python files to app bundle during build
+- **No User Setup**: Works out-of-box with system Python 3.9+
 
 ## Key Files to Know
 
@@ -104,15 +105,27 @@ python cli.py stats                        # View statistics
 python cli.py --help                       # All commands
 ```
 
-### Development
-```bash
-# Run tests on sample document
-python cli.py index --folder data/documents
-python cli.py search "machine learning"
+### Development & Testing
 
-# Check specific module
-python src/document_processor.py    # Has test code in __main__
-python src/embeddings.py            # Has test code in __main__
+#### SwiftUI App
+```bash
+# Build and run in Xcode
+open FinderSemanticSearch/FinderSemanticSearch.xcodeproj
+# Press ⌘R to run
+```
+
+#### Python CLI Testing
+```bash
+cd local-doc-search
+
+# Test with standalone script (auto-installs deps)
+/usr/bin/python3 cli_standalone.py interactive --json-mode
+
+# Send JSON commands
+{"action": "index", "folder": "/path/to/docs"}
+{"action": "search", "query": "test query", "limit": 10}
+{"action": "stats"}
+{"action": "exit"}
 ```
 
 ## Technical Stack
@@ -125,19 +138,23 @@ python src/embeddings.py            # Has test code in __main__
 - **CLI**: Click + Rich
 - **Dependencies**: ~20 packages, 300MB installed
 
-### Planned (macOS App)
-- **UI**: SwiftUI (native macOS)
-- **Bridge**: PyObjC
-- **Distribution**: py2app for bundling
-- **Size**: ~400MB with embedded Python + models
+### Current (macOS App)
+- **UI**: SwiftUI (native macOS) ✅
+- **Bridge**: Process/NSTask with JSON protocol ✅
+- **Python**: Uses system Python 3.9+ ✅
+- **Dependencies**: Auto-installed to `~/Library/Application Support/` ✅
+- **App Size**: ~50MB (without Python packages)
+- **Runtime Size**: ~500MB (with all dependencies)
 
 ## Important Decisions Made
 
-1. **Python over TypeScript** - Better ML ecosystem
-2. **FAISS over ChromaDB** - Lighter, faster, sufficient
-3. **Hybrid model approach** - Bundle small model, download better ones
-4. **Read-only design** - Never modifies user documents
-5. **CLI first** - Validate approach before GUI
+1. **CLI Integration over PyObjC** - Simpler, more maintainable
+2. **JSON Protocol** - Clean separation between Swift and Python
+3. **Virtual Environment** - Isolated dependencies in Application Support
+4. **Disabled App Sandbox** - Required for subprocess execution
+5. **System Python** - No bundled Python, uses macOS built-in
+6. **FAISS over ChromaDB** - Lighter, faster, sufficient
+7. **Read-only design** - Never modifies user documents
 
 ## Known Issues & Limitations
 
@@ -146,18 +163,30 @@ python src/embeddings.py            # Has test code in __main__
 3. **Bundle Size** - Full app will be 400-500MB with models
 4. **Python 3.13** - Had compatibility issues, fixed with flexible requirements
 
-## Next Steps
+## Known Issues & Solutions
 
-### Immediate
-- [ ] Test with larger document sets
-- [ ] Optimize indexing performance
-- [ ] Add more document formats (Excel, Markdown)
+1. **App Sandbox** - Disabled for subprocess (limits App Store distribution)
+2. **First Run** - Takes 2-3 minutes to install dependencies
+3. **JSON Mixing** - Fixed by redirecting status to stderr
+4. **Tuple Unpacking** - Fixed in search results formatting
 
-### Phase 2 Prerequisites
-- [ ] Learn SwiftUI basics
-- [ ] Set up Xcode project
-- [ ] Create py2app configuration
-- [ ] Design app UI mockups
+## Future Enhancements
+
+### Priority 1 (Performance)
+- [ ] Incremental indexing
+- [ ] Background processing
+- [ ] Multi-threaded indexing
+
+### Priority 2 (Features)
+- [ ] File watching for auto-update
+- [ ] Search history
+- [ ] Export results
+- [ ] Document preview with Quick Look
+
+### Priority 3 (Distribution)
+- [ ] XPC services for App Store compliance
+- [ ] Code signing and notarization
+- [ ] Auto-update mechanism (Sparkle)
 
 ## Environment Details
 - **Working Directory**: `/Users/bovet/GitHub/FSS/local-doc-search`
@@ -167,25 +196,57 @@ python src/embeddings.py            # Has test code in __main__
 
 ## Notes for Claude
 
-### When Working on CLI
-- Always activate venv first: `source venv/bin/activate`
-- Test changes with sample document in `data/documents/`
-- Maintain read-only guarantees for user documents
-- Keep error messages visible (users want to see them)
+### Working with the Project
+- **App Testing**: Build and run in Xcode
+- **CLI Testing**: Use `cli_standalone.py` for auto-dependencies
+- **JSON Protocol**: All communication via stdin/stdout
+- **Status Messages**: Sent to stderr to avoid JSON conflicts
+- **Virtual Environment**: Created at `~/Library/Application Support/FinderSemanticSearch/venv/`
 
-### When Planning macOS App
-- Refer to `specs/SWIFTUI_PYTHON_GUIDE.md` for architecture
-- Consider `specs/ML_DOWNLOAD_STRATEGY.md` for model distribution
-- Target bundle size: <500MB
-- Must work offline after installation
+### Key Files to Modify
+- **Swift Side**: `PythonCLIBridge.swift` for process management
+- **Python Side**: `cli.py` for command handling
+- **Bootstrap**: `cli_standalone.py` for dependency management
 
-### Code Style
-- No comments unless requested
-- Short, direct responses
-- Show errors/warnings to user
-- Use existing patterns in codebase
+### Testing Commands
+```bash
+# Test CLI directly
+cd /path/to/app.app/Contents/Resources/python_cli
+/usr/bin/python3 cli_standalone.py interactive --json-mode
 
-## Contact & Resources
-- GitHub repo: [to be created]
-- Based on: https://github.com/hemanthgk10/Gen-AI-Local-Search
-- Ollama: https://ollama.com
+# Lint/typecheck commands to run
+npm run lint      # If available
+npm run typecheck # If available
+ruff .            # Python linting
+```
+
+## Technical Details
+
+### JSON Communication Protocol
+**Commands (stdin):**
+```json
+{"action": "index", "folder": "/path"}
+{"action": "search", "query": "text", "limit": 10}
+{"action": "stats"}
+{"action": "clear"}
+{"action": "exit"}
+```
+
+**Responses (stdout):**
+```json
+{"success": true, "action": "index", "total_documents": 50}
+{"success": true, "action": "search", "results": [...]}
+```
+
+**Status Messages (stderr):**
+```json
+{"status": "installing", "message": "Installing dependencies..."}
+{"status": "loading_index"}
+{"status": "documents_found", "count": 10}
+```
+
+### Performance Metrics
+- **Indexing**: ~100 documents/minute
+- **Search**: <500ms response time
+- **Memory**: ~200MB idle, ~500MB during indexing
+- **App Size**: 50MB (+ 500MB dependencies on first run)
