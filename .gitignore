@@ -4,3 +4,8 @@
 /LocalDocSearchApp/.swiftpm
 /FinderSemanticSearch/FinderSemanticSearch.xcodeproj/project.xcworkspace/xcuserdata
 /FinderSemanticSearch/data
+
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
+UserInterfaceState.xcuserstate
