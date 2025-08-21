@@ -201,9 +201,13 @@ def interactive(ctx, json_mode):
                 
                 elif action == 'index':
                     folder = command.get('folder')
+                    incremental = command.get('incremental', True)  # Default to incremental
                     if folder:
                         try:
-                            search_engine.index_directory(folder)
+                            if incremental:
+                                search_engine.index_directory_incremental(folder)
+                            else:
+                                search_engine.index_directory(folder)
                             stats = search_engine.indexer.get_statistics()
                             response = {
                                 'success': True,

@@ -99,6 +99,12 @@ class FAISSIndexer:
         else:
             print(f"Added {len(chunks)} chunks to index. Total chunks: {len(self.chunks)}")
     
+    def get_index_size(self) -> int:
+        """Get the current size of the index (number of vectors)"""
+        if self.index:
+            return self.index.ntotal
+        return 0
+    
     def search(self, query_embedding: np.ndarray, k: int = 10) -> List[Tuple[DocumentChunk, float]]:
         if self.index is None or self.index.ntotal == 0:
             if self.json_mode:

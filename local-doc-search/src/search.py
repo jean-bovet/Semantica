@@ -11,6 +11,7 @@ from rich.text import Text
 from document_processor import DocumentProcessor, DocumentChunk
 from embeddings import EmbeddingGenerator
 from indexer import FAISSIndexer
+from metadata_store import MetadataStore
 
 
 class DocumentSearchEngine:
@@ -19,10 +20,12 @@ class DocumentSearchEngine:
                  embedding_model_type: str = "sentence-transformer",
                  embedding_model_name: Optional[str] = None,
                  json_mode: bool = False,
-                 num_workers: int = 4):
+                 num_workers: int = 4,
+                 enable_incremental: bool = True):
         
         self.json_mode = json_mode
         self.console = Console()
+        self.index_dir = index_dir
         
         self.embedding_generator = EmbeddingGenerator(
             model_type=embedding_model_type,
@@ -36,9 +39,16 @@ class DocumentSearchEngine:
             json_mode=json_mode
         )
         
+        # Initialize metadata store for incremental indexing
+        self.metadata_store = None
+        if enable_incremental:
+            metadata_path = os.path.join(index_dir, "metadata.db")
+            self.metadata_store = MetadataStore(metadata_path)
+        
         self.document_processor = DocumentProcessor(
             json_mode=json_mode,
-            num_workers=num_workers
+            num_workers=num_workers,
+            metadata_store=self.metadata_store
         )
     
     def index_directory(self, directory_path: str, batch_size: int = 64):
@@ -74,6 +84,102 @@ class DocumentSearchEngine:
         if not self.json_mode:
             stats = self.indexer.get_statistics()
             self._display_index_stats(stats)
+    
+    def index_directory_incremental(self, directory_path: str, batch_size: int = 64):
+        """Index directory with incremental updates - only process changed files"""
+        if not self.metadata_store:
+            # Fall back to regular indexing
+            return self.index_directory(directory_path, batch_size)
+        
+        if self.json_mode:
+            print(json.dumps({"status": "checking_changes", "path": directory_path}), flush=True)
+        else:
+            self.console.print(f"[bold blue]Checking for changes in:[/bold blue] {directory_path}")
+        
+        # Get changed files and process them
+        chunks, change_info = self.document_processor.process_directory_incremental(directory_path)
+        
+        # Handle deleted files
+        for deleted_file in change_info['deleted']:
+            doc_id = self.metadata_store.remove_file(deleted_file)
+            if doc_id:
+                # TODO: Remove from FAISS index when supported
+                if self.json_mode:
+                    print(json.dumps({"status": "removed_file", "file": deleted_file}), flush=True)
+        
+        if not chunks and not change_info['deleted']:
+            if self.json_mode:
+                print(json.dumps({"status": "no_changes", "unchanged": len(change_info['unchanged'])}), flush=True)
+            else:
+                self.console.print(f"[green]No changes detected. {len(change_info['unchanged'])} files unchanged.[/green]")
+            return
+        
+        if chunks:
+            if self.json_mode:
+                print(json.dumps({"status": "chunks_found", "count": len(chunks)}), flush=True)
+            else:
+                self.console.print(f"[green]Processing {len(chunks)} chunks from changed files[/green]")
+            
+            # Generate embeddings for new/modified chunks
+            chunk_texts = [chunk.content for chunk in chunks]
+            embeddings = self.embedding_generator.generate_embeddings(
+                chunk_texts, 
+                batch_size=batch_size
+            )
+            
+            # Add to index and track in metadata
+            start_idx = self.indexer.get_index_size()
+            self.indexer.add_documents(chunks, embeddings)
+            
+            # Update metadata for each file
+            file_chunks = {}
+            for i, chunk in enumerate(chunks):
+                file_path = chunk.metadata.get('file_path')
+                if file_path not in file_chunks:
+                    file_chunks[file_path] = {
+                        'document_id': chunk.document_id,
+                        'chunk_ids': [],
+                        'vector_indices': []
+                    }
+                file_chunks[file_path]['chunk_ids'].append(chunk.chunk_id)
+                file_chunks[file_path]['vector_indices'].append(start_idx + i)
+            
+            # Save metadata for each file
+            for file_path, info in file_chunks.items():
+                self.metadata_store.update_file(
+                    file_path,
+                    info['document_id'],
+                    info['chunk_ids'],
+                    info['vector_indices']
+                )
+        
+        # Save index
+        self.indexer.save_index()
+        
+        # Update folder stats
+        self.metadata_store.update_folder_stats(
+            directory_path,
+            len(change_info['new']) + len(change_info['modified']) + len(change_info['unchanged'])
+        )
+        
+        if self.json_mode:
+            stats = self.indexer.get_statistics()
+            print(json.dumps({
+                "status": "incremental_complete",
+                "new_files": len(change_info['new']),
+                "modified_files": len(change_info['modified']),
+                "deleted_files": len(change_info['deleted']),
+                "unchanged_files": len(change_info['unchanged']),
+                "total_chunks": stats.get('total_chunks', 0)
+            }), flush=True)
+        else:
+            self.console.print(Panel(
+                f"[green]Incremental indexing complete![/green]\n"
+                f"New: {len(change_info['new'])}, Modified: {len(change_info['modified'])}, "
+                f"Deleted: {len(change_info['deleted'])}, Unchanged: {len(change_info['unchanged'])}",
+                title="Indexing Results",
+                border_style="green"
+            ))
     
     def search(self, query: str, k: int = 10, display_results: bool = True) -> List[Tuple[DocumentChunk, float]]:
         if not query.strip():
@@ -176,8 +282,11 @@ class DocumentSearchEngine:
     
     def clear_index(self):
         self.indexer.clear_index()
+        # Also clear metadata if incremental indexing is enabled
+        if self.metadata_store:
+            self.metadata_store.clear_all()
         if not self.json_mode:
-            self.console.print("[green]Index cleared successfully[/green]")
+            self.console.print("[green]Index and metadata cleared successfully[/green]")
     
     def get_similar_documents(self, file_path: str, k: int = 5) -> List[Tuple[DocumentChunk, float]]:
         chunks = self.document_processor.process_file(file_path)

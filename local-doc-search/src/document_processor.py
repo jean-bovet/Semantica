@@ -21,7 +21,7 @@ class DocumentChunk:
     
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False, num_workers: int = 4):
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False, num_workers: int = 4, metadata_store=None):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.supported_extensions = {'.pdf', '.txt', '.docx', '.doc', '.md'}
@@ -29,6 +29,7 @@ class DocumentProcessor:
         self.num_workers = num_workers
         self._progress_lock = threading.Lock()
         self._processed_count = 0
+        self.metadata_store = metadata_store
     
     def process_directory(self, directory_path: str) -> List[DocumentChunk]:
         directory = Path(directory_path)
@@ -96,6 +97,106 @@ class DocumentProcessor:
                         print(f"Error processing {file_path}: {e}")
         
         return all_chunks
+    
+    def process_directory_incremental(self, directory_path: str) -> Tuple[List[DocumentChunk], Dict[str, List]]:
+        """
+        Process directory with incremental indexing support.
+        Returns: (chunks, change_info)
+        """
+        if not self.metadata_store:
+            # Fall back to regular processing if no metadata store
+            chunks = self.process_directory(directory_path)
+            return chunks, {'new': [], 'modified': [], 'deleted': [], 'unchanged': []}
+        
+        # Get changed files
+        from metadata_store import ChangeSet
+        change_set = self.metadata_store.get_changed_files(directory_path)
+        
+        # Report change statistics
+        if self.json_mode:
+            print(json.dumps({
+                "status": "change_detection",
+                "new": len(change_set.new_files),
+                "modified": len(change_set.modified_files),
+                "deleted": len(change_set.deleted_files),
+                "unchanged": len(change_set.unchanged_files)
+            }), flush=True)
+        else:
+            print(f"Changes detected: {len(change_set.new_files)} new, "
+                  f"{len(change_set.modified_files)} modified, "
+                  f"{len(change_set.deleted_files)} deleted, "
+                  f"{len(change_set.unchanged_files)} unchanged")
+        
+        # Process only changed files
+        files_to_process = change_set.new_files + change_set.modified_files
+        
+        if not files_to_process and not change_set.deleted_files:
+            if self.json_mode:
+                print(json.dumps({"status": "no_changes"}), flush=True)
+            else:
+                print("No changes detected, index is up to date")
+            return [], {
+                'new': [],
+                'modified': [],
+                'deleted': change_set.deleted_files,
+                'unchanged': [str(f) for f in change_set.unchanged_files]
+            }
+        
+        # Process new and modified files
+        if self.json_mode:
+            print(json.dumps({"status": "documents_found", "count": len(files_to_process)}), flush=True)
+        else:
+            print(f"Processing {len(files_to_process)} changed documents")
+        
+        # Reset progress counter
+        self._processed_count = 0
+        total_files = len(files_to_process)
+        all_chunks = []
+        
+        if self.json_mode and files_to_process:
+            # Use ThreadPoolExecutor for concurrent processing
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                # Submit all files for processing
+                future_to_file = {
+                    executor.submit(self._process_file_with_progress, str(file_path), idx, total_files): file_path
+                    for idx, file_path in enumerate(files_to_process)
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    file_path = future_to_file[future]
+                    try:
+                        chunks = future.result()
+                        if chunks:
+                            all_chunks.extend(chunks)
+                    except Exception as e:
+                        print(json.dumps({"status": "processing_error", "file": str(file_path), "error": str(e)}), flush=True)
+        elif files_to_process:
+            # Use ThreadPoolExecutor with tqdm for non-JSON mode
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                futures = []
+                for file_path in files_to_process:
+                    future = executor.submit(self.process_file, str(file_path))
+                    futures.append((future, file_path))
+                
+                # Use tqdm to show progress
+                for future, file_path in tqdm(futures, desc="Processing changed documents"):
+                    try:
+                        chunks = future.result()
+                        if chunks:
+                            all_chunks.extend(chunks)
+                    except Exception as e:
+                        print(f"Error processing {file_path}: {e}")
+        
+        # Return chunks and change information
+        change_info = {
+            'new': [str(f) for f in change_set.new_files],
+            'modified': [str(f) for f in change_set.modified_files],
+            'deleted': change_set.deleted_files,
+            'unchanged': [str(f) for f in change_set.unchanged_files]
+        }
+        
+        return all_chunks, change_info
     
     def _process_file_with_progress(self, file_path: str, file_idx: int, total_files: int) -> List[DocumentChunk]:
         """Process a file and report progress in thread-safe manner"""
