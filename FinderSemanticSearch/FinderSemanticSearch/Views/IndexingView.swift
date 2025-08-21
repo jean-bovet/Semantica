@@ -93,13 +93,13 @@ struct IndexingView: View {
                             .truncationMode(.middle)
                     }
                     
-                    // Progress bar with determinate progress
+                    // Progress bar with smooth animated progress
                     if viewModel.indexingTotalFiles > 0 {
-                        ProgressView(value: Double(viewModel.indexingCurrentFile), 
-                                   total: Double(viewModel.indexingTotalFiles)) {
+                        ProgressView(value: viewModel.animatedProgress) {
                             Text("Indexing: \(viewModel.indexingCurrentFile) of \(viewModel.indexingTotalFiles) files")
                         }
                         .progressViewStyle(.linear)
+                        .animation(.easeInOut(duration: 0.15), value: viewModel.animatedProgress)
                     } else {
                         ProgressView("Indexing...")
                             .progressViewStyle(.linear)

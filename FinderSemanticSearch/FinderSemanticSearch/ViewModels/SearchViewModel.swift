@@ -27,6 +27,9 @@ class SearchViewModel: ObservableObject {
     @Published var totalDocuments: Int = 0
     @Published var lastIndexedFolder: URL?
     
+    // Smooth progress animation
+    @Published var animatedProgress: Double = 0
+    
     // Legacy progress tracking (to be removed)
     @Published var indexingTotalFiles: Int = 0
     @Published var indexingCurrentFile: Int = 0
@@ -36,8 +39,14 @@ class SearchViewModel: ObservableObject {
     private var searchCancellable: AnyCancellable?
     private let indexedFoldersKey = "com.finderSemanticSearch.indexedFolders"
     
+    // Throttling for progress updates
+    private var lastProgressUpdate = Date.distantPast
+    private let progressUpdateInterval: TimeInterval = 0.1  // Update max 10 times per second
+    private var progressAnimationCancellable: AnyCancellable?
+    
     init() {
         setupSearchDebouncing()
+        setupProgressAnimation()
         loadIndexedFolders()
     }
     
@@ -64,6 +73,17 @@ class SearchViewModel: ObservableObject {
             .sink { [weak self] query in
                 Task { [weak self] in
                     await self?.performSearch(query)
+                }
+            }
+    }
+    
+    private func setupProgressAnimation() {
+        // Animate progress changes smoothly
+        progressAnimationCancellable = $indexingProgress
+            .removeDuplicates()
+            .sink { [weak self] newProgress in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    self?.animatedProgress = newProgress
                 }
             }
     }
@@ -101,6 +121,7 @@ class SearchViewModel: ObservableObject {
         isIndexing = true
         errorMessage = nil
         indexingProgress = 0
+        animatedProgress = 0  // Reset animated progress
         currentFileIndex = 0
         totalFiles = 0
         currentFileName = ""
@@ -116,24 +137,37 @@ class SearchViewModel: ObservableObject {
         // Create new indexing task
         indexingTask = Task {
             do {
-                // Use progress handler - updates are already throttled by Python side reporting
+                // Use progress handler with throttling
                 let result = try await bridge.indexFolder(url) { [weak self] current, total, fileName in
                     guard let self = self else { return }
                     
-                    // Update new progress properties
-                    Task { @MainActor in
-                        self.currentFileIndex = current
-                        self.totalFiles = total
-                        self.currentFileName = fileName
+                    // Throttle updates to prevent UI overload
+                    let now = Date()
+                    let timeSinceLastUpdate = now.timeIntervalSince(self.lastProgressUpdate)
+                    
+                    // Always update on first file, last file, or if enough time has passed
+                    let shouldUpdate = current == 1 || 
+                                      current == total || 
+                                      timeSinceLastUpdate >= self.progressUpdateInterval
+                    
+                    if shouldUpdate {
+                        self.lastProgressUpdate = now
                         
-                        if total > 0 {
-                            self.indexingProgress = Double(current) / Double(total)
+                        // Update progress properties
+                        Task { @MainActor in
+                            self.currentFileIndex = current
+                            self.totalFiles = total
+                            self.currentFileName = fileName
+                            
+                            if total > 0 {
+                                self.indexingProgress = Double(current) / Double(total)
+                            }
+                            
+                            // Also update legacy properties (will remove later)
+                            self.indexingCurrentFile = current
+                            self.indexingTotalFiles = total  
+                            self.currentIndexingFile = fileName
                         }
-                        
-                        // Also update legacy properties (will remove later)
-                        self.indexingCurrentFile = current
-                        self.indexingTotalFiles = total  
-                        self.currentIndexingFile = fileName
                     }
                 }
                 
@@ -157,6 +191,7 @@ class SearchViewModel: ObservableObject {
             // Clean up state
             isIndexing = false
             indexingProgress = 0
+            animatedProgress = 0  // Reset animated progress
             
             // Also reset legacy properties
             indexingTotalFiles = 0
