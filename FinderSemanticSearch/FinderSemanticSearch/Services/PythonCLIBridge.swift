@@ -423,7 +423,10 @@ class PythonCLIBridge: ObservableObject {
                                         if let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                                            let status = json["status"] as? String {
                                             
-                                            print("PythonCLIBridge: Got status: \(status)")
+                                            // Skip logging for frequent "processing_file" messages
+                                            if status != "processing_file" {
+                                                print("PythonCLIBridge: Got status: \(status)")
+                                            }
                                             
                                             // Handle different status types
                                             switch status {
