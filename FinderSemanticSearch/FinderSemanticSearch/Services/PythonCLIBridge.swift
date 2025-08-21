@@ -191,10 +191,7 @@ class PythonCLIBridge: ObservableObject {
     }
     
     func indexFolder(_ url: URL, progressHandler: ((Int, Int, String) -> Void)? = nil) async throws -> (documents: Int, chunks: Int) {
-        print("PythonCLIBridge: Indexing folder: \(url.path)")
-        
         guard isRunning else {
-            print("PythonCLIBridge: ERROR - Process not running!")
             throw BridgeError.notRunning
         }
         
@@ -203,8 +200,6 @@ class PythonCLIBridge: ObservableObject {
             "folder": url.path
         ] as [String: Any]
         
-        print("PythonCLIBridge: Sending index command: \(command)")
-        
         let response: CLIResponse
         if let progressHandler = progressHandler {
             response = try await sendCommandAndWaitWithProgress(command, progressHandler: progressHandler)
@@ -212,15 +207,11 @@ class PythonCLIBridge: ObservableObject {
             response = try await sendCommandAndWait(command)
         }
         
-        print("PythonCLIBridge: Received response: success=\(response.success)")
-        
         if response.success {
             let docs = response.totalDocuments ?? 0
             let chunks = response.totalChunks ?? 0
-            print("PythonCLIBridge: Indexed \(docs) documents, \(chunks) chunks")
             return (docs, chunks)
         } else {
-            print("PythonCLIBridge: Indexing failed: \(response.error ?? "Unknown error")")
             throw BridgeError.commandFailed(response.error ?? "Indexing failed")
         }
     }
@@ -262,20 +253,18 @@ class PythonCLIBridge: ObservableObject {
     }
     
     private func sendCommandAndWait(_ command: [String: Any]) async throws -> CLIResponse {
-        print("PythonCLIBridge: sendCommandAndWait called")
         guard isRunning else {
-            print("PythonCLIBridge: Process not running in sendCommandAndWait")
             throw BridgeError.notRunning
         }
         
         // Capture pipes before entering the async context
         let inputPipe = self.inputPipe
         let outputPipe = self.outputPipe
+        let expectedAction = command["action"] as? String  // Get the action we're expecting
         
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 guard let inputPipe = inputPipe, let outputPipe = outputPipe else {
-                    print("PythonCLIBridge: Pipes are nil")
                     continuation.resume(throwing: BridgeError.notRunning)
                     return
                 }
@@ -283,13 +272,8 @@ class PythonCLIBridge: ObservableObject {
                 // Send command
                 do {
                     let jsonData = try JSONSerialization.data(withJSONObject: command)
-                    let jsonString = String(data: jsonData, encoding: .utf8) ?? ""
-                    print("PythonCLIBridge: Sending JSON: \(jsonString)")
-                    
                     inputPipe.fileHandleForWriting.write(jsonData)
                     inputPipe.fileHandleForWriting.write("\n".data(using: .utf8)!)
-                    
-                    print("PythonCLIBridge: Command sent, waiting for response...")
                     
                     // Read until we get a complete response
                     var responseData = Data()
@@ -305,42 +289,29 @@ class PythonCLIBridge: ObservableObject {
                         
                         responseData.append(chunk)
                         
-                        if let chunkString = String(data: chunk, encoding: .utf8) {
-                            print("PythonCLIBridge: Received chunk: \(chunkString)")
-                        }
-                        
                         // Check if we have complete JSON objects
                         if let string = String(data: responseData, encoding: .utf8),
                            string.contains("\n") {
-                            print("PythonCLIBridge: Full response received: \(string)")
-                            
                             // Parse each line as a potential JSON object
                             let lines = string.components(separatedBy: "\n").filter { !$0.isEmpty }
                             
                             for line in lines {
                                 if let lineData = line.data(using: .utf8) {
                                     do {
-                                        // Try to decode as a full response
+                                        // Try to decode as a full response with matching action
                                         let response = try JSONDecoder().decode(CLIResponse.self, from: lineData)
-                                        print("PythonCLIBridge: Decoded response successfully")
-                                        
-                                        // Log any status messages we collected
-                                        for status in statusMessages {
-                                            print("PythonCLIBridge: Status: \(status)")
+                                        if response.action == expectedAction {  // Only accept responses with matching action
+                                            continuation.resume(returning: response)
+                                            return
                                         }
-                                        
-                                        continuation.resume(returning: response)
-                                        return
                                     } catch {
                                         // This might be a status message, try to parse it
                                         if let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                                            json["status"] != nil {
                                             // It's a status message, store it and continue
                                             statusMessages.append(line)
-                                            print("PythonCLIBridge: Status message: \(line)")
                                         } else {
                                             // Not a status message and not a valid response
-                                            print("PythonCLIBridge: Failed to decode line: \(error)")
                                         }
                                     }
                                 }
@@ -362,14 +333,13 @@ class PythonCLIBridge: ObservableObject {
     }
     
     private func sendCommandAndWaitWithProgress(_ command: [String: Any], progressHandler: ((Int, Int, String) -> Void)?) async throws -> CLIResponse {
-        print("PythonCLIBridge: sendCommandAndWaitWithProgress called")
         guard isRunning else {
-            print("PythonCLIBridge: Process not running")
             throw BridgeError.notRunning
         }
         
         let inputPipe = self.inputPipe
         let outputPipe = self.outputPipe
+        let expectedAction = command["action"] as? String  // Get the action we're expecting
         
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
@@ -382,8 +352,6 @@ class PythonCLIBridge: ObservableObject {
                     let jsonData = try JSONSerialization.data(withJSONObject: command)
                     inputPipe.fileHandleForWriting.write(jsonData)
                     inputPipe.fileHandleForWriting.write("\n".data(using: .utf8)!)
-                    
-                    print("PythonCLIBridge: Command sent, waiting for response with progress...")
                     
                     var buffer = Data()
                     let fileHandle = outputPipe.fileHandleForReading
@@ -411,9 +379,9 @@ class PythonCLIBridge: ObservableObject {
                                     if line.isEmpty { continue }
                                     
                                     if let lineData = line.data(using: .utf8) {
-                                        // First try to decode as CLIResponse
-                                        if let response = try? JSONDecoder().decode(CLIResponse.self, from: lineData) {
-                                            print("PythonCLIBridge: Got final response")
+                                        // First try to decode as CLIResponse with matching action
+                                        if let response = try? JSONDecoder().decode(CLIResponse.self, from: lineData),
+                                           response.action == expectedAction {  // Only accept responses with matching action
                                             continuation.resume(returning: response)
                                             hasResumed = true
                                             return
@@ -422,11 +390,6 @@ class PythonCLIBridge: ObservableObject {
                                         // Otherwise, try to parse as status message
                                         if let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                                            let status = json["status"] as? String {
-                                            
-                                            // Skip logging for frequent "processing_file" messages
-                                            if status != "processing_file" {
-                                                print("PythonCLIBridge: Got status: \(status)")
-                                            }
                                             
                                             // Handle different status types
                                             switch status {
@@ -442,21 +405,16 @@ class PythonCLIBridge: ObservableObject {
                                                 if let current = json["current"] as? Int,
                                                    let total = json["total"] as? Int,
                                                    let file = json["file"] as? String {
-                                                    print("PythonCLIBridge: Generating embeddings - \(file)")
                                                     DispatchQueue.main.async {
                                                         progressHandler?(current, total, "Generating embeddings: \(file)")
                                                     }
                                                 }
                                             case "documents_found":
-                                                if let count = json["count"] as? Int {
-                                                    print("PythonCLIBridge: Found \(count) documents")
-                                                    // Initialize progress with total count
-                                                    DispatchQueue.main.async {
-                                                        progressHandler?(0, count, "Starting...")
-                                                    }
-                                                }
+                                                // Don't call progress handler here - wait for actual processing_file updates
+                                                // The total will be set when the first processing_file status arrives
+                                                break
                                             default:
-                                                print("PythonCLIBridge: Other status: \(line)")
+                                                break
                                             }
                                         }
                                     }

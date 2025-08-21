@@ -4,6 +4,17 @@
 
 This guide documents the **fully implemented solution** using an async CLI-based integration between SwiftUI and Python with JSON communication. The system supports concurrent search during indexing, real-time progress updates, and incremental indexing.
 
+### Recent Fix: Progress Bar Updates (2025-08-21)
+
+**Issue**: Progress bar wasn't updating during indexing despite receiving status messages.
+
+**Root Cause**: The Swift code was incorrectly accepting ANY JSON response with a `success` field as the final response, including status messages like `{"status": "initialized", "success": true}`. This caused indexing to return immediately with 0 documents.
+
+**Solution**: Modified `PythonCLIBridge.swift` to only accept responses where the `action` field matches the sent command. For example, when sending `{"action": "index"}`, only responses with `"action": "index"` are treated as final responses. Status messages without matching actions are now properly processed as progress updates.
+
+**Files Changed**: 
+- `PythonCLIBridge.swift`: Added `expectedAction` tracking and action matching in both `sendCommandAndWait` and `sendCommandAndWaitWithProgress` methods
+
 ## Architecture Overview
 
 ```
