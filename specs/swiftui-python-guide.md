@@ -152,6 +152,19 @@ def ensure_dependencies():
             pip_path.install(package)
 ```
 
+#### Data Storage Locations
+
+The application stores its data in the macOS Application Support directory:
+
+- **Virtual Environment**: `~/Library/Application Support/FinderSemanticSearch/venv/`
+- **Search Index**: `~/Library/Application Support/FinderSemanticSearch/data/index/`
+  - `faiss.index` - Main FAISS vector index
+  - `metadata.json` - Index metadata  
+  - `chunks.pkl` - Document chunks
+  - `metadata.db` - SQLite database for incremental indexing
+- **Embeddings Cache**: `~/Library/Application Support/FinderSemanticSearch/data/embeddings_cache/`
+  - Cached embeddings to avoid recomputation
+
 ### 3. Async CLI Implementation (cli.py)
 
 The CLI uses Python's AsyncIO for concurrent operations, allowing searches while indexing:
