@@ -257,3 +257,4 @@ ruff .            # Python linting
 - **Memory**: ~200MB idle, ~500MB during indexing
 - **App Size**: 50MB (+ 500MB dependencies on first run)
 - **Speedup**: ~3-4x faster with multi-threading enabled
+- Don't copy the Python code to the app bundle, let the xcodebuild process or the user do that via Xcode
