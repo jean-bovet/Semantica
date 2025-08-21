@@ -30,6 +30,7 @@ class AsyncSearchCLI:
         self.indexing_status = {"is_indexing": False, "progress": {}}
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.should_exit = False
+        self.parent_pid = os.getppid()  # Store parent process ID
         
     async def initialize(self):
         """Initialize the search engine"""
@@ -265,6 +266,15 @@ class AsyncSearchCLI:
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         return reader
+    
+    def check_parent_alive(self):
+        """Check if parent process is still running"""
+        try:
+            # On Unix, sending signal 0 checks if process exists
+            os.kill(self.parent_pid, 0)
+            return True
+        except (OSError, ProcessLookupError):
+            return False
         
     async def run(self):
         """Main async run loop"""
@@ -302,6 +312,11 @@ class AsyncSearchCLI:
                     sys.stdout.flush()
                     
             except asyncio.TimeoutError:
+                # Check if parent process is still alive
+                if not self.check_parent_alive():
+                    print(json.dumps({"status": "parent_died", "message": "Parent process terminated"}), flush=True)
+                    self.should_exit = True
+                    break
                 # Check if we should exit
                 continue
             except KeyboardInterrupt:

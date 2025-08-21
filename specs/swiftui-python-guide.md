@@ -4,7 +4,9 @@
 
 This guide documents the **fully implemented solution** using an async CLI-based integration between SwiftUI and Python with JSON communication. The system supports concurrent search during indexing, real-time progress updates, and incremental indexing.
 
-### Recent Fix: Progress Bar Updates (2025-08-21)
+### Recent Fixes
+
+#### Progress Bar Updates (2025-08-21)
 
 **Issue**: Progress bar wasn't updating during indexing despite receiving status messages.
 
@@ -14,6 +16,26 @@ This guide documents the **fully implemented solution** using an async CLI-based
 
 **Files Changed**: 
 - `PythonCLIBridge.swift`: Added `expectedAction` tracking and action matching in both `sendCommandAndWait` and `sendCommandAndWaitWithProgress` methods
+
+#### Python Process Cleanup (2025-08-21)
+
+**Issue**: Python processes remained running after app termination, becoming orphaned processes.
+
+**Root Cause**: The app's cleanup code was async and didn't guarantee process termination before the app quit. The `stop()` method waited 0.5 seconds before terminating, allowing the app to quit before cleanup completed.
+
+**Solution**: Implemented a two-pronged approach:
+1. **Swift Side**: 
+   - Added `AppDelegate` with `applicationWillTerminate` to handle app termination
+   - Created static `forceStop()` method to immediately terminate all Python processes
+   - Track all active processes in a static array for cleanup
+2. **Python Side**:
+   - Added parent process monitoring - checks every timeout if parent is still alive
+   - Automatically exits if parent process dies (backup mechanism)
+
+**Files Changed**:
+- `FinderSemanticSearchApp.swift`: Added AppDelegate with termination handler
+- `PythonCLIBridge.swift`: Added static process tracking and `forceStop()` method
+- `cli.py`: Added parent process monitoring with `check_parent_alive()`
 
 ## Architecture Overview
 

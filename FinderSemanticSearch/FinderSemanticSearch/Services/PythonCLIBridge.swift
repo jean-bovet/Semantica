@@ -88,6 +88,10 @@ class PythonCLIBridge: ObservableObject {
     
     private let queue = DispatchQueue(label: "com.findersemanticearch.pythonbridge", qos: .userInitiated)
     
+    // Track all active processes for cleanup
+    private static var activeProcesses: [Process] = []
+    static let shared = PythonCLIBridge()  // Shared instance for AppDelegate
+    
     init() {}
     
     // MARK: - Lifecycle
@@ -123,15 +127,23 @@ class PythonCLIBridge: ObservableObject {
             try process?.run()
             isRunning = true
             
+            // Track this process for cleanup
+            if let process = process {
+                PythonCLIBridge.activeProcesses.append(process)
+            }
+            
             print("Python process started successfully")
             print("CLI path: \(standaloneCliPath)")
             
             // Monitor for unexpected termination
-            process?.terminationHandler = { [weak self] _ in
+            process?.terminationHandler = { [weak self] proc in
                 DispatchQueue.main.async {
                     self?.isRunning = false
                     self?.lastError = "Python process terminated unexpectedly"
                     print("Python process terminated")
+                    
+                    // Remove from active processes
+                    PythonCLIBridge.activeProcesses.removeAll { $0 == proc }
                 }
             }
             
@@ -165,11 +177,25 @@ class PythonCLIBridge: ObservableObject {
             
             // Give it a moment to exit gracefully
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.process?.terminate()
+                if let process = self?.process {
+                    process.terminate()
+                    // Remove from active processes
+                    PythonCLIBridge.activeProcesses.removeAll { $0 == process }
+                }
                 self?.process = nil
                 self?.isRunning = false
             }
         }
+    }
+    
+    // Force stop all Python processes immediately (for app termination)
+    static func forceStop() {
+        for process in activeProcesses {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+        activeProcesses.removeAll()
     }
     
     // MARK: - Commands
