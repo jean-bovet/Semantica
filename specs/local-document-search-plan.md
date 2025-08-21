@@ -1,7 +1,9 @@
 # Local Document Search Engine - Implementation Plan
 
+## Status: ✅ COMPLETED
+
 ## Project Overview
-Build a local document search engine that uses a local LLM to index and search through documents (PDF, Word, Text) in a specified folder. Users can enter a query and receive a list of documents most likely to contain relevant information.
+Built a local document search engine that uses ML models to index and search through documents (PDF, Word, Text) in specified folders. Users can enter natural language queries and receive semantically relevant documents with preview snippets.
 
 ## Technology Stack Decision
 

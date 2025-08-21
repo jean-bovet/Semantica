@@ -25,15 +25,17 @@ A macOS application with semantic document search capabilities using AI-powered 
 │   │   ├── ViewModels/
 │   │   │   └── SearchViewModel.swift  # Business logic
 │   │   └── Models/
-│   └── INTEGRATION_PLAN.md     # Completed integration documentation
+│   └── integration-plan.md     # Completed integration documentation
 │
 ├── specs/                       # 📋 SPECIFICATIONS & PLANNING
-│   ├── local-document-search-plan.md   # Original implementation plan
-│   ├── SWIFTUI_PYTHON_GUIDE.md        # Current integration guide
-│   └── ML_DOWNLOAD_STRATEGY.md        # Model bundling strategies
+│   ├── local-document-search-plan.md   # Original implementation plan (completed)
+│   ├── swiftui-python-guide.md        # Main integration guide with async CLI
+│   ├── incremental-indexing-plan.md   # Incremental indexing implementation
+│   ├── ml-download-strategy.md        # Model bundling strategies
+│   └── unit-test-plan.md             # Comprehensive test strategy
 │
 └── local-doc-search/           # 🐍 PYTHON SEARCH ENGINE
-    ├── cli.py                  # Main CLI with JSON mode
+    ├── cli.py                  # Async CLI with concurrent search/indexing
     ├── cli_standalone.py       # Bootstrap script for auto-dependencies
     ├── config.yaml             # Configuration file
     ├── requirements.txt        # Python dependencies
@@ -42,7 +44,13 @@ A macOS application with semantic document search capabilities using AI-powered 
     │   ├── document_processor.py  # Document parsing (PDF, Word, Text)
     │   ├── embeddings.py          # Embedding generation
     │   ├── indexer.py             # FAISS index management
+    │   ├── metadata_store.py     # Incremental indexing support
     │   └── search.py              # Search engine logic
+    │
+    ├── tests/                 # Test suite
+    │   ├── test_document_processor.py
+    │   ├── test_embeddings.py
+    │   └── test_metadata_store.py
     │
     └── data/                  # Runtime data (git-ignored)
         ├── index/            # FAISS index files
@@ -57,13 +65,16 @@ A macOS application with semantic document search capabilities using AI-powered 
 - **CLI Integration**: JSON-based communication protocol
 - **Auto-Dependencies**: Bootstrap script installs packages automatically
 - **JSON Streaming**: Real-time progress updates during indexing
-- **Document Support**: PDF, DOCX, TXT, MD files
+- **Document Support**: PDF, DOCX, TXT, MD + 84 text file types
 - **Semantic Search**: FAISS + Sentence Transformers
 - **App Sandbox**: Disabled to allow subprocess execution
 - **Hidden Directory Filtering**: Skips directories starting with "." during indexing
 - **Deterministic Progress Bar**: Shows actual file count and progress during indexing
 - **Two-Phase Progress Reporting**: Tracks both file processing and embedding generation
 - **Dynamic UI**: Drop zone hides during indexing to prevent concurrent operations
+- **Async CLI**: Concurrent search and indexing operations (search while indexing!)
+- **Incremental Indexing**: Only processes changed files for faster updates
+- **Comprehensive Test Suite**: 55+ passing tests with pytest
 
 ### 🔧 Implementation Details
 - **Python Bridge**: `PythonCLIBridge.swift` manages subprocess
@@ -81,9 +92,11 @@ A macOS application with semantic document search capabilities using AI-powered 
 - `local-doc-search/src/embeddings.py` - ML model integration
 
 ### Documentation Files
-- `specs/local-document-search-plan.md` - Original detailed plan
-- `specs/SWIFTUI_PYTHON_GUIDE.md` - Native app implementation guide
-- `specs/ML_DOWNLOAD_STRATEGY.md` - Model distribution analysis
+- `specs/local-document-search-plan.md` - Original implementation plan (completed)
+- `specs/swiftui-python-guide.md` - Main integration guide with async CLI
+- `specs/incremental-indexing-plan.md` - Incremental indexing implementation
+- `specs/ml-download-strategy.md` - Model distribution analysis
+- `specs/unit-test-plan.md` - Comprehensive test strategy
 - `local-doc-search/SECURITY_ANALYSIS.md` - Security/privacy guarantees
 
 ### Configuration
@@ -222,6 +235,19 @@ cd /path/to/app.app/Contents/Resources/python_cli
 npm run lint      # If available
 npm run typecheck # If available
 ruff .            # Python linting
+
+# IMPORTANT: Never use virtual environment!
+# Always use system Python:
+python3 cli.py           # NOT: venv/bin/python cli.py
+python3 -m pytest tests/  # NOT: venv/bin/python -m pytest
+
+# Clean up artifacts:
+./clean.sh        # Remove __pycache__, venv, data, etc.
+./dev_setup.sh    # Check environment setup
+./run_tests.sh    # Run test suite
+
+# Prevent __pycache__ creation:
+export PYTHONDONTWRITEBYTECODE=1
 ```
 
 ## Technical Details
@@ -258,3 +284,4 @@ ruff .            # Python linting
 - **App Size**: 50MB (+ 500MB dependencies on first run)
 - **Speedup**: ~3-4x faster with multi-threading enabled
 - Don't copy the Python code to the app bundle, let the xcodebuild process or the user do that via Xcode
+- Don't use ALL CAPS for spec, use file-name-xyx.md format.

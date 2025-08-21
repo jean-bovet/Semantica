@@ -95,13 +95,14 @@ class SearchViewModel: ObservableObject {
         print("Starting to index folder: \(url.path)")
         
         do {
+            // Use progress handler - updates are already throttled by Python side reporting
             let result = try await bridge.indexFolder(url) { [weak self] current, total, fileName in
-                // Update progress on main thread
-                Task { @MainActor in
-                    self?.indexingCurrentFile = current
-                    self?.indexingTotalFiles = total
-                    self?.currentIndexingFile = fileName
-                }
+                guard let self = self else { return }
+                
+                // Update progress (already on main thread from PythonCLIBridge)
+                self.indexingCurrentFile = current
+                self.indexingTotalFiles = total  
+                self.currentIndexingFile = fileName
             }
             
             // Only add if not already in the list

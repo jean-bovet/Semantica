@@ -1,8 +1,8 @@
 # SwiftUI + Python Integration Guide
 
-## Current Implementation Status
+## Current Implementation Status ✅
 
-This guide documents the **actual implemented solution** using a CLI-based integration between SwiftUI and Python with JSON communication.
+This guide documents the **fully implemented solution** using an async CLI-based integration between SwiftUI and Python with JSON communication. The system supports concurrent search during indexing, real-time progress updates, and incremental indexing.
 
 ## Architecture Overview
 
@@ -62,7 +62,34 @@ def ensure_dependencies():
             pip_path.install(package)
 ```
 
-### 3. JSON Communication Protocol
+### 3. Async CLI Implementation (cli.py)
+
+The CLI uses Python's AsyncIO for concurrent operations, allowing searches while indexing:
+
+```python
+class AsyncSearchCLI:
+    def __init__(self):
+        self.search_engine = None
+        self.indexing_task = None
+        self.executor = ThreadPoolExecutor(max_workers=2)  # For CPU-bound tasks
+        
+    async def handle_index(self, folder: str) -> Dict[str, Any]:
+        """Handle indexing request - waits for completion"""
+        result = await self._index_folder_async(folder)
+        # Return result after indexing completes
+        return {"success": True, "action": "index", ...}
+        
+    async def _index_folder_async(self, folder: str):
+        """Run blocking operation in thread pool"""
+        result = await loop.run_in_executor(
+            self.executor,
+            self._perform_indexing,
+            folder
+        )
+        return result
+```
+
+### 4. JSON Communication Protocol
 
 #### Request Format
 ```json
@@ -91,8 +118,11 @@ def ensure_dependencies():
 ```json
 {"status": "loading_index"}
 {"status": "index_loaded", "chunks": 1949, "documents": 144}
-{"status": "indexing_directory", "path": "/path"}
+{"status": "indexing_started", "folder": "/path"}
+{"status": "checking_changes", "path": "/path"}
 {"status": "documents_found", "count": 10}
+{"status": "processing_file", "current": 1, "total": 100, "file": "doc.pdf"}
+{"status": "generating_embeddings", "current": 1, "total": 5, "file": "Batch 1/5"}
 {"status": "chunks_added", "added": 50, "total": 1999}
 ```
 
@@ -105,17 +135,23 @@ def ensure_dependencies():
    - Keep process running for entire app session
    - Terminate gracefully on app quit
 
-2. **JSON Streaming Parser**
+2. **JSON Streaming Parser with Progress Handling**
    ```swift
    // Parse multiple JSON objects from stdout
    let lines = string.components(separatedBy: "\n").filter { !$0.isEmpty }
    for line in lines {
        if let response = try? JSONDecoder().decode(CLIResponse.self, from: lineData) {
            // Found the actual response
-           return response
+           continuation.resume(returning: response)
+           return
        } else if json["status"] != nil {
-           // Status message - log it
-           statusMessages.append(line)
+           // Handle progress updates
+           switch status {
+           case "processing_file":
+               progressHandler?(current, total, file)
+           case "documents_found":
+               progressHandler?(0, count, "Starting...")
+           }
        }
    }
    ```
@@ -127,20 +163,29 @@ def ensure_dependencies():
 
 ### Python Side
 
-1. **JSON Mode**
-   - All status messages printed to stdout as JSON
-   - Immediate flushing for real-time updates
-   - Clean separation of status vs response
-
-2. **Lazy Initialization**
+1. **Critical Output Flushing** ⚠️
    ```python
-   def get_search_engine(ctx, json_mode=False):
-       if ctx.obj.get('search_engine') is None or \
-          (json_mode and not getattr(ctx.obj.get('search_engine'), 'json_mode', False)):
-           # Create search engine with appropriate settings
-           ctx.obj['search_engine'] = DocumentSearchEngine(json_mode=json_mode)
-       return ctx.obj['search_engine']
+   # CRITICAL: Must flush stdout before sending final response
+   async def process_command(line):
+       result = await self.process_command(line)
+       if result:
+           sys.stdout.flush()  # Flush progress messages
+           sys.stderr.flush()  # Flush any stderr output
+           print(json.dumps(result), flush=True)
+           sys.stdout.flush()  # Ensure response is sent
+   
+   def _perform_indexing(folder):
+       self.search_engine.index_directory_incremental(folder)
+       sys.stdout.flush()  # Flush all progress messages
+       stats = self.search_engine.indexer.get_statistics()
+       return {"documents": stats.get("total_documents", 0), ...}
    ```
+
+2. **Async Architecture**
+   - AsyncIO event loop for concurrent operations
+   - ThreadPoolExecutor for CPU-bound tasks (FAISS operations)
+   - Allows search queries during indexing
+   - Progress messages streamed in real-time
 
 3. **Tuple Unpacking for Results**
    ```python
@@ -199,6 +244,22 @@ def ensure_dependencies():
 **Problem**: Can't execute subprocesses with sandbox enabled
 **Solution**: Disable app sandbox in entitlements
 
+### Issue 6: Progress Bar Not Updating ⭐
+**Problem**: Indexing completes with 0 documents, progress messages appear after response
+**Solution**: Critical fixes:
+1. Return result from `_index_folder_async` to `handle_index`
+2. Flush stdout BEFORE sending final response
+3. Flush stdout AFTER indexing completes in `_perform_indexing`
+4. Create future explicitly before awaiting in async functions
+
+### Issue 7: Import Path Errors
+**Problem**: `ModuleNotFoundError: No module named 'document_processor'`
+**Solution**: Add src directory to Python path in cli.py:
+```python
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+```
+
 ## Build Configuration
 
 ### Build Script (Copy Python CLI)
@@ -241,19 +302,21 @@ python cli_standalone.py interactive --json-mode
 ## Current State Summary
 
 ### What Works ✅
-- Document indexing from folders
+- Document indexing from folders with progress bar
 - Semantic search with natural language
+- Concurrent search during indexing (async implementation)
 - PDF, DOCX, TXT, MD file support
-- Real-time progress updates
+- Real-time progress updates during file processing
 - Automatic dependency installation
 - JSON streaming for status messages
 - Error handling and recovery
+- Incremental indexing (only process changed files)
 
 ### Known Limitations
 - App sandbox disabled (security implications)
 - First run requires internet for dependencies
 - Bundle size increases with Python packages
-- No incremental indexing yet
+- Large folders (40K+ files) may take significant time to index
 
 ## Future Improvements
 

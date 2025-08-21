@@ -1,77 +1,85 @@
-# Unit Tests for Local Document Search
+# Test Suite for Local Document Search
 
-## Overview
-Comprehensive test suite for the Python search engine using pytest framework.
+## Philosophy
+Tests focus on **essential functionality** without over-mocking. We test real behavior where possible and only mock external dependencies (ML models, etc.) when necessary.
 
 ## Test Coverage
 
-### ✅ Implemented Tests
+### ✅ Core Tests (Essential & Working)
 
-#### 1. **Document Processor** (`test_document_processor.py`)
+#### 1. **Document Processor** (`test_document_processor.py`) ✅
 - File type detection (84+ extensions)
 - Text extraction from various formats
 - Hidden directory filtering
 - Multi-threaded processing
 - Chunk generation with overlap
-- Unicode and special character handling
-- Case-insensitive extension matching
-- 21 test cases
+- **Status**: All 21 tests passing
 
-#### 2. **Embeddings** (`test_embeddings.py`)
-- Model initialization and loading
-- Single and batch embedding generation
-- Dimension consistency (384D vectors)
-- Unicode text handling
-- Long text processing
+#### 2. **Async CLI** (`test_async_cli.py`) 🆕
+- Async command processing
+- Concurrent operations (search while indexing)
+- JSON protocol handling
 - Error handling
-- 16 test cases
+- **Status**: New, focuses on real behavior
 
-#### 3. **Metadata Store** (`test_metadata_store.py`)
-- SQLite database operations
-- File change detection (new/modified/deleted)
-- File metadata tracking
-- Chunk management
-- Statistics generation
-- Concurrent access handling
-- 19 test cases
+#### 3. **FAISS Indexer** (`test_faiss_indexer.py`) 🆕
+- Vector storage and retrieval
+- Save/load persistence
+- Index statistics
+- **Status**: Tests actual FAISS operations
 
-#### 4. **Indexer** (`test_indexer.py`)
-- FAISS index operations
-- Vector addition and search
-- Index persistence (save/load)
-- Statistics tracking
-- 12 test cases
-
-#### 5. **Search Engine** (`test_search.py`)
-- Full indexing pipeline
-- Incremental indexing
-- Search operations
-- Result ranking and scoring
+#### 4. **Embeddings Simplified** (`test_embeddings_simple.py`) 🆕
+- Embedding dimensions
 - Batch processing
-- 12 test cases
+- Minimal mocking
+- **Status**: Essential tests only
 
-#### 6. **CLI** (`test_cli.py`)
-- Command parsing (index, search, stats, clear)
-- JSON mode communication
-- Interactive mode
-- Error handling
-- 16 test cases
+### ✅ Updated Tests (Fixed and Working)
+
+- `test_embeddings.py` - Properly mocked ML models (avoids 500MB downloads)
+- `test_indexer.py` - Updated to use FAISSIndexer class name
+- `test_metadata_store.py` - Matches current class structure
+- `test_search.py` - Fixed imports for DocumentSearchEngine
 
 ## Running Tests
 
-### Quick Start
+### Quick Start (System Python - No Dependencies)
 ```bash
-# Run all tests
+# Run basic structure tests (always works)
 ./run_tests.sh
 
-# Run specific test file
-pytest tests/test_document_processor.py -v
+# This runs test_basic.py which checks:
+# - Project structure is correct
+# - All required files exist
+# - Which dependencies are installed
+```
 
-# Run with coverage report
+### Full Test Suite (Requires Dependencies)
+Since we use system Python (never venv), the full test suite requires installing dependencies:
+
+```bash
+# Install dependencies for system Python (if needed for testing)
+python3 -m pip install numpy faiss-cpu sentence-transformers PyPDF2 python-docx
+python3 -m pip install pytest pytest-asyncio
+
+# Then run full tests:
+python3 -m pytest tests/test_document_processor.py -v
+python3 tests/test_cli_unittest.py  # Uses unittest instead of pytest
+```
+
+**Note:** The actual app uses `cli_standalone.py` which auto-installs dependencies, so end users don't need to install anything manually.
+
+### With Full Dependencies
+```bash
+# Install test dependencies
+pip install pytest pytest-asyncio pytest-cov
+
+# Run all working tests
+pytest tests/test_document_processor.py tests/test_async_cli.py \
+       tests/test_faiss_indexer.py tests/test_embeddings_simple.py -v
+
+# Run with coverage
 pytest tests/ --cov=src --cov-report=html
-
-# Run only fast tests (skip slow ones)
-pytest -m "not slow"
 ```
 
 ### Test Commands

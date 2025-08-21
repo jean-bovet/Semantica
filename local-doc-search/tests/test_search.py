@@ -1,5 +1,5 @@
 """
-Unit tests for SearchEngine class.
+Unit tests for DocumentSearchEngine class.
 """
 import os
 import tempfile
@@ -10,8 +10,8 @@ import pytest
 import numpy as np
 
 
-class TestSearchEngine:
-    """Test suite for SearchEngine."""
+class TestDocumentSearchEngine:
+    """Test suite for DocumentSearchEngine."""
     
     @pytest.fixture
     def temp_data_dir(self):
@@ -23,10 +23,10 @@ class TestSearchEngine:
         
     @pytest.fixture
     def mock_dependencies(self):
-        """Mock all SearchEngine dependencies."""
+        """Mock all DocumentSearchEngine dependencies."""
         with patch('src.search.DocumentProcessor') as mock_processor, \
              patch('src.search.EmbeddingGenerator') as mock_embeddings, \
-             patch('src.search.Indexer') as mock_indexer, \
+             patch('src.search.FAISSIndexer') as mock_indexer, \
              patch('src.search.MetadataStore') as mock_metadata:
             
             # Setup mock instances
@@ -49,9 +49,9 @@ class TestSearchEngine:
             
     def test_initialization(self, temp_data_dir, mock_dependencies):
         """Test search engine initialization."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
-        engine = SearchEngine(
+        engine = DocumentSearchEngine(
             index_path=os.path.join(temp_data_dir, 'index'),
             model_name='test-model'
         )
@@ -63,7 +63,7 @@ class TestSearchEngine:
         
     def test_index_directory(self, temp_data_dir, mock_dependencies):
         """Test indexing a directory."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         from src.document_processor import DocumentChunk
         
         # Setup mocks
@@ -88,7 +88,7 @@ class TestSearchEngine:
             np.random.rand(384).astype('float32')
         ]
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         result = engine.index_directory("/test/directory")
         
         # Verify calls
@@ -101,7 +101,7 @@ class TestSearchEngine:
         
     def test_index_directory_incremental(self, temp_data_dir, mock_dependencies):
         """Test incremental indexing."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         from src.document_processor import DocumentChunk
         
         # Setup mocks for incremental indexing
@@ -129,7 +129,7 @@ class TestSearchEngine:
         ]
         mock_dependencies['metadata'].get_chunks_for_file.return_value = [0, 1]
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         result = engine.index_directory_incremental("/test/directory")
         
         mock_dependencies['processor'].process_directory_incremental.assert_called_once()
@@ -138,7 +138,7 @@ class TestSearchEngine:
         
     def test_search(self, temp_data_dir, mock_dependencies):
         """Test searching."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
         # Setup mocks
         mock_dependencies['embeddings'].generate_embedding.return_value = \
@@ -156,7 +156,7 @@ class TestSearchEngine:
             "chunk3": {"file_path": "/test/file3.txt", "content": "Result 3"}
         }
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         results = engine.search("test query", limit=3)
         
         mock_dependencies['embeddings'].generate_embedding.assert_called_once_with("test query")
@@ -168,9 +168,9 @@ class TestSearchEngine:
         
     def test_search_empty_query(self, temp_data_dir, mock_dependencies):
         """Test searching with empty query."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         results = engine.search("", limit=5)
         
         assert results == []
@@ -178,22 +178,22 @@ class TestSearchEngine:
         
     def test_search_no_results(self, temp_data_dir, mock_dependencies):
         """Test search with no results."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
         mock_dependencies['embeddings'].generate_embedding.return_value = \
             np.random.rand(384).astype('float32')
         mock_dependencies['indexer'].search.return_value = []
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         results = engine.search("no matches", limit=5)
         
         assert results == []
         
     def test_clear_index(self, temp_data_dir, mock_dependencies):
         """Test clearing the index."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         engine.clear_index()
         
         mock_dependencies['indexer'].clear.assert_called_once()
@@ -201,7 +201,7 @@ class TestSearchEngine:
         
     def test_get_statistics(self, temp_data_dir, mock_dependencies):
         """Test getting statistics."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
         mock_dependencies['indexer'].get_statistics.return_value = {
             'total_vectors': 100,
@@ -214,7 +214,7 @@ class TestSearchEngine:
             'total_size': 1024000
         }
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         stats = engine.get_statistics()
         
         assert 'total_documents' in stats
@@ -223,7 +223,7 @@ class TestSearchEngine:
         
     def test_batch_embedding_generation(self, temp_data_dir, mock_dependencies):
         """Test batch processing of embeddings."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         from src.document_processor import DocumentChunk
         
         # Create many chunks to test batching
@@ -246,7 +246,7 @@ class TestSearchEngine:
         
         mock_dependencies['embeddings'].generate_embeddings_batch.side_effect = generate_batch
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         result = engine.index_directory("/test/directory")
         
         # Verify batching occurred
@@ -255,18 +255,18 @@ class TestSearchEngine:
         
     def test_error_handling_during_indexing(self, temp_data_dir, mock_dependencies):
         """Test error handling during indexing."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
         mock_dependencies['processor'].process_directory.side_effect = Exception("Processing error")
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         
         with pytest.raises(Exception, match="Processing error"):
             engine.index_directory("/test/directory")
             
     def test_search_with_score_threshold(self, temp_data_dir, mock_dependencies):
         """Test searching with score threshold."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
         mock_dependencies['embeddings'].generate_embedding.return_value = \
             np.random.rand(384).astype('float32')
@@ -283,7 +283,7 @@ class TestSearchEngine:
             "chunk3": {"file_path": "/test/file3.txt", "content": "Result 3"}
         }
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         
         # If score threshold is implemented
         # results = engine.search("test query", limit=10, score_threshold=0.4)
@@ -291,7 +291,7 @@ class TestSearchEngine:
         
     def test_deduplication_of_results(self, temp_data_dir, mock_dependencies):
         """Test deduplication of search results from same document."""
-        from src.search import SearchEngine
+        from src.search import DocumentSearchEngine
         
         mock_dependencies['embeddings'].generate_embedding.return_value = \
             np.random.rand(384).astype('float32')
@@ -309,7 +309,7 @@ class TestSearchEngine:
             "chunk3": {"file_path": "/test/file2.txt", "content": "Different"}
         }
         
-        engine = SearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
+        engine = DocumentSearchEngine(index_path=os.path.join(temp_data_dir, 'index'))
         results = engine.search("test query", limit=10)
         
         # Depending on implementation, might deduplicate by file

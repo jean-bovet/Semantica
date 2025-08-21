@@ -81,13 +81,13 @@ def run_cli_with_venv(venv_dir, args):
     env["PATH"] = f"{venv_dir / 'bin'}:{env.get('PATH', '')}"
     env["PYTHONPATH"] = str(cli_dir)
     
-    # Run the actual CLI
+    # Run the actual async CLI
     cmd = [str(python_path), "-c", """
 import sys
 sys.path.insert(0, '""" + str(cli_dir) + """')
-from cli import cli
-cli()
-"""] + args
+from cli import main
+main()
+"""]  # No args needed for async CLI
     
     process = subprocess.Popen(
         cmd,

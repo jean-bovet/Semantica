@@ -105,7 +105,8 @@ class PythonCLIBridge: ObservableObject {
         
         // Use system Python 3 with standalone CLI that auto-installs dependencies
         process?.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process?.arguments = [standaloneCliPath, "interactive", "--json-mode"]
+        // The CLI is now async by default - no special arguments needed
+        process?.arguments = [standaloneCliPath]
         process?.currentDirectoryURL = URL(fileURLWithPath: standaloneCliPath).deletingLastPathComponent()
         
         // Setup pipes

@@ -14,6 +14,24 @@ A powerful local document search engine that uses AI to index and search through
 - 📊 **Statistics**: Track index size and document counts
 - 🎯 **Similar Documents**: Find documents similar to a reference document
 
+## Development Scripts
+
+### Clean Development Environment
+```bash
+./clean.sh          # Remove all artifacts (__pycache__, venv, data, etc.)
+./dev_setup.sh      # Setup and check development environment
+./run_tests.sh      # Run test suite with system Python
+```
+
+**Important:** This project uses system Python (`python3`). Do NOT create virtual environments!
+
+To prevent `__pycache__` creation:
+```bash
+export PYTHONDONTWRITEBYTECODE=1  # Add to ~/.zshrc or ~/.bashrc
+# Or run commands with:
+PYTHONDONTWRITEBYTECODE=1 python3 cli.py
+```
+
 ## Quick Start
 
 ### Prerequisites
@@ -26,7 +44,7 @@ A powerful local document search engine that uses AI to index and search through
 
 ### Installation
 
-#### Standalone CLI Usage
+#### Standalone CLI Usage (Recommended)
 
 1. Clone the repository:
 ```bash
@@ -38,12 +56,12 @@ cd local-doc-search
 /usr/bin/python3 cli_standalone.py --help
 ```
 
-#### Manual Installation (Development)
+#### Manual Installation (NOT Recommended)
 
-1. Create a virtual environment:
+For development, use system Python directly:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Install dependencies to user directory
+python3 -m pip install --user -r requirements.txt
 ```
 
 2. Install dependencies:

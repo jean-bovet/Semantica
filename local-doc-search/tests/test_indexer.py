@@ -22,7 +22,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_initialization(self, mock_faiss, temp_index_dir):
         """Test indexer initialization."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_faiss.IndexFlatL2.return_value = mock_index
@@ -37,7 +37,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_add_vectors(self, mock_faiss, temp_index_dir):
         """Test adding vectors to index."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_index.ntotal = 0
@@ -63,7 +63,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_search(self, mock_faiss, temp_index_dir):
         """Test searching in index."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_index.ntotal = 10
@@ -95,7 +95,7 @@ class TestIndexer:
     @patch('src.indexer.pickle')
     def test_save_index(self, mock_pickle, mock_open, mock_faiss, temp_index_dir):
         """Test saving index to disk."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_faiss.IndexFlatL2.return_value = mock_index
@@ -119,7 +119,7 @@ class TestIndexer:
     @patch('src.indexer.pickle')
     def test_load_index(self, mock_pickle, mock_open, mock_exists, mock_faiss, temp_index_dir):
         """Test loading index from disk."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_exists.return_value = True
         mock_index = MagicMock()
@@ -139,7 +139,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_clear_index(self, mock_faiss, temp_index_dir):
         """Test clearing the index."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_index.ntotal = 5
@@ -157,7 +157,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_get_statistics(self, mock_faiss, temp_index_dir):
         """Test getting index statistics."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_index.ntotal = 100
@@ -176,7 +176,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_empty_search(self, mock_faiss, temp_index_dir):
         """Test searching in empty index."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_index.ntotal = 0
@@ -192,7 +192,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_batch_add_vectors(self, mock_faiss, temp_index_dir):
         """Test adding vectors in batches."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_index.ntotal = 0
@@ -217,7 +217,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_remove_vectors(self, mock_faiss, temp_index_dir):
         """Test removing vectors from index (if supported)."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_faiss.IndexFlatL2.return_value = mock_index
@@ -230,7 +230,7 @@ class TestIndexer:
     @patch('src.indexer.faiss')
     def test_update_vectors(self, mock_faiss, temp_index_dir):
         """Test updating existing vectors."""
-        from src.indexer import Indexer
+        from src.indexer import FAISSIndexer as Indexer
         
         mock_index = MagicMock()
         mock_faiss.IndexFlatL2.return_value = mock_index
