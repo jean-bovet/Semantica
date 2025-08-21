@@ -17,13 +17,14 @@ from cli import AsyncSearchCLI
 
 
 @pytest.fixture
-async def cli():
+def cli():
     """Create a CLI instance for testing."""
-    cli_instance = AsyncSearchCLI()
-    await cli_instance.initialize()
-    yield cli_instance
-    # Cleanup
-    cli_instance.executor.shutdown(wait=True)
+    async def _create_cli():
+        cli_instance = AsyncSearchCLI()
+        await cli_instance.initialize()
+        return cli_instance
+    
+    return asyncio.run(_create_cli())
 
 
 class TestAsyncCLI:

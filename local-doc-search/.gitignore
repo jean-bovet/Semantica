@@ -59,3 +59,6 @@ models/
 tmp/
 temp/
 *.tmp
+
+# Test virtual environment
+test_venv/

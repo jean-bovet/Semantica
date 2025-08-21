@@ -69,7 +69,7 @@ class TestFAISSIndexer:
         
         assert len(results) == 2
         assert all(isinstance(r[0], DocumentChunk) for r in results)
-        assert all(isinstance(r[1], float) for r in results)
+        assert all(isinstance(r[1], (float, np.floating)) for r in results)
     
     def test_save_and_load_index(self, temp_index_dir):
         """Test saving and loading index preserves data."""

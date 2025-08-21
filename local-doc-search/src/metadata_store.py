@@ -342,7 +342,12 @@ class MetadataStore:
     
     def __del__(self):
         """Ensure connection is closed on deletion"""
-        self.close()
+        try:
+            if hasattr(self, 'connection') and self.connection:
+                self.connection.close()
+        except (sqlite3.ProgrammingError, AttributeError):
+            # Ignore thread safety and attribute errors during cleanup
+            pass
 
 
 if __name__ == "__main__":
