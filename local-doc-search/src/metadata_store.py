@@ -15,10 +15,11 @@ from datetime import datetime
 class FileInfo:
     """Information about a file in the index"""
     file_path: str
+    content_hash: Optional[str]
     file_size: int
     modified_time: float
-    document_id: str
-    content_hash: Optional[str] = None
+    indexed_at: float
+    document_id: Optional[str] = None
     
 @dataclass
 class ChangeSet:
@@ -91,7 +92,9 @@ class MetadataStore:
         
         self.connection.commit()
     
-    def get_file_status(self, file_path: str) -> Tuple[str, Optional[FileInfo]]:
+    def get_file_status(self, file_path: str, content_hash: Optional[str] = None,
+                       file_size: Optional[int] = None, 
+                       modified_time: Optional[float] = None) -> Tuple[str, Optional[FileInfo]]:
         """
         Check if a file is new, modified, or unchanged.
         Returns: (status, existing_file_info)
@@ -105,33 +108,67 @@ class MetadataStore:
         if not result:
             return 'new', None
         
-        # Get current file stats
-        try:
-            stat = os.stat(file_path)
-            current_mtime = stat.st_mtime
-            current_size = stat.st_size
-        except FileNotFoundError:
-            return 'deleted', FileInfo(
-                file_path=result['file_path'],
-                file_size=result['file_size'],
-                modified_time=result['modified_time'],
-                document_id=result['document_id'],
-                content_hash=result['content_hash']
-            )
+        # If parameters are provided, use them; otherwise get from file system
+        if file_size is not None and modified_time is not None:
+            current_mtime = modified_time
+            current_size = file_size
+            current_hash = content_hash
+        else:
+            # Get current file stats
+            try:
+                stat = os.stat(file_path)
+                current_mtime = stat.st_mtime
+                current_size = stat.st_size
+                current_hash = None
+            except FileNotFoundError:
+                return 'deleted', FileInfo(
+                    file_path=result['file_path'],
+                    file_size=result['file_size'],
+                    modified_time=result['modified_time'],
+                    document_id=result['document_id'],
+                    content_hash=result['content_hash'],
+                    indexed_at=result['indexed_at']
+                )
         
         stored_info = FileInfo(
             file_path=result['file_path'],
             file_size=result['file_size'],
             modified_time=result['modified_time'],
             document_id=result['document_id'],
-            content_hash=result['content_hash']
+            content_hash=result['content_hash'],
+            indexed_at=result['indexed_at']
         )
         
         # Check if file has been modified
-        if current_mtime > stored_info.modified_time or current_size != stored_info.file_size:
+        # Priority: content_hash > modified_time > file_size
+        if current_hash is not None and stored_info.content_hash is not None:
+            if current_hash != stored_info.content_hash:
+                return 'modified', stored_info
+        
+        if current_mtime != stored_info.modified_time or current_size != stored_info.file_size:
             return 'modified', stored_info
         
         return 'unchanged', stored_info
+    
+    def add_file(self, file_path: str, content_hash: Optional[str], 
+                 file_size: int, modified_time: float, 
+                 document_id: Optional[str] = None):
+        """Add or update file metadata (used for testing and manual entries)"""
+        cursor = self.connection.cursor()
+        
+        if document_id is None:
+            # Generate a document_id if not provided
+            import uuid
+            document_id = str(uuid.uuid4())
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO files (file_path, file_size, modified_time, 
+                                        document_id, content_hash, indexed_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (file_path, file_size, modified_time, document_id, content_hash))
+        
+        self.connection.commit()
+        return document_id
     
     def update_file(self, file_path: str, document_id: str, 
                    chunk_ids: List[str], vector_indices: List[int]):

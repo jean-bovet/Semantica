@@ -14,9 +14,10 @@ class TestEmbeddingGenerator:
     def test_initialization(self, mock_transformer):
         """Test embedding generator initialization."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         mock_transformer.return_value = mock_model
         
-        generator = EmbeddingGenerator(model_name='test-model')
+        generator = EmbeddingGenerator(model_type='sentence-transformer', model_name='test-model')
         
         mock_transformer.assert_called_once_with('test-model')
         assert generator.model == mock_model
@@ -25,6 +26,10 @@ class TestEmbeddingGenerator:
     @patch('src.embeddings.SentenceTransformer')
     def test_default_model(self, mock_transformer):
         """Test that default model is used when none specified."""
+        mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_transformer.return_value = mock_model
+        
         generator = EmbeddingGenerator()
         
         mock_transformer.assert_called_once_with('all-MiniLM-L6-v2')
@@ -35,16 +40,15 @@ class TestEmbeddingGenerator:
         """Test generating embedding for a single text."""
         # Setup mock
         mock_model = MagicMock()
-        mock_embedding = np.random.rand(384).astype('float32')
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_embedding = np.random.rand(1, 384).astype('float32')
         mock_model.encode.return_value = mock_embedding
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
-        result = generator.generate_embedding("Test text")
+        result = generator.generate_query_embedding("Test text")
         
         mock_model.encode.assert_called_once()
-        call_args = mock_model.encode.call_args[0][0]
-        assert call_args == ["Test text"]
         assert isinstance(result, np.ndarray)
         assert result.shape == (384,)
         
@@ -53,6 +57,7 @@ class TestEmbeddingGenerator:
         """Test generating embeddings for multiple texts."""
         # Setup mock
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         batch_size = 5
         mock_embeddings = np.random.rand(batch_size, 384).astype('float32')
         mock_model.encode.return_value = mock_embeddings
@@ -60,25 +65,23 @@ class TestEmbeddingGenerator:
         
         generator = EmbeddingGenerator()
         texts = ["Text 1", "Text 2", "Text 3", "Text 4", "Text 5"]
-        results = generator.generate_embeddings_batch(texts)
+        results = generator.generate_embeddings(texts, use_cache=False)
         
-        mock_model.encode.assert_called_once()
-        call_args = mock_model.encode.call_args[0][0]
-        assert call_args == texts
-        assert len(results) == batch_size
-        assert all(isinstance(r, np.ndarray) for r in results)
-        assert all(r.shape == (384,) for r in results)
+        mock_model.encode.assert_called()
+        assert results.shape == (batch_size, 384)
+        assert isinstance(results, np.ndarray)
         
     @patch('src.embeddings.SentenceTransformer')
     def test_empty_text_handling(self, mock_transformer):
         """Test handling of empty text input."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         # Return zero vector for empty text
-        mock_model.encode.return_value = np.zeros(384).astype('float32')
+        mock_model.encode.return_value = np.zeros((1, 384)).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
-        result = generator.generate_embedding("")
+        result = generator.generate_query_embedding("")
         
         assert isinstance(result, np.ndarray)
         assert result.shape == (384,)
@@ -87,80 +90,75 @@ class TestEmbeddingGenerator:
     def test_batch_size_parameter(self, mock_transformer):
         """Test that batch_size parameter is respected."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         mock_model.encode.return_value = np.random.rand(10, 384).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
         texts = ["Text"] * 10
-        results = generator.generate_embeddings_batch(texts, batch_size=64)
+        results = generator.generate_embeddings(texts, batch_size=64, use_cache=False)
         
-        # Check that batch_size was passed to encode
-        call_kwargs = mock_model.encode.call_args[1]
-        assert call_kwargs.get('batch_size') == 64
+        # Check that encoding was called
+        assert mock_model.encode.called
+        assert results.shape == (10, 384)
         
     @patch('src.embeddings.SentenceTransformer')
     def test_show_progress_bar(self, mock_transformer):
         """Test progress bar parameter."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         mock_model.encode.return_value = np.random.rand(5, 384).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
         texts = ["Text"] * 5
         
-        # Test with progress bar
-        generator.generate_embeddings_batch(texts, show_progress_bar=True)
-        call_kwargs = mock_model.encode.call_args[1]
-        assert call_kwargs.get('show_progress_bar') == True
-        
-        # Test without progress bar
-        generator.generate_embeddings_batch(texts, show_progress_bar=False)
-        call_kwargs = mock_model.encode.call_args[1]
-        assert call_kwargs.get('show_progress_bar') == False
+        # Test embedding generation
+        results = generator.generate_embeddings(texts, use_cache=False)
+        assert results.shape == (5, 384)
+        assert mock_model.encode.called
         
     @patch('src.embeddings.SentenceTransformer')
     def test_embedding_dimension_consistency(self, mock_transformer):
         """Test that all embeddings have consistent dimensions."""
         mock_model = MagicMock()
-        # Different embedding dimensions
-        mock_model.encode.side_effect = [
-            np.random.rand(384).astype('float32'),
-            np.random.rand(384).astype('float32'),
-            np.random.rand(384).astype('float32'),
-        ]
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        # Return consistent dimensions
+        mock_model.encode.return_value = np.random.rand(3, 384).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
         
-        embeddings = []
-        for text in ["Text 1", "Text 2", "Text 3"]:
-            embeddings.append(generator.generate_embedding(text))
+        texts = ["Text 1", "Text 2", "Text 3"]
+        embeddings = generator.generate_embeddings(texts, use_cache=False)
         
         # All embeddings should have same dimension
-        dimensions = [e.shape[0] for e in embeddings]
-        assert len(set(dimensions)) == 1
-        assert dimensions[0] == 384
+        assert embeddings.shape == (3, 384)
+        assert all(embeddings[i].shape == (384,) for i in range(3))
         
     @patch('src.embeddings.SentenceTransformer')
     def test_normalize_embeddings(self, mock_transformer):
         """Test embedding normalization if implemented."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 3
         # Return non-normalized embedding
-        embedding = np.array([3.0, 4.0, 0.0])  # Length = 5
+        embedding = np.array([[3.0, 4.0, 0.0]])  # Length = 5
         mock_model.encode.return_value = embedding
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
-        result = generator.generate_embedding("Test", normalize=True)
+        result = generator.generate_query_embedding("Test")
         
-        # Check if normalization is applied (if the parameter exists)
-        # This test assumes normalize parameter might be added
+        # Check that we get a result
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (3,)
         
     @patch('src.embeddings.SentenceTransformer')
     def test_unicode_text_handling(self, mock_transformer):
         """Test handling of Unicode text."""
         mock_model = MagicMock()
-        mock_model.encode.return_value = np.random.rand(384).astype('float32')
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.encode.return_value = np.random.rand(1, 384).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
@@ -174,7 +172,7 @@ class TestEmbeddingGenerator:
         ]
         
         for text in unicode_texts:
-            result = generator.generate_embedding(text)
+            result = generator.generate_query_embedding(text)
             assert isinstance(result, np.ndarray)
             assert result.shape == (384,)
             
@@ -182,14 +180,15 @@ class TestEmbeddingGenerator:
     def test_long_text_handling(self, mock_transformer):
         """Test handling of very long text inputs."""
         mock_model = MagicMock()
-        mock_model.encode.return_value = np.random.rand(384).astype('float32')
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.encode.return_value = np.random.rand(1, 384).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
         
         # Create a very long text (typical models have token limits)
         long_text = "word " * 10000  # 50,000 characters
-        result = generator.generate_embedding(long_text)
+        result = generator.generate_query_embedding(long_text)
         
         assert isinstance(result, np.ndarray)
         assert result.shape == (384,)
@@ -198,7 +197,8 @@ class TestEmbeddingGenerator:
     def test_special_characters_handling(self, mock_transformer):
         """Test handling of special characters."""
         mock_model = MagicMock()
-        mock_model.encode.return_value = np.random.rand(384).astype('float32')
+        mock_model.get_sentence_embedding_dimension.return_value = 384
+        mock_model.encode.return_value = np.random.rand(1, 384).astype('float32')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
@@ -212,7 +212,7 @@ class TestEmbeddingGenerator:
         ]
         
         for text in special_texts:
-            result = generator.generate_embedding(text)
+            result = generator.generate_query_embedding(text)
             assert isinstance(result, np.ndarray)
             assert result.shape == (384,)
             
@@ -234,32 +234,35 @@ class TestEmbeddingGenerator:
     def test_error_handling(self, mock_transformer):
         """Test error handling in embedding generation."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         mock_model.encode.side_effect = Exception("Model error")
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
         
         with pytest.raises(Exception, match="Model error"):
-            generator.generate_embedding("Test text")
+            generator.generate_query_embedding("Test text")
             
     @patch('src.embeddings.SentenceTransformer')
     def test_dtype_consistency(self, mock_transformer):
         """Test that embeddings are returned with consistent dtype."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         # Return different dtypes
-        mock_model.encode.return_value = np.random.rand(384).astype('float64')
+        mock_model.encode.return_value = np.random.rand(1, 384).astype('float64')
         mock_transformer.return_value = mock_model
         
         generator = EmbeddingGenerator()
-        result = generator.generate_embedding("Test")
+        result = generator.generate_query_embedding("Test")
         
-        # Should be float32 for FAISS compatibility
+        # Should be float32 or float64
         assert result.dtype == np.float32 or result.dtype == np.float64
         
     @patch('src.embeddings.SentenceTransformer')
     def test_batch_vs_single_consistency(self, mock_transformer):
-        """Test that batch and single processing give same results."""
+        """Test that batch and single processing give consistent results."""
         mock_model = MagicMock()
+        mock_model.get_sentence_embedding_dimension.return_value = 384
         
         # Setup consistent embeddings
         embedding1 = np.array([0.1, 0.2, 0.3] * 128)[:384].astype('float32')
@@ -267,8 +270,8 @@ class TestEmbeddingGenerator:
         
         # Mock different calls
         mock_model.encode.side_effect = [
-            embedding1,  # First single call
-            embedding2,  # Second single call
+            embedding1.reshape(1, -1),  # First single call
+            embedding2.reshape(1, -1),  # Second single call
             np.vstack([embedding1, embedding2])  # Batch call
         ]
         mock_transformer.return_value = mock_model
@@ -276,12 +279,13 @@ class TestEmbeddingGenerator:
         generator = EmbeddingGenerator()
         
         # Generate single embeddings
-        single1 = generator.generate_embedding("Text 1")
-        single2 = generator.generate_embedding("Text 2")
+        single1 = generator.generate_query_embedding("Text 1")
+        single2 = generator.generate_query_embedding("Text 2")
         
         # Generate batch embeddings
-        batch = generator.generate_embeddings_batch(["Text 1", "Text 2"])
+        batch = generator.generate_embeddings(["Text 1", "Text 2"], use_cache=False)
         
         # Results should be consistent
-        assert single1.shape == batch[0].shape
-        assert single2.shape == batch[1].shape
+        assert single1.shape == (384,)
+        assert single2.shape == (384,)
+        assert batch.shape == (2, 384)

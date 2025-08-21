@@ -163,7 +163,11 @@ class EmbeddingGenerator:
     
     def generate_query_embedding(self, query: str) -> np.ndarray:
         if self.model_type == "sentence-transformer":
-            return self.model.encode(query)
+            embedding = self.model.encode(query)
+            # Ensure we return a 1D array
+            if len(embedding.shape) > 1:
+                embedding = embedding.squeeze()
+            return embedding
         else:
             return self._get_ollama_embedding(query)
     
