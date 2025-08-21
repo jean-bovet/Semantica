@@ -66,7 +66,8 @@ class EmbeddingGenerator:
     
     def generate_embeddings(self, texts: List[str], 
                            batch_size: int = 32,
-                           use_cache: bool = True) -> np.ndarray:
+                           use_cache: bool = True,
+                           show_progress: bool = True) -> np.ndarray:
         
         if not texts:
             return np.array([])
@@ -86,7 +87,7 @@ class EmbeddingGenerator:
         
         if self.model_type == "sentence-transformer":
             new_embeddings = self._generate_sentence_transformer_embeddings(
-                uncached_texts, batch_size
+                uncached_texts, batch_size, show_progress
             )
         else:
             new_embeddings = self._generate_ollama_embeddings(uncached_texts)
@@ -102,7 +103,8 @@ class EmbeddingGenerator:
         return np.array(new_embeddings)
     
     def _generate_sentence_transformer_embeddings(self, texts: List[str], 
-                                                 batch_size: int) -> List[np.ndarray]:
+                                                 batch_size: int,
+                                                 show_progress: bool = True) -> List[np.ndarray]:
         embeddings = []
         
         # Calculate total number of batches for progress reporting
@@ -111,8 +113,9 @@ class EmbeddingGenerator:
         for batch_idx, i in enumerate(range(0, len(texts), batch_size)):
             batch = texts[i:i + batch_size]
             
-            # Report progress in JSON mode
-            if self.json_mode:
+            # Report progress in JSON mode only if show_progress is True
+            # (suppressed during incremental batch processing to avoid confusion)
+            if self.json_mode and show_progress:
                 current_batch = batch_idx + 1
                 # Report which chunk we're processing (approximate)
                 current_text_idx = min(i + batch_size // 2, len(texts) - 1)

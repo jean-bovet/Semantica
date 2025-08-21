@@ -421,6 +421,76 @@ python cli_standalone.py interactive --json-mode
 - Bundle size increases with Python packages
 - Large folders (40K+ files) may take significant time to index
 
+## Recent Improvements
+
+### Resumable Indexing (2025-08-21)
+
+**Issue**: Index was lost if app quit during indexing, requiring complete re-indexing on restart.
+
+**Root Cause**: 
+- Index was only saved at the END of indexing (`save_index()` called once)
+- Metadata database existed but had 0 entries until indexing completed
+- If app quit during indexing, all progress was lost
+- On restart, empty metadata meant all files appeared "new"
+
+**Solution**: Implemented batch-based progressive saving:
+1. Process files in batches of 100 (configurable)
+2. After each batch:
+   - Generate embeddings for batch
+   - Add chunks to FAISS index
+   - Update metadata database (with commit)
+   - Save index to disk (`faiss.index`, `chunks.pkl`, `metadata.json`)
+3. Progress is now preserved even if interrupted
+
+**Implementation Details**:
+```python
+# search.py - New batch processing
+def index_directory_incremental(self, directory_path: str, batch_size: int = 64, save_every: int = 100):
+    for idx, file_path in enumerate(files_to_process):
+        chunks = self.document_processor.process_file(str(file_path))
+        batch_chunks.extend(chunks)
+        
+        # Save batch when we reach save_every files
+        if len(files_in_batch) >= save_every:
+            embeddings = self.embedding_generator.generate_embeddings(chunk_texts)
+            self.indexer.add_documents(batch_chunks, embeddings)
+            self.metadata_store.update_file(...)  # Commits immediately
+            self.indexer.save_index()  # Saves to disk
+```
+
+**Benefits**:
+- Indexing progress preserved across app restarts
+- Can resume from last saved batch
+- No data loss on unexpected termination
+- Status messages show batch progress
+
+### Progress Bar Consistency Fix (2025-08-21)
+
+**Issue**: Progress bar was jumping between file processing progress and embedding generation progress (e.g., "1000/5000" → "2/2" → "1001/5000").
+
+**Root Cause**: During batch saving (every 100 files), the embedding generator was outputting its own progress messages for embedding batches, conflicting with file processing progress.
+
+**Solution**: Added `show_progress` parameter to suppress embedding progress during batch processing:
+```python
+# embeddings.py
+def generate_embeddings(..., show_progress: bool = True):
+    # Only show progress if show_progress=True
+    if self.json_mode and show_progress:
+        print(json.dumps({"status": "generating_embeddings", ...}))
+
+# search.py - During batch processing
+embeddings = self.embedding_generator.generate_embeddings(
+    chunk_texts, 
+    batch_size=batch_size,
+    show_progress=False  # Suppress to avoid confusion
+)
+```
+
+**Benefits**:
+- Clean, consistent progress bar showing only file processing
+- No confusing jumps between different progress metrics
+- Better user experience during indexing
+
 ## Future Improvements
 
 1. **App Store Compliance**
@@ -428,7 +498,7 @@ python cli_standalone.py interactive --json-mode
    - Or bundle Python framework with py2app
 
 2. **Performance**
-   - Incremental indexing
+   - ~~Incremental indexing~~ ✅ Implemented
    - Background indexing
    - Caching layer
 

@@ -86,8 +86,14 @@ class DocumentSearchEngine:
             stats = self.indexer.get_statistics()
             self._display_index_stats(stats)
     
-    def index_directory_incremental(self, directory_path: str, batch_size: int = 64):
-        """Index directory with incremental updates - only process changed files"""
+    def index_directory_incremental(self, directory_path: str, batch_size: int = 64, save_every: int = 100):
+        """Index directory with incremental updates - only process changed files
+        
+        Args:
+            directory_path: Path to directory to index
+            batch_size: Batch size for embedding generation
+            save_every: Save index and metadata every N files (default 100)
+        """
         if not self.metadata_store:
             # Fall back to regular indexing
             return self.index_directory(directory_path, batch_size)
@@ -101,87 +107,160 @@ class DocumentSearchEngine:
         if self.should_stop_callback:
             self.document_processor.should_stop_callback = self.should_stop_callback
         
-        # Get changed files and process them
-        chunks, change_info = self.document_processor.process_directory_incremental(directory_path)
+        # Get list of changed files (not chunks yet)
+        from metadata_store import ChangeSet
+        change_set = self.metadata_store.get_changed_files(
+            directory_path, 
+            self.document_processor.supported_extensions,
+            self.document_processor.text_filenames
+        )
         
         # Handle deleted files
-        for deleted_file in change_info['deleted']:
-            doc_id = self.metadata_store.remove_file(deleted_file)
+        for deleted_file in change_set.deleted_files:
+            doc_id = self.metadata_store.remove_file(str(deleted_file))
             if doc_id:
-                # TODO: Remove from FAISS index when supported
                 if self.json_mode:
-                    print(json.dumps({"status": "removed_file", "file": deleted_file}), flush=True)
+                    print(json.dumps({"status": "removed_file", "file": str(deleted_file)}), flush=True)
         
-        if not chunks and not change_info['deleted']:
+        # Get files to process
+        files_to_process = []
+        for file_path in change_set.new_files + change_set.modified_files:
+            if file_path.suffix.lower() in self.document_processor.supported_extensions or \
+               file_path.name in self.document_processor.text_filenames:
+                files_to_process.append(file_path)
+        
+        if not files_to_process and not change_set.deleted_files:
             if self.json_mode:
-                print(json.dumps({"status": "no_changes", "unchanged": len(change_info['unchanged'])}), flush=True)
+                print(json.dumps({"status": "no_changes", "unchanged": len(change_set.unchanged_files)}), flush=True)
             else:
-                self.console.print(f"[green]No changes detected. {len(change_info['unchanged'])} files unchanged.[/green]")
+                self.console.print(f"[green]No changes detected. {len(change_set.unchanged_files)} files unchanged.[/green]")
             return
         
-        if chunks:
-            if self.json_mode:
-                print(json.dumps({"status": "chunks_found", "count": len(chunks)}), flush=True)
-            else:
-                self.console.print(f"[green]Processing {len(chunks)} chunks from changed files[/green]")
-            
-            # Generate embeddings for new/modified chunks
-            chunk_texts = [chunk.content for chunk in chunks]
-            embeddings = self.embedding_generator.generate_embeddings(
-                chunk_texts, 
-                batch_size=batch_size
-            )
-            
-            # Add to index and track in metadata
-            start_idx = self.indexer.get_index_size()
-            self.indexer.add_documents(chunks, embeddings)
-            
-            # Update metadata for each file
-            file_chunks = {}
-            for i, chunk in enumerate(chunks):
-                file_path = chunk.metadata.get('file_path')
-                if file_path not in file_chunks:
-                    file_chunks[file_path] = {
-                        'document_id': chunk.document_id,
-                        'chunk_ids': [],
-                        'vector_indices': []
-                    }
-                file_chunks[file_path]['chunk_ids'].append(chunk.chunk_id)
-                file_chunks[file_path]['vector_indices'].append(start_idx + i)
-            
-            # Save metadata for each file
-            for file_path, info in file_chunks.items():
-                self.metadata_store.update_file(
-                    file_path,
-                    info['document_id'],
-                    info['chunk_ids'],
-                    info['vector_indices']
-                )
+        # Report what we're about to do
+        if self.json_mode:
+            print(json.dumps({
+                "status": "documents_found", 
+                "count": len(files_to_process)
+            }), flush=True)
         
-        # Save index
-        self.indexer.save_index()
+        # Process files in batches with periodic saving
+        total_processed = 0
+        batch_chunks = []
+        files_in_batch = []
+        
+        for idx, file_path in enumerate(files_to_process):
+            # Check if we should stop
+            if self.should_stop_callback and self.should_stop_callback():
+                if self.json_mode:
+                    print(json.dumps({"status": "indexing_cancelled"}), flush=True)
+                break
+            
+            try:
+                # Process single file
+                if self.json_mode:
+                    print(json.dumps({
+                        "status": "processing_file",
+                        "current": idx + 1,
+                        "total": len(files_to_process),
+                        "file": file_path.name
+                    }), flush=True)
+                
+                chunks = self.document_processor.process_file(str(file_path))
+                if chunks:
+                    batch_chunks.extend(chunks)
+                    files_in_batch.append(str(file_path))
+                
+                # Save batch when we reach save_every files or at the end
+                if len(files_in_batch) >= save_every or idx == len(files_to_process) - 1:
+                    if batch_chunks:
+                        # Generate embeddings for batch
+                        if self.json_mode:
+                            print(json.dumps({
+                                "status": "generating_embeddings",
+                                "files": len(files_in_batch)
+                            }), flush=True)
+                        
+                        chunk_texts = [chunk.content for chunk in batch_chunks]
+                        embeddings = self.embedding_generator.generate_embeddings(
+                            chunk_texts, 
+                            batch_size=batch_size,
+                            show_progress=False  # Suppress progress during batch to avoid confusion
+                        )
+                        
+                        # Add to index
+                        start_idx = self.indexer.get_index_size()
+                        self.indexer.add_documents(batch_chunks, embeddings)
+                        
+                        # Update metadata for each file in batch
+                        file_chunks = {}
+                        for i, chunk in enumerate(batch_chunks):
+                            fp = chunk.metadata.get('file_path')
+                            if fp not in file_chunks:
+                                file_chunks[fp] = {
+                                    'document_id': chunk.document_id,
+                                    'chunk_ids': [],
+                                    'vector_indices': []
+                                }
+                            file_chunks[fp]['chunk_ids'].append(chunk.chunk_id)
+                            file_chunks[fp]['vector_indices'].append(start_idx + i)
+                        
+                        # Save metadata for each file
+                        for fp, info in file_chunks.items():
+                            self.metadata_store.update_file(
+                                fp,
+                                info['document_id'],
+                                info['chunk_ids'],
+                                info['vector_indices']
+                            )
+                        
+                        # Save index and metadata to disk
+                        self.indexer.save_index()
+                        
+                        if self.json_mode:
+                            print(json.dumps({
+                                "status": "batch_saved",
+                                "files": len(files_in_batch),
+                                "chunks": len(batch_chunks),
+                                "total_processed": total_processed + len(files_in_batch)
+                            }), flush=True)
+                        
+                        total_processed += len(files_in_batch)
+                        batch_chunks = []
+                        files_in_batch = []
+                        
+            except Exception as e:
+                if self.json_mode:
+                    print(json.dumps({
+                        "status": "processing_error", 
+                        "file": str(file_path), 
+                        "error": str(e)
+                    }), flush=True)
+        
+        # Final save (in case there's anything left)
+        if batch_chunks:
+            self.indexer.save_index()
         
         # Update folder stats
         self.metadata_store.update_folder_stats(
             directory_path,
-            len(change_info['new']) + len(change_info['modified']) + len(change_info['unchanged'])
+            len(change_set.new_files) + len(change_set.modified_files) + len(change_set.unchanged_files)
         )
         
         if self.json_mode:
             stats = self.indexer.get_statistics()
             print(json.dumps({
                 "status": "incremental_complete",
-                "new_files": len(change_info['new']),
-                "modified_files": len(change_info['modified']),
-                "deleted_files": len(change_info['deleted']),
-                "unchanged_files": len(change_info['unchanged']),
+                "new_files": len(change_set.new_files),
+                "modified_files": len(change_set.modified_files),
+                "deleted_files": len(change_set.deleted_files),
+                "unchanged_files": len(change_set.unchanged_files),
                 "total_chunks": stats.get('total_chunks', 0)
             }), flush=True)
         else:
             self.console.print(Panel(
                 f"[green]Incremental indexing complete![/green]\n"
-                f"New: {len(change_info['new'])}, Modified: {len(change_info['modified'])}, "
-                f"Deleted: {len(change_info['deleted'])}, Unchanged: {len(change_info['unchanged'])}",
+                f"New: {len(change_set.new_files)}, Modified: {len(change_set.modified_files)}, "
+                f"Deleted: {len(change_set.deleted_files)}, Unchanged: {len(change_set.unchanged_files)}",
                 title="Indexing Results",
                 border_style="green"
             ))
