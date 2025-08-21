@@ -19,7 +19,15 @@ class SearchViewModel: ObservableObject {
     @Published var statistics: IndexStatistics?
     @Published var indexedFolders: [IndexedFolder] = []
     
-    // Progress tracking for indexing
+    // New properties for non-modal indexing
+    @Published var indexingProgress: Double = 0
+    @Published var currentFileIndex: Int = 0
+    @Published var totalFiles: Int = 0
+    @Published var currentFileName: String = ""
+    @Published var totalDocuments: Int = 0
+    @Published var lastIndexedFolder: URL?
+    
+    // Legacy progress tracking (to be removed)
     @Published var indexingTotalFiles: Int = 0
     @Published var indexingCurrentFile: Int = 0
     @Published var currentIndexingFile: String = ""
@@ -83,60 +91,90 @@ class SearchViewModel: ObservableObject {
     
     // MARK: - Indexing
     
+    private var indexingTask: Task<Void, Never>?
+    
     func indexFolder(_ url: URL) async {
+        // Cancel any existing indexing (single folder only)
+        indexingTask?.cancel()
+        
+        // Reset state for new indexing
         isIndexing = true
         errorMessage = nil
+        indexingProgress = 0
+        currentFileIndex = 0
+        totalFiles = 0
+        currentFileName = ""
+        lastIndexedFolder = url
         
-        // Reset progress tracking
+        // Also update legacy properties (will remove later)
         indexingTotalFiles = 0
         indexingCurrentFile = 0
         currentIndexingFile = ""
         
         print("Starting to index folder: \(url.path)")
         
-        do {
-            // Use progress handler - updates are already throttled by Python side reporting
-            let result = try await bridge.indexFolder(url) { [weak self] current, total, fileName in
-                guard let self = self else { return }
-                
-                // Update progress (already on main thread from PythonCLIBridge)
-                self.indexingCurrentFile = current
-                self.indexingTotalFiles = total  
-                self.currentIndexingFile = fileName
-            }
-            
-            // Only add if not already in the list
-            if !indexedFolders.contains(where: { $0.url == url }) {
-                indexedFolders.append(IndexedFolder(url: url, indexedAt: Date()))
-                saveIndexedFolders()
-            }
-            await refreshStatistics()
-            
-            print("Successfully indexed \(result.documents) documents with \(result.chunks) chunks")
-            
-            // Show success message
-            errorMessage = "Indexed \(result.documents) documents (\(result.chunks) chunks)"
-            
-            // Clear message after 3 seconds
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                await MainActor.run {
-                    if self?.errorMessage?.starts(with: "Indexed") == true {
-                        self?.errorMessage = nil
+        // Create new indexing task
+        indexingTask = Task {
+            do {
+                // Use progress handler - updates are already throttled by Python side reporting
+                let result = try await bridge.indexFolder(url) { [weak self] current, total, fileName in
+                    guard let self = self else { return }
+                    
+                    // Update new progress properties
+                    Task { @MainActor in
+                        self.currentFileIndex = current
+                        self.totalFiles = total
+                        self.currentFileName = fileName
+                        
+                        if total > 0 {
+                            self.indexingProgress = Double(current) / Double(total)
+                        }
+                        
+                        // Also update legacy properties (will remove later)
+                        self.indexingCurrentFile = current
+                        self.indexingTotalFiles = total  
+                        self.currentIndexingFile = fileName
                     }
+                }
+                
+                // Only add if not already in the list
+                if !indexedFolders.contains(where: { $0.url == url }) {
+                    indexedFolders.append(IndexedFolder(url: url, indexedAt: Date()))
+                    saveIndexedFolders()
+                }
+                await refreshStatistics()
+                
+                print("Successfully indexed \(result.documents) documents with \(result.chunks) chunks")
+                
+            } catch {
+                // Handle cancellation silently
+                if !Task.isCancelled {
+                    print("Indexing error: \(error)")
+                    errorMessage = "Indexing failed: \(error.localizedDescription)"
                 }
             }
             
-        } catch {
-            print("Indexing error: \(error)")
-            errorMessage = "Indexing failed: \(error.localizedDescription)"
+            // Clean up state
+            isIndexing = false
+            indexingProgress = 0
+            
+            // Also reset legacy properties
+            indexingTotalFiles = 0
+            indexingCurrentFile = 0
+            currentIndexingFile = ""
         }
-        
-        // Reset progress tracking
+    }
+    
+    // Re-index an existing folder (same as new folder due to incremental indexing)
+    func reindexFolder(_ url: URL) async {
+        await indexFolder(url)
+    }
+    
+    // Cancel ongoing indexing
+    func cancelIndexing() {
+        indexingTask?.cancel()
         isIndexing = false
-        indexingTotalFiles = 0
-        indexingCurrentFile = 0
-        currentIndexingFile = ""
+        currentFileName = "Indexing cancelled"
     }
     
     // MARK: - Management
@@ -144,8 +182,11 @@ class SearchViewModel: ObservableObject {
     func refreshStatistics() async {
         do {
             statistics = try await bridge.getStatistics()
+            // Update totalDocuments for status bar
+            totalDocuments = statistics?.totalDocuments ?? 0
         } catch {
             // Statistics might fail if index doesn't exist yet
+            totalDocuments = 0
             statistics = nil
         }
     }

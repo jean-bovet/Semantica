@@ -6,13 +6,21 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
-    @State private var showingIndexSheet = false
+    @State private var showingFolderPicker = false
+    @FocusState private var searchFieldFocused: Bool
     
     var body: some View {
         VStack(spacing: 0) {
+            // Header with dropdown menu
+            headerBar
+                .padding()
+            
+            Divider()
+            
             // Search Bar
             searchBar
                 .padding()
@@ -29,20 +37,25 @@ struct SearchView: View {
                 resultsList
             }
             
-            // Bottom Bar
-            Divider()
-            bottomBar
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+            Spacer()
+            
+            // Status Bar (always visible at bottom)
+            StatusBarView(viewModel: viewModel)
         }
         .frame(minWidth: 600, minHeight: 400)
         .task {
             await viewModel.initialize()
         }
-        .sheet(isPresented: $showingIndexSheet) {
-            IndexingView(viewModel: viewModel)
-        }
-        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+        .fileImporter(
+            isPresented: $showingFolderPicker,
+            allowedContentTypes: [.folder],
+            onCompletion: handleFolderSelection
+        )
+        // Remove modal sheet - no longer needed
+        // .sheet(isPresented: $showingIndexSheet) {
+        //     IndexingView(viewModel: viewModel)
+        // }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil && !viewModel.errorMessage!.starts(with: "Indexed"))) {
             Button("OK") {
                 viewModel.errorMessage = nil
             }
@@ -52,6 +65,66 @@ struct SearchView: View {
     }
     
     // MARK: - Components
+    
+    private var headerBar: some View {
+        HStack {
+            Text("🔍 Finder Semantic Search")
+                .font(.headline)
+            
+            Spacer()
+            
+            // Dropdown menu for index operations
+            Menu {
+                Button("Index New Folder...") {
+                    showingFolderPicker = true
+                }
+                
+                if !viewModel.indexedFolders.isEmpty {
+                    Divider()
+                    
+                    ForEach(viewModel.indexedFolders) { folder in
+                        Button(action: {
+                            Task {
+                                await viewModel.reindexFolder(folder.url)
+                            }
+                        }) {
+                            HStack {
+                                Text(folder.url.lastPathComponent)
+                                Spacer()
+                                Text(folder.indexedAt, style: .date)
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    Button("Clear All Indexes") {
+                        Task {
+                            await viewModel.clearIndex()
+                        }
+                    }
+                    .foregroundColor(.red)
+                }
+            } label: {
+                Label("Index Folder", systemImage: "folder.badge.plus")
+            }
+            .menuStyle(.borderlessButton)
+            .disabled(viewModel.isIndexing)
+        }
+    }
+    
+    private func handleFolderSelection(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            // Start indexing in background (non-blocking)
+            Task {
+                await viewModel.indexFolder(url)
+            }
+        case .failure(let error):
+            print("Folder selection error: \(error)")
+        }
+    }
     
     private var searchBar: some View {
         HStack {
@@ -89,7 +162,7 @@ struct SearchView: View {
                     .foregroundColor(.secondary)
                 
                 Button("Index Folder") {
-                    showingIndexSheet = true
+                    showingFolderPicker = true
                 }
                 .buttonStyle(.borderedProminent)
             } else {
@@ -115,31 +188,6 @@ struct SearchView: View {
                     Divider()
                 }
             }
-        }
-    }
-    
-    private var bottomBar: some View {
-        HStack {
-            if let stats = viewModel.statistics {
-                Label("\(stats.totalDocuments) documents", systemImage: "doc.fill")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            Button(action: { showingIndexSheet = true }) {
-                Label("Index Folder", systemImage: "plus.circle")
-            }
-            .buttonStyle(.borderless)
-            
-            Button(action: {
-                Task { await viewModel.clearIndex() }
-            }) {
-                Label("Clear Index", systemImage: "trash")
-            }
-            .buttonStyle(.borderless)
-            .disabled(viewModel.statistics?.totalDocuments == 0)
         }
     }
 }
