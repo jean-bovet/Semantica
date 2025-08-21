@@ -252,10 +252,11 @@
 				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/cli.py",
 				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/cli_standalone.py",
 				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/config.yaml",
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/python_cli/src/",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "#!/bin/bash\nSOURCE_DIR=\"${PROJECT_DIR}/../local-doc-search\"\nDEST_DIR=\"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/python_cli\"\nif [ ! -d \"$SOURCE_DIR\" ]; then\n    echo \"Error: Python CLI source not found at $SOURCE_DIR\"\n    exit 1\nfi\nmkdir -p \"$DEST_DIR\"\ncp \"$SOURCE_DIR/cli.py\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/cli_standalone.py\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/config.yaml\" \"$DEST_DIR/\"\n# Copy src directory files individually to work around sandbox restrictions\nmkdir -p \"$DEST_DIR/src\"\ncp \"$SOURCE_DIR/src/\"*.py \"$DEST_DIR/src/\" 2>/dev/null || true\necho \"Python CLI successfully copied to: $DEST_DIR\"\n";
+			shellScript = "#!/bin/bash\nSOURCE_DIR=\"${PROJECT_DIR}/../local-doc-search\"\nDEST_DIR=\"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/python_cli\"\nif [ ! -d \"$SOURCE_DIR\" ]; then\n    echo \"Error: Python CLI source not found at $SOURCE_DIR\"\n    exit 1\nfi\necho \"Creating destination directories...\"\nmkdir -p \"$DEST_DIR\" || true\nmkdir -p \"$DEST_DIR/src\" || true\necho \"Copying Python CLI files...\"\ncp \"$SOURCE_DIR/cli.py\" \"$DEST_DIR/\" || echo \"Warning: Failed to copy cli.py\"\ncp \"$SOURCE_DIR/cli_standalone.py\" \"$DEST_DIR/\" || echo \"Warning: Failed to copy cli_standalone.py\"\ncp \"$SOURCE_DIR/config.yaml\" \"$DEST_DIR/\" || echo \"Warning: Failed to copy config.yaml\"\n# Copy src directory files individually\necho \"Copying src/*.py files...\"\nfor file in \"$SOURCE_DIR/src/\"*.py; do\n    if [ -f \"$file\" ]; then\n        filename=$(basename \"$file\")\n        cp \"$file\" \"$DEST_DIR/src/$filename\" || echo \"Warning: Failed to copy $filename\"\n        if [ -f \"$DEST_DIR/src/$filename\" ]; then\n            echo \"  Copied: $filename\"\n        fi\n    fi\ndone\necho \"Python CLI copy process completed\"\necho \"Files in destination:\"\nls -la \"$DEST_DIR/\" 2>/dev/null || true\necho \"Files in src:\"\nls -la \"$DEST_DIR/src/\" 2>/dev/null || true\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -335,7 +336,7 @@
 				DEVELOPMENT_TEAM = 28XRU7S6GA;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -399,7 +400,7 @@
 				DEVELOPMENT_TEAM = 28XRU7S6GA;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
