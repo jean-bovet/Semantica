@@ -23,7 +23,10 @@
       "Bash(/usr/bin/python3:*)",
       "Bash(killall:*)",
       "Bash(git commit:*)",
-      "Bash(/tmp/test_speed.sh:*)"
+      "Bash(/tmp/test_speed.sh:*)",
+      "Bash(SOURCE_DIR=\"$PWD/../local-doc-search\")",
+      "Bash(echo:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": [],

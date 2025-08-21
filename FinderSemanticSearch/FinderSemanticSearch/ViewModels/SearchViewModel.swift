@@ -52,7 +52,7 @@ class SearchViewModel: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .removeDuplicates()
             .sink { [weak self] query in
-                Task {
+                Task { [weak self] in
                     await self?.performSearch(query)
                 }
             }
@@ -111,10 +111,12 @@ class SearchViewModel: ObservableObject {
             errorMessage = "Indexed \(result.documents) documents (\(result.chunks) chunks)"
             
             // Clear message after 3 seconds
-            Task {
+            Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if errorMessage?.starts(with: "Indexed") == true {
-                    errorMessage = nil
+                await MainActor.run {
+                    if self?.errorMessage?.starts(with: "Indexed") == true {
+                        self?.errorMessage = nil
+                    }
                 }
             }
             
@@ -150,10 +152,12 @@ class SearchViewModel: ObservableObject {
             errorMessage = "Index cleared"
             
             // Clear message after 2 seconds
-            Task {
+            Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                if errorMessage == "Index cleared" {
-                    errorMessage = nil
+                await MainActor.run {
+                    if self?.errorMessage == "Index cleared" {
+                        self?.errorMessage = nil
+                    }
                 }
             }
             
@@ -173,7 +177,9 @@ class SearchViewModel: ObservableObject {
     }
     
     deinit {
-        Task { @MainActor in
+        // Stop the bridge synchronously in deinit
+        // Since bridge is @MainActor, we need to dispatch to main queue
+        DispatchQueue.main.async { [bridge] in
             bridge.stop()
         }
     }

@@ -255,7 +255,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "#!/bin/bash\nSOURCE_DIR=\"${PROJECT_DIR}/../local-doc-search\"\nDEST_DIR=\"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/python_cli\"\nif [ ! -d \"$SOURCE_DIR\" ]; then\n    echo \"Error: Python CLI source not found at $SOURCE_DIR\"\n    exit 1\nfi\nmkdir -p \"$DEST_DIR\"\ncp \"$SOURCE_DIR/cli.py\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/cli_standalone.py\" \"$DEST_DIR/\"\ncp -r \"$SOURCE_DIR/src\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/config.yaml\" \"$DEST_DIR/\"\necho \"Python CLI successfully copied to: $DEST_DIR\"\n";
+			shellScript = "#!/bin/bash\nSOURCE_DIR=\"${PROJECT_DIR}/../local-doc-search\"\nDEST_DIR=\"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Resources/python_cli\"\nif [ ! -d \"$SOURCE_DIR\" ]; then\n    echo \"Error: Python CLI source not found at $SOURCE_DIR\"\n    exit 1\nfi\nmkdir -p \"$DEST_DIR\"\ncp \"$SOURCE_DIR/cli.py\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/cli_standalone.py\" \"$DEST_DIR/\"\ncp \"$SOURCE_DIR/config.yaml\" \"$DEST_DIR/\"\n# Copy src directory files individually to work around sandbox restrictions\nmkdir -p \"$DEST_DIR/src\"\ncp \"$SOURCE_DIR/src/\"*.py \"$DEST_DIR/src/\" 2>/dev/null || true\necho \"Python CLI successfully copied to: $DEST_DIR\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

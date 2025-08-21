@@ -115,7 +115,7 @@ class PythonCLIBridge: ObservableObject {
             
             // Monitor for unexpected termination
             process?.terminationHandler = { [weak self] _ in
-                Task { @MainActor in
+                DispatchQueue.main.async {
                     self?.isRunning = false
                     self?.lastError = "Python process terminated unexpectedly"
                     print("Python process terminated")
