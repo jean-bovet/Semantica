@@ -9,6 +9,7 @@ import SwiftUI
 
 struct StatusBarView: View {
     @ObservedObject var viewModel: SearchViewModel
+    @Binding var showingFolderPicker: Bool
     
     var body: some View {
         HStack(spacing: 12) {
@@ -21,12 +22,84 @@ struct StatusBarView: View {
                 .font(.caption)
                 .lineLimit(1)
             
+            Divider()
+                .frame(height: 12)
+            
+            // Document count
+            if viewModel.totalDocuments > 0 && !viewModel.isIndexing {
+                Text("\(viewModel.totalDocuments) docs")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                
+                Divider()
+                    .frame(height: 12)
+            }
+            
+            // Index Folder menu
+            if !viewModel.isIndexing {
+                Menu {
+                    Button("Index New Folder...") {
+                        showingFolderPicker = true
+                    }
+                    
+                    if !viewModel.indexedFolders.isEmpty {
+                        Divider()
+                        
+                        Section("Re-index") {
+                            ForEach(viewModel.indexedFolders) { folder in
+                                Button(action: {
+                                    Task {
+                                        await viewModel.reindexFolder(folder.url)
+                                    }
+                                }) {
+                                    HStack {
+                                        Text(folder.url.lastPathComponent)
+                                        Spacer()
+                                        Text(folder.indexedAt, style: .relative)
+                                            .font(.caption2)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Divider()
+                        
+                        Button("Clear All", role: .destructive) {
+                            Task {
+                                await viewModel.clearIndex()
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder.badge.plus")
+                            .imageScale(.small)
+                        Text("Index")
+                            .font(.caption)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                
+                Divider()
+                    .frame(height: 12)
+            }
+            
+            // Show last indexed folder
+            if let lastFolder = viewModel.lastIndexedFolder, !viewModel.isIndexing {
+                Text("Last: \(lastFolder.lastPathComponent)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            
             Spacer()
             
-            // Right side: Progress or stats
+            // Right side: Progress during indexing
             if viewModel.isIndexing {
                 // Show progress during indexing
-                ProgressView(value: viewModel.indexingProgress)
+                ProgressView(value: viewModel.animatedProgress)
                     .progressViewStyle(.linear)
                     .frame(width: 150)
                 
@@ -40,11 +113,6 @@ struct StatusBarView: View {
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundColor(.red)
-            } else if viewModel.totalDocuments > 0 {
-                // Show document count when idle
-                Text("\(viewModel.totalDocuments) documents")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
             }
         }
         .padding(.horizontal, 16)
@@ -97,7 +165,7 @@ struct StatusBarView_Previews: PreviewProvider {
             StatusBarView(viewModel: {
                 let vm = SearchViewModel()
                 return vm
-            }())
+            }(), showingFolderPicker: .constant(false))
             
             // Indexing state
             StatusBarView(viewModel: {
@@ -108,14 +176,14 @@ struct StatusBarView_Previews: PreviewProvider {
                 vm.currentFileName = "Document.pdf"
                 vm.indexingProgress = 0.42
                 return vm
-            }())
+            }(), showingFolderPicker: .constant(false))
             
             // Ready state
             StatusBarView(viewModel: {
                 let vm = SearchViewModel()
                 vm.totalDocuments = 156
                 return vm
-            }())
+            }(), showingFolderPicker: .constant(false))
         }
         .frame(width: 800)
     }

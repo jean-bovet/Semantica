@@ -15,13 +15,7 @@ struct SearchView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header with dropdown menu
-            headerBar
-                .padding()
-            
-            Divider()
-            
-            // Search Bar
+            // Search Bar (now at the top)
             searchBar
                 .padding()
             
@@ -39,8 +33,8 @@ struct SearchView: View {
             
             Spacer()
             
-            // Status Bar (always visible at bottom)
-            StatusBarView(viewModel: viewModel)
+            // Status Bar (always visible at bottom, now includes Index menu)
+            StatusBarView(viewModel: viewModel, showingFolderPicker: $showingFolderPicker)
         }
         .frame(minWidth: 600, minHeight: 400)
         .task {
@@ -65,54 +59,6 @@ struct SearchView: View {
     }
     
     // MARK: - Components
-    
-    private var headerBar: some View {
-        HStack {
-            Text("🔍 Finder Semantic Search")
-                .font(.headline)
-            
-            Spacer()
-            
-            // Dropdown menu for index operations
-            Menu {
-                Button("Index New Folder...") {
-                    showingFolderPicker = true
-                }
-                
-                if !viewModel.indexedFolders.isEmpty {
-                    Divider()
-                    
-                    ForEach(viewModel.indexedFolders) { folder in
-                        Button(action: {
-                            Task {
-                                await viewModel.reindexFolder(folder.url)
-                            }
-                        }) {
-                            HStack {
-                                Text(folder.url.lastPathComponent)
-                                Spacer()
-                                Text(folder.indexedAt, style: .date)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    Button("Clear All Indexes") {
-                        Task {
-                            await viewModel.clearIndex()
-                        }
-                    }
-                    .foregroundColor(.red)
-                }
-            } label: {
-                Label("Index Folder", systemImage: "folder.badge.plus")
-            }
-            .menuStyle(.borderlessButton)
-            .disabled(viewModel.isIndexing)
-        }
-    }
     
     private func handleFolderSelection(_ result: Result<URL, Error>) {
         switch result {
