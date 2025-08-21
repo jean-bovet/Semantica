@@ -192,7 +192,19 @@ class PythonCLIBridge: ObservableObject {
     static func forceStop() {
         for process in activeProcesses {
             if process.isRunning {
+                let pid = process.processIdentifier
+                
+                // First try terminate (SIGTERM)
                 process.terminate()
+                
+                // Give it 100ms to terminate gracefully
+                usleep(100_000) // 100ms
+                
+                // If still running, force kill with SIGKILL
+                if process.isRunning {
+                    kill(pid, SIGKILL)
+                    print("Force killed process \(pid)")
+                }
             }
         }
         activeProcesses.removeAll()

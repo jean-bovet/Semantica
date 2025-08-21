@@ -25,6 +25,7 @@ class DocumentSearchEngine:
         
         self.json_mode = json_mode
         self.console = Console()
+        self.should_stop_callback = None  # Callback to check if we should stop
         self.index_dir = index_dir
         
         self.embedding_generator = EmbeddingGenerator(
@@ -95,6 +96,10 @@ class DocumentSearchEngine:
             print(json.dumps({"status": "checking_changes", "path": directory_path}), flush=True)
         else:
             self.console.print(f"[bold blue]Checking for changes in:[/bold blue] {directory_path}")
+        
+        # Pass the stop callback to document processor
+        if self.should_stop_callback:
+            self.document_processor.should_stop_callback = self.should_stop_callback
         
         # Get changed files and process them
         chunks, change_info = self.document_processor.process_directory_incremental(directory_path)

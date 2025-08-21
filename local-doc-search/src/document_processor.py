@@ -24,6 +24,7 @@ class DocumentProcessor:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False, num_workers: int = 4, metadata_store=None):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.should_stop_callback = None  # Callback to check if we should stop
         # Text documents
         text_docs = {'.txt', '.md', '.markdown', '.rst', '.tex', '.rtf'}
         # Office documents  
@@ -212,6 +213,14 @@ class DocumentProcessor:
                 
                 # Collect results as they complete
                 for future in as_completed(future_to_file):
+                    # Check if we should stop
+                    if self.should_stop_callback and self.should_stop_callback():
+                        # Cancel all remaining futures
+                        for f in future_to_file:
+                            f.cancel()
+                        print(json.dumps({"status": "indexing_cancelled"}), flush=True)
+                        break
+                    
                     file_path = future_to_file[future]
                     try:
                         chunks = future.result()

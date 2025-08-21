@@ -151,7 +151,7 @@ struct StatusBarView: View {
         } else if viewModel.totalDocuments > 0 {
             return "Ready to search"
         } else {
-            return "No index - Click 'Index Folder' to start"
+            return "No documents indexed"
         }
     }
 }

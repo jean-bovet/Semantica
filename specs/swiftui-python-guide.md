@@ -19,23 +19,80 @@ This guide documents the **fully implemented solution** using an async CLI-based
 
 #### Python Process Cleanup (2025-08-21)
 
-**Issue**: Python processes remained running after app termination, becoming orphaned processes.
+**Issue**: Python processes remained running after app termination, becoming orphaned processes. The indexing process in particular would run at 100% CPU and require force quit.
 
-**Root Cause**: The app's cleanup code was async and didn't guarantee process termination before the app quit. The `stop()` method waited 0.5 seconds before terminating, allowing the app to quit before cleanup completed.
+**Root Cause**: 
+1. The app's cleanup code was async and didn't guarantee process termination before the app quit
+2. The indexing process was CPU-bound in a tight loop, not responding to SIGTERM signals
+3. Python's ThreadPoolExecutor threads don't check for termination signals while executing
 
-**Solution**: Implemented a two-pronged approach:
-1. **Swift Side**: 
+**Solution**: Implemented a comprehensive three-pronged approach:
+
+1. **Swift Side - Force Kill Mechanism**: 
    - Added `AppDelegate` with `applicationWillTerminate` to handle app termination
-   - Created static `forceStop()` method to immediately terminate all Python processes
+   - Created static `forceStop()` method that:
+     - First sends SIGTERM for graceful shutdown
+     - Waits 100ms for voluntary termination
+     - Then sends SIGKILL to force terminate unresponsive processes
    - Track all active processes in a static array for cleanup
-2. **Python Side**:
-   - Added parent process monitoring - checks every timeout if parent is still alive
-   - Automatically exits if parent process dies (backup mechanism)
+
+2. **Python Side - Signal Handling**:
+   - Added signal handlers for SIGTERM and SIGINT
+   - Set `should_exit` flag when signals received
+   - Force shutdown ThreadPoolExecutor with `wait=False`
+   - Added `atexit` cleanup handler
+   - Parent process monitoring as backup (checks if parent died every 2 seconds)
+
+3. **Cooperative Cancellation in Tight Loops**:
+   - Added `should_stop_callback` to DocumentProcessor and SearchEngine classes
+   - The indexing loop (`as_completed` in `process_directory_incremental`) now:
+     - Checks `should_exit` flag on each iteration
+     - Cancels remaining futures when stop is requested
+     - Exits cleanly with status message
+   - CLI sets the callback: `self.search_engine.should_stop_callback = lambda: self.should_exit`
+
+**Implementation Details**:
+
+```swift
+// PythonCLIBridge.swift - Force kill after grace period
+static func forceStop() {
+    for process in activeProcesses {
+        if process.isRunning {
+            let pid = process.processIdentifier
+            process.terminate()  // SIGTERM
+            usleep(100_000)     // Wait 100ms
+            if process.isRunning {
+                kill(pid, SIGKILL)  // Force kill
+            }
+        }
+    }
+}
+```
+
+```python
+# document_processor.py - Cooperative cancellation in loop
+for future in as_completed(future_to_file):
+    # Check if we should stop
+    if self.should_stop_callback and self.should_stop_callback():
+        # Cancel all remaining futures
+        for f in future_to_file:
+            f.cancel()
+        print(json.dumps({"status": "indexing_cancelled"}), flush=True)
+        break
+```
 
 **Files Changed**:
 - `FinderSemanticSearchApp.swift`: Added AppDelegate with termination handler
-- `PythonCLIBridge.swift`: Added static process tracking and `forceStop()` method
-- `cli.py`: Added parent process monitoring with `check_parent_alive()`
+- `PythonCLIBridge.swift`: Added force kill with SIGKILL fallback
+- `cli.py`: Added signal handlers, atexit cleanup, and parent monitoring
+- `document_processor.py`: Added should_stop_callback and cancellation checks in loop
+- `search.py`: Added should_stop_callback propagation to document processor
+
+**Benefits**:
+- Clean termination when possible (cooperative cancellation)
+- Guaranteed termination even for CPU-bound processes (SIGKILL)
+- No orphaned processes even during intensive indexing operations
+- Responsive to shutdown requests even in tight loops
 
 ## Architecture Overview
 

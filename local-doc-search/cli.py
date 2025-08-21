@@ -13,6 +13,7 @@ import signal
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
+import atexit
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +32,31 @@ class AsyncSearchCLI:
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.should_exit = False
         self.parent_pid = os.getppid()  # Store parent process ID
+        self._setup_signal_handlers()
+        
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown"""
+        def signal_handler(signum, frame):
+            print(json.dumps({"status": "terminating", "signal": signum}), flush=True)
+            self.should_exit = True
+            # Force shutdown the executor
+            self.executor.shutdown(wait=False)
+            # Exit immediately for SIGTERM/SIGKILL
+            if signum in (signal.SIGTERM, signal.SIGKILL):
+                sys.exit(0)
+        
+        # Register signal handlers
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+        
+        # Register cleanup on exit
+        atexit.register(self._cleanup)
+    
+    def _cleanup(self):
+        """Cleanup resources on exit"""
+        self.should_exit = True
+        if self.executor:
+            self.executor.shutdown(wait=False)
         
     async def initialize(self):
         """Initialize the search engine"""
@@ -167,8 +193,15 @@ class AsyncSearchCLI:
             
     def _perform_indexing(self, folder: str) -> Dict[str, Any]:
         """Blocking indexing operation - runs in thread pool"""
-        # This will still emit progress updates to stdout
-        self.search_engine.index_directory_incremental(folder)
+        try:
+            # Set the stop callback so indexing can check if it should stop
+            self.search_engine.should_stop_callback = lambda: self.should_exit
+            
+            # This will still emit progress updates to stdout
+            self.search_engine.index_directory_incremental(folder)
+        except Exception as e:
+            # If interrupted or error, return partial results
+            print(json.dumps({"status": "indexing_interrupted", "error": str(e)}), flush=True)
         
         # Ensure all output is flushed
         sys.stdout.flush()
