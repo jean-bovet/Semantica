@@ -24,7 +24,37 @@ class DocumentProcessor:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, json_mode: bool = False, num_workers: int = 4, metadata_store=None):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.supported_extensions = {'.pdf', '.txt', '.docx', '.doc', '.md'}
+        # Text documents
+        text_docs = {'.txt', '.md', '.markdown', '.rst', '.tex', '.rtf'}
+        # Office documents  
+        office_docs = {'.pdf', '.docx', '.doc', '.odt'}
+        # Programming languages
+        programming = {'.py', '.java', '.js', '.ts', '.jsx', '.tsx', '.cpp', '.cc', '.cxx', 
+                      '.h', '.hpp', '.c', '.swift', '.rb', '.go', '.rs', '.kt', '.scala',
+                      '.php', '.pl', '.pm', '.r', '.m', '.mm', '.cs', '.vb', '.fs', '.clj',
+                      '.dart', '.lua', '.jl', '.hs', '.elm', '.ex', '.exs', '.erl', '.hrl'}
+        # Web and markup
+        web_files = {'.html', '.htm', '.css', '.scss', '.sass', '.less', '.xml', '.xhtml',
+                    '.svg', '.vue', '.jsx', '.tsx'}
+        # Data and config files
+        data_config = {'.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf', 
+                      '.properties', '.env', '.gitignore', '.dockerignore', '.editorconfig'}
+        # Shell scripts
+        shell_scripts = {'.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd'}
+        # SQL and database
+        database = {'.sql', '.psql', '.mysql'}
+        # Build and project files
+        build_files = {'.gradle', '.cmake', '.make', '.rake', '.sbt'}
+        
+        # Combine all extensions
+        self.supported_extensions = (text_docs | office_docs | programming | web_files | 
+                                    data_config | shell_scripts | database | build_files)
+        
+        # Also support files without extensions that are commonly text
+        self.text_filenames = {'Makefile', 'Dockerfile', 'Jenkinsfile', 'Gemfile', 
+                              'Rakefile', 'Vagrantfile', 'Podfile', 'README', 'LICENSE',
+                              'CHANGELOG', 'TODO', 'NOTES', 'AUTHORS', 'CONTRIBUTORS'}
+        
         self.json_mode = json_mode
         self.num_workers = num_workers
         self._progress_lock = threading.Lock()
@@ -44,8 +74,11 @@ class DocumentProcessor:
             # Check if any parent directory is hidden
             if any(part.startswith('.') for part in f.parts):
                 continue
-            # Check if file has supported extension
+            # Check if file has supported extension (case-insensitive)
             if f.suffix.lower() in self.supported_extensions:
+                valid_files.append(f)
+            # Also check for known text files without extensions
+            elif f.name in self.text_filenames:
                 valid_files.append(f)
         
         if self.json_mode:
@@ -110,7 +143,11 @@ class DocumentProcessor:
         
         # Get changed files
         from metadata_store import ChangeSet
-        change_set = self.metadata_store.get_changed_files(directory_path)
+        change_set = self.metadata_store.get_changed_files(
+            directory_path, 
+            self.supported_extensions,
+            self.text_filenames
+        )
         
         # Report change statistics
         if self.json_mode:
@@ -127,8 +164,19 @@ class DocumentProcessor:
                   f"{len(change_set.deleted_files)} deleted, "
                   f"{len(change_set.unchanged_files)} unchanged")
         
-        # Process only changed files
-        files_to_process = change_set.new_files + change_set.modified_files
+        # Process only changed files that have supported extensions
+        files_to_process = []
+        for file_path in change_set.new_files + change_set.modified_files:
+            # Double-check file type is supported
+            if file_path.suffix.lower() in self.supported_extensions or file_path.name in self.text_filenames:
+                files_to_process.append(file_path)
+            else:
+                if self.json_mode:
+                    print(json.dumps({
+                        "status": "skipping_unsupported", 
+                        "file": str(file_path),
+                        "extension": file_path.suffix.lower()
+                    }), flush=True)
         
         if not files_to_process and not change_set.deleted_files:
             if self.json_mode:
@@ -234,15 +282,21 @@ class DocumentProcessor:
             raise ValueError(f"File {file_path} does not exist")
         
         extension = file_path_obj.suffix.lower()
+        filename = file_path_obj.name
         
+        # First check if file type is supported
+        if extension not in self.supported_extensions and filename not in self.text_filenames:
+            raise ValueError(f"Unsupported file type: {extension}")
+        
+        # Handle PDF files
         if extension == '.pdf':
             text = self._extract_pdf_text(file_path)
-        elif extension in ['.txt', '.md']:
-            text = self._extract_text_file(file_path)
-        elif extension in ['.docx', '.doc']:
+        # Handle Word documents
+        elif extension in ['.docx', '.doc', '.odt']:
             text = self._extract_docx_text(file_path)
+        # Handle all text-based files (including code, config, etc.)
         else:
-            raise ValueError(f"Unsupported file type: {extension}")
+            text = self._extract_text_file(file_path)
         
         if not text:
             return []

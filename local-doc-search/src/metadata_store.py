@@ -195,7 +195,7 @@ class MetadataStore:
         
         return [r['vector_index'] for r in results]
     
-    def get_changed_files(self, directory: str) -> ChangeSet:
+    def get_changed_files(self, directory: str, supported_extensions: set = None, text_filenames: set = None) -> ChangeSet:
         """
         Scan directory and return what changed since last index.
         """
@@ -208,6 +208,12 @@ class MetadataStore:
                 # Skip hidden directories
                 if any(part.startswith('.') for part in file_path.parts):
                     continue
+                # Filter by supported extensions if provided
+                if supported_extensions:
+                    if file_path.suffix.lower() not in supported_extensions:
+                        # Also check for known text files without extensions
+                        if text_filenames and file_path.name not in text_filenames:
+                            continue
                 current_files.add(str(file_path))
         
         # Get all previously indexed files in this directory
