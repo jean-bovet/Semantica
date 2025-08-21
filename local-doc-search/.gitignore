@@ -14,8 +14,9 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Data and cache directories
-data/index/
-data/embeddings_cache/
+# Now stored in ~/Library/Application Support/FinderSemanticSearch/
+data/
+!data/documents/
 data/documents/*
 !data/documents/sample.txt
 

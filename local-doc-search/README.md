@@ -186,17 +186,23 @@ chunk_overlap: 200
 local-doc-search/
 ├── cli.py                 # Main CLI interface with JSON mode
 ├── cli_standalone.py      # Bootstrap script for auto-dependencies
-├── config.yaml           # Configuration file
+├── config.yaml           # Default configuration
 ├── requirements.txt      # Python dependencies
 ├── src/
 │   ├── document_processor.py  # Document parsing
 │   ├── embeddings.py          # Embedding generation
 │   ├── indexer.py            # FAISS index management
-│   └── search.py             # Search engine logic
-└── data/
-    ├── documents/        # Your documents (optional)
-    ├── index/           # FAISS index files
-    └── embeddings_cache/ # Cached embeddings
+│   ├── search.py             # Search engine logic
+│   └── paths.py              # Path management
+└── tests/                # Test suite
+
+# User data stored in Application Support:
+~/Library/Application Support/FinderSemanticSearch/
+├── data/
+│   ├── index/           # FAISS index files
+│   └── embeddings_cache/ # Cached embeddings
+├── config.yaml          # User configuration
+└── venv/               # Python virtual environment
 ```
 
 ## macOS App Integration

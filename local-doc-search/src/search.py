@@ -12,11 +12,12 @@ from document_processor import DocumentProcessor, DocumentChunk
 from embeddings import EmbeddingGenerator
 from indexer import FAISSIndexer
 from metadata_store import MetadataStore
+from paths import get_index_dir
 
 
 class DocumentSearchEngine:
     def __init__(self, 
-                 index_dir: str = "./data/index",
+                 index_dir: Optional[str] = None,
                  embedding_model_type: str = "sentence-transformer",
                  embedding_model_name: Optional[str] = None,
                  json_mode: bool = False,
@@ -26,6 +27,10 @@ class DocumentSearchEngine:
         self.json_mode = json_mode
         self.console = Console()
         self.should_stop_callback = None  # Callback to check if we should stop
+        
+        # Use Application Support by default
+        if index_dir is None:
+            index_dir = str(get_index_dir())
         self.index_dir = index_dir
         
         self.embedding_generator = EmbeddingGenerator(
@@ -43,7 +48,7 @@ class DocumentSearchEngine:
         # Initialize metadata store for incremental indexing
         self.metadata_store = None
         if enable_incremental:
-            metadata_path = os.path.join(index_dir, "metadata.db")
+            metadata_path = os.path.join(self.index_dir, "metadata.db")
             self.metadata_store = MetadataStore(metadata_path)
         
         self.document_processor = DocumentProcessor(

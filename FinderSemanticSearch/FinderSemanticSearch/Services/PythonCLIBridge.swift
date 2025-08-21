@@ -111,7 +111,7 @@ class PythonCLIBridge: ObservableObject {
         process?.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         // The CLI is now async by default - no special arguments needed
         process?.arguments = [standaloneCliPath]
-        process?.currentDirectoryURL = URL(fileURLWithPath: standaloneCliPath).deletingLastPathComponent()
+        // Let Python determine its own working directory and use Application Support paths
         
         // Setup pipes
         inputPipe = Pipe()

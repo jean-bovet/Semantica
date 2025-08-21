@@ -154,7 +154,7 @@ def ensure_dependencies():
 
 #### Data Storage Locations
 
-The application stores its data in the macOS Application Support directory:
+The application stores its data in the macOS Application Support directory following Apple's guidelines:
 
 - **Virtual Environment**: `~/Library/Application Support/FinderSemanticSearch/venv/`
 - **Search Index**: `~/Library/Application Support/FinderSemanticSearch/data/index/`
@@ -162,8 +162,15 @@ The application stores its data in the macOS Application Support directory:
   - `metadata.json` - Index metadata  
   - `chunks.pkl` - Document chunks
   - `metadata.db` - SQLite database for incremental indexing
+  - `index_config.json` - Index configuration
 - **Embeddings Cache**: `~/Library/Application Support/FinderSemanticSearch/data/embeddings_cache/`
   - Cached embeddings to avoid recomputation
+
+**Benefits of Application Support storage:**
+- Data persists across app updates and Xcode rebuilds
+- Follows macOS best practices for user data
+- Automatically backed up by Time Machine
+- App bundle remains read-only
 
 ### 3. Async CLI Implementation (cli.py)
 
@@ -490,6 +497,30 @@ embeddings = self.embedding_generator.generate_embeddings(
 - Clean, consistent progress bar showing only file processing
 - No confusing jumps between different progress metrics
 - Better user experience during indexing
+
+## Path Management Implementation
+
+The application uses a centralized path management system through `src/paths.py`:
+
+```python
+from paths import get_index_dir, get_embeddings_cache_dir
+
+# All components now use Application Support by default
+def __init__(self, index_dir: Optional[str] = None):
+    if index_dir is None:
+        index_dir = str(get_index_dir())
+```
+
+**Implementation Details:**
+- `src/paths.py` - Centralizes all path logic
+- Components default to Application Support locations
+- Swift side no longer sets working directory
+- Maintains backward compatibility with explicit path overrides
+
+**Migration Notes:**
+- No automatic migration implemented
+- Existing development indexes need to be recreated
+- Production users get clean persistent storage
 
 ## Future Improvements
 

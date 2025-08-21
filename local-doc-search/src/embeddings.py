@@ -7,6 +7,8 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
+from paths import get_embeddings_cache_dir
+
 # Optional import for Ollama support
 try:
     import ollama
@@ -19,10 +21,14 @@ class EmbeddingGenerator:
     def __init__(self, 
                  model_type: str = "sentence-transformer",
                  model_name: Optional[str] = None,
-                 cache_dir: str = "./data/embeddings_cache",
+                 cache_dir: Optional[str] = None,
                  json_mode: bool = False):
         
         self.model_type = model_type
+        
+        # Use Application Support by default
+        if cache_dir is None:
+            cache_dir = str(get_embeddings_cache_dir())
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.json_mode = json_mode

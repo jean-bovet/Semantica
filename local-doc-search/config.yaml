@@ -1,7 +1,8 @@
 # Local Document Search Configuration
 
 # Directory where the index and metadata will be stored
-index_dir: ./data/index
+# Now defaults to: ~/Library/Application Support/FinderSemanticSearch/data/index
+# index_dir: ./data/index
 
 # Embedding model configuration
 # Options: "sentence-transformer" or "ollama"
@@ -24,4 +25,5 @@ search_batch_size: 32  # Batch size for processing embeddings
 
 # Cache settings
 use_embedding_cache: true
-embedding_cache_dir: ./data/embeddings_cache
+# Now defaults to: ~/Library/Application Support/FinderSemanticSearch/data/embeddings_cache
+# embedding_cache_dir: ./data/embeddings_cache

@@ -7,10 +7,14 @@ import numpy as np
 import faiss
 from datetime import datetime
 from document_processor import DocumentChunk
+from paths import get_index_dir
 
 
 class FAISSIndexer:
-    def __init__(self, index_dir: str = "./data/index", embedding_dim: int = 384, json_mode: bool = False):
+    def __init__(self, index_dir: Optional[str] = None, embedding_dim: int = 384, json_mode: bool = False):
+        # Use Application Support by default
+        if index_dir is None:
+            index_dir = str(get_index_dir())
         self.index_dir = Path(index_dir)
         self.index_dir.mkdir(parents=True, exist_ok=True)
         self.embedding_dim = embedding_dim

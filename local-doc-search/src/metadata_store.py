@@ -8,6 +8,8 @@ import hashlib
 from typing import List, Dict, Tuple, Optional, Set
 from dataclasses import dataclass
 from pathlib import Path
+
+from paths import get_index_dir
 from datetime import datetime
 
 
@@ -33,7 +35,10 @@ class ChangeSet:
 class MetadataStore:
     """Manages metadata about indexed files for incremental updates"""
     
-    def __init__(self, db_path: str = "./data/index/metadata.db"):
+    def __init__(self, db_path: Optional[str] = None):
+        # Use Application Support by default
+        if db_path is None:
+            db_path = str(get_index_dir() / "metadata.db")
         self.db_path = db_path
         self.connection = None
         self._ensure_db_directory()
