@@ -45,6 +45,18 @@ struct IndexStatistics: Codable {
     }
 }
 
+struct IndexedFolder: Identifiable, Codable {
+    let id: UUID
+    let url: URL
+    let indexedAt: Date
+    
+    init(url: URL, indexedAt: Date = Date()) {
+        self.id = UUID()
+        self.url = url
+        self.indexedAt = indexedAt
+    }
+}
+
 struct CLIResponse: Codable {
     let success: Bool
     let action: String?

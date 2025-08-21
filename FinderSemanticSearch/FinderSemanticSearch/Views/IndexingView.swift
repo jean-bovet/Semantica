@@ -65,11 +65,11 @@ struct IndexingView: View {
                     
                     ScrollView {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(viewModel.indexedFolders, id: \.self) { folder in
+                            ForEach(viewModel.indexedFolders) { folder in
                                 HStack {
                                     Image(systemName: "folder.fill")
                                         .foregroundColor(.accentColor)
-                                    Text(folder.lastPathComponent)
+                                    Text(folder.url.lastPathComponent)
                                         .lineLimit(1)
                                     Spacer()
                                 }

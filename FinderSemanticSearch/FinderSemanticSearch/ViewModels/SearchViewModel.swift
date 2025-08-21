@@ -17,7 +17,7 @@ class SearchViewModel: ObservableObject {
     @Published var isIndexing = false
     @Published var errorMessage: String?
     @Published var statistics: IndexStatistics?
-    @Published var indexedFolders: [URL] = []
+    @Published var indexedFolders: [IndexedFolder] = []
     
     // Progress tracking for indexing
     @Published var indexingTotalFiles: Int = 0
@@ -26,9 +26,11 @@ class SearchViewModel: ObservableObject {
     
     private let bridge = PythonCLIBridge()
     private var searchCancellable: AnyCancellable?
+    private let indexedFoldersKey = "com.finderSemanticSearch.indexedFolders"
     
     init() {
         setupSearchDebouncing()
+        loadIndexedFolders()
     }
     
     // MARK: - Setup
@@ -102,7 +104,11 @@ class SearchViewModel: ObservableObject {
                 }
             }
             
-            indexedFolders.append(url)
+            // Only add if not already in the list
+            if !indexedFolders.contains(where: { $0.url == url }) {
+                indexedFolders.append(IndexedFolder(url: url, indexedAt: Date()))
+                saveIndexedFolders()
+            }
             await refreshStatistics()
             
             print("Successfully indexed \(result.documents) documents with \(result.chunks) chunks")
@@ -148,6 +154,7 @@ class SearchViewModel: ObservableObject {
             try await bridge.clearIndex()
             searchResults = []
             indexedFolders = []
+            saveIndexedFolders()  // Clear saved folders
             await refreshStatistics()
             errorMessage = "Index cleared"
             
@@ -174,6 +181,35 @@ class SearchViewModel: ObservableObject {
     func revealInFinder(_ result: SearchResult) {
         let url = URL(fileURLWithPath: result.filePath)
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+    
+    // MARK: - Persistence
+    
+    private func saveIndexedFolders() {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(indexedFolders)
+            UserDefaults.standard.set(data, forKey: indexedFoldersKey)
+            print("Saved \(indexedFolders.count) indexed folders to UserDefaults")
+        } catch {
+            print("Failed to save indexed folders: \(error)")
+        }
+    }
+    
+    private func loadIndexedFolders() {
+        guard let data = UserDefaults.standard.data(forKey: indexedFoldersKey) else {
+            print("No saved indexed folders found")
+            return
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            indexedFolders = try decoder.decode([IndexedFolder].self, from: data)
+            print("Loaded \(indexedFolders.count) indexed folders from UserDefaults")
+        } catch {
+            print("Failed to load indexed folders: \(error)")
+            indexedFolders = []
+        }
     }
     
     deinit {
