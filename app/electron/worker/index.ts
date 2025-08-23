@@ -26,7 +26,11 @@ let configManager: ConfigManager | null = null;
 const queue: string[] = [];
 const processing = new Set<string>();
 const fileHashes = new Map<string, string>();
-const folderFileCounts = new Map<string, number>();
+interface FolderStats {
+  total: number;
+  indexed: number;
+}
+const folderStats = new Map<string, FolderStats>();
 
 interface QueuedFile {
   path: string;
@@ -65,6 +69,35 @@ async function initDB(dir: string) {
     });
     
     console.log('Database initialized');
+    
+    // Load existing indexed files to prevent re-indexing
+    try {
+      const existingFiles = await tbl.search([0])
+        .select(['path', 'mtime'])
+        .limit(100000)
+        .toArray();
+      
+      // Build fileHashes map from existing index
+      const uniquePaths = new Set<string>();
+      existingFiles.forEach((row: any) => {
+        uniquePaths.add(row.path);
+      });
+      
+      uniquePaths.forEach(filePath => {
+        try {
+          if (fs.existsSync(filePath)) {
+            const hash = getFileHash(filePath);
+            fileHashes.set(filePath, hash);
+          }
+        } catch (e) {
+          // File might have been deleted
+        }
+      });
+      
+      console.log(`Loaded ${fileHashes.size} existing indexed files`);
+    } catch (e) {
+      console.log('No existing files in index');
+    }
     
     // Schedule auto-start after initialization completes
     setTimeout(() => {
@@ -182,6 +215,14 @@ async function handleFile(filePath: string) {
     
     fileHashes.set(filePath, currentHash);
     
+    // Update indexed count for the folder
+    for (const [folder, stats] of folderStats) {
+      if (filePath.startsWith(folder)) {
+        stats.indexed++;
+        break;
+      }
+    }
+    
     await maybeCreateIndex();
   } catch (error) {
     console.error(`Failed to handle file ${filePath}:`, error);
@@ -227,9 +268,10 @@ async function getStats() {
     return {
       totalChunks: count,
       indexedFiles: fileHashes.size,
-      folderStats: Array.from(folderFileCounts.entries()).map(([folder, count]) => ({
+      folderStats: Array.from(folderStats.entries()).map(([folder, stats]) => ({
         folder,
-        fileCount: count
+        totalFiles: stats.total,
+        indexedFiles: stats.indexed
       }))
     };
   } catch (error) {
@@ -246,9 +288,12 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
     await watcher.close();
   }
   
-  // Reset folder counts for new watch
-  folderFileCounts.clear();
-  roots.forEach((root: string) => folderFileCounts.set(root, 0));
+  // Initialize folder stats (don't clear existing indexed counts)
+  roots.forEach((root: string) => {
+    if (!folderStats.has(root)) {
+      folderStats.set(root, { total: 0, indexed: 0 });
+    }
+  });
   
   watcher = chokidar.watch(roots, {
     ignored: excludePatterns || [],
@@ -261,33 +306,46 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
   });
   
   watcher.on('add', (p: string) => {
-    if (!queue.includes(p)) {
-      queue.push(p);
-      // Update folder count
-      for (const [folder] of folderFileCounts) {
-        if (p.startsWith(folder)) {
-          folderFileCounts.set(folder, (folderFileCounts.get(folder) || 0) + 1);
-          break;
-        }
+    // Update total file count
+    for (const [folder, stats] of folderStats) {
+      if (p.startsWith(folder)) {
+        stats.total++;
+        break;
       }
+    }
+    
+    // Only queue supported file types that aren't already indexed
+    const ext = path.extname(p).slice(1).toLowerCase();
+    const supported = ['pdf', 'txt', 'md', 'docx', 'rtf', 'doc'].includes(ext);
+    
+    if (supported && !queue.includes(p) && !fileHashes.has(p)) {
+      queue.push(p);
     }
   });
   
   watcher.on('change', (p: string) => {
-    if (!queue.includes(p)) queue.push(p);
+    const ext = path.extname(p).slice(1).toLowerCase();
+    const supported = ['pdf', 'txt', 'md', 'docx', 'rtf', 'doc'].includes(ext);
+    
+    if (supported && !queue.includes(p)) {
+      queue.push(p);
+    }
   });
   
   watcher.on('unlink', async (p: string) => {
-    await deleteByPath(p);
-    fileHashes.delete(p);
-    
-    // Update folder count
-    for (const [folder] of folderFileCounts) {
+    // Update folder stats
+    for (const [folder, stats] of folderStats) {
       if (p.startsWith(folder)) {
-        folderFileCounts.set(folder, Math.max(0, (folderFileCounts.get(folder) || 0) - 1));
+        stats.total = Math.max(0, stats.total - 1);
+        if (fileHashes.has(p)) {
+          stats.indexed = Math.max(0, stats.indexed - 1);
+        }
         break;
       }
     }
+    
+    await deleteByPath(p);
+    fileHashes.delete(p);
     
     const idx = queue.indexOf(p);
     if (idx !== -1) queue.splice(idx, 1);

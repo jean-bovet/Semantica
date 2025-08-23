@@ -7,10 +7,13 @@ function SettingsView() {
   const [stats, setStats] = useState({ 
     totalChunks: 0, 
     indexedFiles: 0,
-    folderStats: [] as Array<{ folder: string; fileCount: number }>
+    folderStats: [] as Array<{ folder: string; totalFiles: number; indexedFiles: number }>
   });
   
   useEffect(() => {
+    // Set up periodic stats refresh
+    const interval = setInterval(loadStats, 5000);
+    
     const loadFolders = async () => {
       // Migrate from localStorage if exists (one-time migration)
       const savedInLocalStorage = localStorage.getItem('indexedFolders');
@@ -42,6 +45,8 @@ function SettingsView() {
     
     loadFolders();
     loadStats();
+    
+    return () => clearInterval(interval);
   }, []);
   
   const loadStats = async () => {
@@ -91,7 +96,9 @@ function SettingsView() {
                 <div className="folder-info">
                   <span className="folder-path">{folder}</span>
                   {folderStat && (
-                    <span className="folder-count">{folderStat.fileCount} files</span>
+                    <span className="folder-count">
+                      {folderStat.indexedFiles} indexed / {folderStat.totalFiles} total files
+                    </span>
                   )}
                 </div>
                 <button 
