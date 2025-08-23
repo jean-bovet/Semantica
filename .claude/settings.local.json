@@ -74,7 +74,13 @@
       "Bash(NODE_ENV=test npx vitest run tests/unit/worker-stability.spec.ts)",
       "Bash(NODE_ENV=test timeout 5 npx vitest run tests/unit/worker-basic.spec.ts)",
       "Bash(NODE_ENV=test npx vitest run tests/unit/worker-basic.spec.ts)",
-      "Bash(NODE_ENV=test npx vitest run tests/unit/worker-basic.spec.ts -t \"should handle file updates\")"
+      "Bash(NODE_ENV=test npx vitest run tests/unit/worker-basic.spec.ts -t \"should handle file updates\")",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/fast-unit-tests.spec.ts --reporter=json)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/shared-worker.spec.ts --reporter=json)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/*.spec.ts)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/file-types.spec.ts)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/search.spec.ts)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/memory-management.spec.ts)"
     ],
     "deny": [],
     "ask": [],

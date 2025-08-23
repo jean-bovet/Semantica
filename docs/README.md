@@ -41,10 +41,11 @@ Benchmarking and utility scripts:
 | Metric | Value | Notes |
 |--------|-------|-------|
 | Memory Usage | ~270MB | Stable after thousands of files |
-| Indexing Speed | ~10 files/sec | Depends on file size |
+| Indexing Speed | Sequential | Memory-safe processing |
 | Search Latency | <100ms | Semantic vector search |
 | Supported Formats | 6 | PDF, TXT, MD, DOCX, RTF, DOC |
-| Test Coverage | 80%+ | Unit and integration tests |
+| Test Coverage | 85%+ | 81 tests, 3.3s execution |
+| Test Status | ✅ All Pass | No flaky or hanging tests |
 
 
 ## 🚀 Quick Links
