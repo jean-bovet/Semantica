@@ -52,8 +52,8 @@ function SearchView() {
               <h3>{fileResults[0].title || path.split('/').pop()}</h3>
               <span className="match-count">{fileResults.length} matches</span>
             </div>
-            {fileResults.slice(0, 3).map((result) => (
-              <SearchResult key={result.id} result={result} query={query} />
+            {fileResults.slice(0, 3).map((result, index) => (
+              <SearchResult key={`${result.id}-${index}`} result={result} query={query} />
             ))}
           </div>
         ))}
