@@ -1,23 +1,33 @@
 // A tiny child process that only embeds, then exits when told.
-import { env, pipeline } from '@xenova/transformers';
 import path from 'node:path';
+import fs from 'node:fs';
 
-env.allowRemoteModels = false;
-env.localModelPath = process.env.NODE_ENV === 'production' 
-  ? path.join(process.resourcesPath!, 'models')
-  : path.join(__dirname, '../../../resources/models');
+let transformers: any = null;
+let pipe: any = null;
 
-// Fallback to cached models if resources/models is empty
-if (!require('fs').existsSync(env.localModelPath)) {
-  env.localModelPath = path.join(__dirname, '../../../node_modules/@xenova/transformers/.cache');
+async function initTransformers() {
+  if (!transformers) {
+    // Dynamic import for ES module
+    transformers = await import('@xenova/transformers');
+    
+    transformers.env.allowRemoteModels = false;
+    transformers.env.localModelPath = process.env.NODE_ENV === 'production' 
+      ? path.join(process.resourcesPath!, 'models')
+      : path.join(__dirname, '../../../resources/models');
+
+    // Fallback to cached models if resources/models is empty
+    if (!fs.existsSync(transformers.env.localModelPath)) {
+      transformers.env.localModelPath = path.join(__dirname, '../../../node_modules/@xenova/transformers/.cache');
+    }
+  }
+  return transformers;
 }
-
-let pipe: any;
 
 process.on('message', async (msg: any) => {
   if (msg?.type === 'init') {
     try {
-      pipe = await pipeline('feature-extraction', msg.model || 'Xenova/all-MiniLM-L6-v2', { quantized: true });
+      const tf = await initTransformers();
+      pipe = await tf.pipeline('feature-extraction', msg.model || 'Xenova/all-MiniLM-L6-v2', { quantized: true });
       process.send?.({ type: 'ready' });
     } catch (e: any) {
       process.send?.({ type: 'init:err', error: String(e) });
