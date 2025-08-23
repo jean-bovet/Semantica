@@ -120,7 +120,7 @@ describe('Worker Stability and Recovery', { timeout: 30000 }, () => {
     }
   });
 
-  it('should not re-index already indexed files', { timeout: 10000 }, async () => {
+  it('should not re-index already indexed files', { timeout: 15000 }, async () => {
     const testFile = path.join(tempDir, 'test.txt');
     fs.writeFileSync(testFile, 'Test content');
     

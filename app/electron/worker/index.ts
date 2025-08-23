@@ -478,66 +478,38 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
   });
 }
 
-// Configurable concurrency - process multiple files in parallel
-const MAX_CONCURRENT_FILES = 5; // Increased with new memory limits (1.5GB RSS)
-
-async function processFile(filePath: string) {
-  if (processing.has(filePath)) return;
-  
-  processing.add(filePath);
-  
-  try {
-    await handleFile(filePath);
-    
-    parentPort!.postMessage({
-      type: 'progress',
-      payload: {
-        queued: queue.length,
-        processing: processing.size,
-        done: fileHashes.size,
-        errors: 0
-      }
-    });
-  } catch (error) {
-    console.error(`Error processing ${filePath}:`, error);
-  } finally {
-    processing.delete(filePath);
-  }
-}
-
 async function processQueue() {
-  const workers = new Set<Promise<void>>();
-  
   while (true) {
-    // Clean up completed workers
-    for (const worker of workers) {
-      // Check if promise is settled without blocking
-      worker.then(() => workers.delete(worker)).catch(() => workers.delete(worker));
+    if (paused || queue.length === 0) {
+      await new Promise(r => setTimeout(r, 100));
+      continue;
     }
     
-    // Add new workers up to the limit
-    while (!paused && queue.length > 0 && workers.size < MAX_CONCURRENT_FILES) {
-      const filePath = queue.shift();
-      if (filePath) {
-        const workerPromise = processFile(filePath);
-        workers.add(workerPromise);
-        // Remove from set when done
-        workerPromise.finally(() => workers.delete(workerPromise));
-      }
+    const filePath = queue.shift()!;
+    
+    if (processing.has(filePath)) continue;
+    
+    processing.add(filePath);
+    
+    try {
+      await handleFile(filePath);
+      
+      parentPort!.postMessage({
+        type: 'progress',
+        payload: {
+          queued: queue.length,
+          processing: processing.size - 1,
+          done: fileHashes.size,
+          errors: 0
+        }
+      });
+    } catch (error) {
+      console.error(`Error processing ${filePath}:`, error);
+    } finally {
+      processing.delete(filePath);
     }
     
-    // Check memory and throttle if needed
-    const memUsage = process.memoryUsage();
-    const rssMB = memUsage.rss / 1024 / 1024;
-    if (rssMB > 800 && workers.size > 2) {
-      // If memory is high, reduce parallelism
-      if (workers.size > 0) {
-        await Promise.race(Array.from(workers));
-      }
-    }
-    
-    // Small delay to prevent busy waiting
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 10));
   }
 }
 

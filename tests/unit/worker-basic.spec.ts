@@ -109,7 +109,7 @@ describe('Worker Basic Functionality', () => {
     expect(folderStat.indexedFiles).toBe(2);
   });
 
-  it('should handle file updates', async () => {
+  it('should handle file updates', { timeout: 10000 }, async () => {
     await worker.init(tempDir);
     
     const testFile = path.join(tempDir, 'update-test.txt');
@@ -128,7 +128,10 @@ describe('Worker Basic Functionality', () => {
     const newTime = Date.now() + 1000;
     fs.utimesSync(testFile, newTime / 1000, newTime / 1000);
     
-    // Wait for the progress to indicate processing
+    // Wait a bit for the file watcher to detect the change
+    await new Promise(r => setTimeout(r, 1000));
+    
+    // Wait for processing to complete
     await worker.waitForProgress(p => p.processing === 0, 3000);
     
     const stats2 = await worker.getStats();

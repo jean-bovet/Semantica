@@ -69,7 +69,12 @@
       "Bash(npm i:*)",
       "Bash(npm ls:*)",
       "Bash(npm run build:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(npm run test:fast:*)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/worker-stability.spec.ts)",
+      "Bash(NODE_ENV=test timeout 5 npx vitest run tests/unit/worker-basic.spec.ts)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/worker-basic.spec.ts)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/worker-basic.spec.ts -t \"should handle file updates\")"
     ],
     "deny": [],
     "ask": [],
