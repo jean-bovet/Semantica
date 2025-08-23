@@ -20,9 +20,9 @@ A separate Node.js process that exclusively handles embedding generation:
 Monitors memory usage and triggers automatic restarts:
 ```javascript
 const thresholds = {
-  rssLimit: 900,        // MB
-  externalLimit: 150,   // MB
-  filesLimit: 200       // Files before restart
+  rssLimit: 1500,       // MB (optimized from 900)
+  externalLimit: 300,   // MB (optimized from 150)
+  filesLimit: 500       // Files before restart (optimized from 200)
 };
 ```
 
@@ -32,6 +32,8 @@ const thresholds = {
 - Immediate array cleanup after processing
 - Yield to event loop between batches
 - Force garbage collection when available
+- **Parallel file processing**: Up to 5 files concurrently (v3)
+- **Memory-based throttling**: Reduces parallelism if RSS > 800MB (v3)
 
 ## Results
 
@@ -82,9 +84,9 @@ Memory: RSS=273MB, Heap=17MB/31MB, External=5MB, Files processed: 300
 ## Configuration
 
 ### Tunable Parameters
-- `RSS_LIMIT`: Maximum RSS memory before restart (default: 900MB)
-- `EXTERNAL_LIMIT`: Maximum external memory (default: 150MB)
-- `FILES_LIMIT`: Files processed before restart (default: 200)
+- `RSS_LIMIT`: Maximum RSS memory before restart (default: 1500MB)
+- `EXTERNAL_LIMIT`: Maximum external memory (default: 300MB)
+- `FILES_LIMIT`: Files processed before restart (default: 500)
 - `BATCH_SIZE`: Embeddings per batch (default: 8)
 
 ### File Type Settings

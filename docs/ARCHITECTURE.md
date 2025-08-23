@@ -85,25 +85,27 @@ The indexing system uses a carefully orchestrated mix of parallel and sequential
 - Files are discovered in parallel and immediately queued
 - All discovered files go into a central queue array
 
-#### File Processing (Sequential)
-Files are processed **one at a time** to prevent memory accumulation:
-1. **Dequeue**: Take one file from queue (`queue.shift()`)
-2. **Hash Check**: Skip if file hasn't changed since last index
-3. **Content Extraction**: Parse PDF/TXT/MD/DOCX/RTF files
-4. **Text Chunking**: Split into 500-char chunks with 60-char overlap
-5. **Embedding Generation** (Batched):
-   - Process chunks in batches of 8
-   - Each batch sent to isolated child process
-   - Wait for embeddings before next batch
-6. **Vector Storage**: Store each batch in LanceDB with metadata
-7. **Memory Check**: Monitor and restart child if needed
-8. **Status Update**: Report progress (queued/processing/done)
+#### File Processing (Parallel with Limits)
+Files are processed with **controlled parallelism** for optimal performance:
+1. **Concurrent Processing**: Up to 5 files processed simultaneously
+2. **Memory-Based Throttling**: Reduces parallelism if RSS > 800MB
+3. **Per-File Pipeline**:
+   - **Hash Check**: Skip if file hasn't changed since last index
+   - **Content Extraction**: Parse PDF/TXT/MD/DOCX/RTF files
+   - **Text Chunking**: Split into 500-char chunks with 60-char overlap
+   - **Embedding Generation** (Batched):
+     - Process chunks in batches of 8
+     - Each batch sent to isolated child process
+     - Wait for embeddings before next batch
+   - **Vector Storage**: Store each batch in LanceDB with metadata
+4. **Memory Monitoring**: Continuous checks with automatic throttling
+5. **Status Updates**: Real-time progress (queued/processing/done)
 
 #### Memory Management
 - Child process auto-restarts after:
-  - 200 files processed
-  - RSS memory > 900MB
-  - External memory > 150MB
+  - 500 files processed
+  - RSS memory > 1500MB (1.5GB)
+  - External memory > 300MB
 - Restart is transparent - queue continues processing
 
 ### Search Pipeline
@@ -187,9 +189,9 @@ dist/
 - Immediate garbage collection after processing
 
 ### Memory Limits
-- Worker restart at 900MB RSS
-- Embedder restart at 150MB external
-- File-based restart after 200 documents
+- Worker restart at 1500MB RSS
+- Embedder restart at 300MB external
+- File-based restart after 500 documents
 
 ### Index Optimization
 - Create ANN index when idle

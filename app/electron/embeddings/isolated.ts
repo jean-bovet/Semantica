@@ -127,7 +127,8 @@ export class IsolatedEmbedder {
     const rssMB = Math.round(rss / 1024 / 1024);
     const extMB = Math.round(external / 1024 / 1024);
     
-    const shouldRestart = rssMB > 900 || extMB > 150 || this.filesSinceSpawn > 200;
+    // Optimized limits for better performance
+    const shouldRestart = rssMB > 1500 || extMB > 300 || this.filesSinceSpawn > 500;
     
     if (shouldRestart && this.inflight.size === 0) {
       console.log(`Restarting embedder: RSS=${rssMB}MB, External=${extMB}MB, Files=${this.filesSinceSpawn}`);
