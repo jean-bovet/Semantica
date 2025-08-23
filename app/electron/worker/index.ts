@@ -3,9 +3,21 @@ import * as lancedb from '@lancedb/lancedb';
 
 // Monitor memory usage
 let fileCount = 0;
-setInterval(() => {
+// Memory monitoring and governor
+setInterval(async () => {
   const usage = process.memoryUsage();
-  console.log(`Memory: RSS=${Math.round(usage.rss / 1024 / 1024)}MB, Heap=${Math.round(usage.heapUsed / 1024 / 1024)}MB/${Math.round(usage.heapTotal / 1024 / 1024)}MB, External=${Math.round(usage.external / 1024 / 1024)}MB, Files processed: ${fileCount}`);
+  const rssMB = Math.round(usage.rss / 1024 / 1024);
+  const heapMB = Math.round(usage.heapUsed / 1024 / 1024);
+  const heapTotalMB = Math.round(usage.heapTotal / 1024 / 1024);
+  const extMB = Math.round(usage.external / 1024 / 1024);
+  
+  console.log(`Memory: RSS=${rssMB}MB, Heap=${heapMB}MB/${heapTotalMB}MB, External=${extMB}MB, Files processed: ${fileCount}`);
+  
+  // Check if embedder needs restart
+  const restarted = await checkEmbedderMemory();
+  if (restarted) {
+    console.log('Embedder process restarted due to memory limits');
+  }
 }, 2000);
 
 // PDF parsing is optional - will handle it if available
@@ -19,7 +31,8 @@ import { parseText } from '../parsers/text';
 import { parseDocx } from '../parsers/docx';
 import { parseRtf } from '../parsers/rtf';
 import { chunkText } from '../pipeline/chunker';
-import { embed } from '../embeddings/local';
+// Use isolated embedder for better memory management
+import { embed, checkEmbedderMemory, shutdownEmbedder } from '../embeddings/isolated';
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
@@ -75,8 +88,8 @@ async function initDB(dir: string) {
       // Delete the initialization record
       try {
         await table.delete('id = "init"');
-      } catch (e) {
-        console.log('Could not delete init record (may not exist):', e.message);
+      } catch (e: any) {
+        console.log('Could not delete init record (may not exist):', e?.message || e);
       }
       
       return table;
@@ -118,7 +131,7 @@ async function initDB(dir: string) {
     
     // Schedule auto-start after initialization completes
     setTimeout(async () => {
-      const config = await configManager.getConfig();
+      const config = await configManager!.getConfig();
       const savedFolders = config.watchedFolders || [];
       if (savedFolders.length > 0) {
         console.log('Auto-starting watch on saved folders:', savedFolders);
@@ -162,7 +175,7 @@ async function mergeRows(rows: any[]) {
       } catch (error) {
         console.error('Failed to merge rows:', error);
         // Retry once on conflict
-        if (error.message?.includes('Commit conflict')) {
+        if ((error as any)?.message?.includes('Commit conflict')) {
           try {
             await new Promise(r => setTimeout(r, 100));
             await tbl.mergeInsert('id')
@@ -271,7 +284,7 @@ async function handleFile(filePath: string) {
     
     if (chunks.length === 0) return;
     
-    const batchSize = 16; // Reduced batch size to limit memory usage
+    const batchSize = 8; // Small batches to minimize memory usage
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
@@ -297,11 +310,15 @@ async function handleFile(filePath: string) {
       
       await mergeRows(rows);
       
-      // Clear batch data immediately
+      // Clear batch data immediately and yield
       batch.length = 0;
       texts.length = 0;
       vectors.length = 0;
       rows.length = 0;
+      
+      // Yield to event loop
+      await new Promise(r => setImmediate(r));
+      if (global.gc) global.gc();
     }
     
     fileHashes.set(filePath, currentHash);
@@ -591,10 +608,10 @@ parentPort!.on('message', async (msg: any) => {
         }
         break;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Worker message error:', error);
     if (msg.id) {
-      parentPort!.postMessage({ id: msg.id, error: error.message });
+      parentPort!.postMessage({ id: msg.id, error: error?.message || String(error) });
     }
   }
 });
@@ -607,4 +624,14 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   // Keep the worker alive
+});
+
+// Cleanup on exit
+process.on('exit', async () => {
+  await shutdownEmbedder();
+});
+
+process.on('SIGTERM', async () => {
+  await shutdownEmbedder();
+  process.exit(0);
 });
