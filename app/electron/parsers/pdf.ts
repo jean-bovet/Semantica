@@ -1,21 +1,30 @@
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import fs from 'node:fs';
 import path from 'node:path';
-
-GlobalWorkerOptions.workerSrc = path.join(
-  path.dirname(require.resolve('pdfjs-dist')),
-  'build/pdf.worker.js'
-);
 
 export interface PDFPage {
   page: number;
   text: string;
 }
 
+let pdfjs: any = null;
+
+async function getPdfJs() {
+  if (!pdfjs) {
+    // Dynamic import for ESM module
+    pdfjs = await import('pdfjs-dist');
+    pdfjs.GlobalWorkerOptions.workerSrc = path.join(
+      path.dirname(require.resolve('pdfjs-dist')),
+      'build/pdf.worker.mjs'
+    );
+  }
+  return pdfjs;
+}
+
 export async function parsePdf(filePath: string): Promise<PDFPage[]> {
   try {
+    const pdfjsLib = await getPdfJs();
     const data = new Uint8Array(fs.readFileSync(filePath));
-    const pdf = await getDocument({ data }).promise;
+    const pdf = await pdfjsLib.getDocument({ data }).promise;
     const pages: PDFPage[] = [];
     
     for (let i = 1; i <= pdf.numPages; i++) {

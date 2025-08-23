@@ -1,6 +1,12 @@
 import { parentPort } from 'node:worker_threads';
 import * as lancedb from '@lancedb/lancedb';
-import { parsePdf } from '../parsers/pdf';
+// PDF parsing is optional - will handle it if available
+let parsePdf: any = null;
+try {
+  parsePdf = require('../parsers/pdf').parsePdf;
+} catch (e) {
+  console.log('PDF parsing not available');
+}
 import { parseText } from '../parsers/text';
 import { chunkText } from '../pipeline/chunker';
 import { embed } from '../embeddings/local';
@@ -27,9 +33,27 @@ async function initDB(dir: string) {
     db = await lancedb.connect(dir);
     
     tbl = await db.openTable('chunks').catch(async () => {
-      return db.createTable('chunks', [], {
+      // Create table with initial schema
+      const initialData = [{
+        id: 'init',
+        path: '',
+        mtime: 0,
+        page: 0,
+        offset: 0,
+        text: '',
+        vector: new Array(384).fill(0),
+        type: 'init',
+        title: ''
+      }];
+      
+      const table = await db.createTable('chunks', initialData, {
         mode: 'create'
       });
+      
+      // Delete the initialization record
+      await table.delete("id = 'init'");
+      
+      return table;
     });
     
     console.log('Database initialized');
@@ -87,7 +111,7 @@ async function handleFile(filePath: string) {
     
     let chunks: Array<{ text: string; offset: number; page?: number }> = [];
     
-    if (ext === 'pdf') {
+    if (ext === 'pdf' && parsePdf) {
       const pages = await parsePdf(filePath);
       for (const pg of pages) {
         const pageChunks = chunkText(pg.text, 500, 60);

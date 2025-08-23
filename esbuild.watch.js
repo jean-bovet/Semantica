@@ -11,7 +11,15 @@ async function watch(entry, outfile) {
     bundle: true,
     platform: 'node',
     format: 'cjs',
-    external: ['electron', '@lancedb/lancedb', 'apache-arrow', 'pdfjs-dist'],
+    external: [
+      'electron', 
+      '@lancedb/lancedb', 
+      'apache-arrow', 
+      'pdfjs-dist',
+      '@xenova/transformers',
+      'onnxruntime-node',
+      'sharp'
+    ],
     sourcemap: true,
     target: 'node18',
     logLevel: 'info',

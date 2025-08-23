@@ -1,12 +1,18 @@
-import { env, pipeline } from '@xenova/transformers';
 import path from 'node:path';
 
-env.allowRemoteModels = false;
-env.localModelPath = process.env.NODE_ENV === 'production' 
-  ? path.join(process.resourcesPath, 'models')
-  : path.join(__dirname, '../../../resources/models');
-
+let transformers: any = null;
 let embedderPromise: Promise<any> | null = null;
+
+async function getTransformers() {
+  if (!transformers) {
+    transformers = await import('@xenova/transformers');
+    transformers.env.allowRemoteModels = false;
+    transformers.env.localModelPath = process.env.NODE_ENV === 'production' 
+      ? path.join(process.resourcesPath, 'models')
+      : path.join(__dirname, '../../../resources/models');
+  }
+  return transformers;
+}
 
 export type EmbedFn = (texts: string[]) => Promise<number[][]>;
 let embedImpl: EmbedFn | null = null;
@@ -17,7 +23,8 @@ export function setEmbedImpl(fn: EmbedFn) {
 
 async function getEmbedder() {
   if (!embedderPromise) {
-    embedderPromise = pipeline(
+    const tf = await getTransformers();
+    embedderPromise = tf.pipeline(
       'feature-extraction',
       'Xenova/all-MiniLM-L6-v2',
       { quantized: true }

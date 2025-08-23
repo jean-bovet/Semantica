@@ -52,7 +52,15 @@
       "Bash(\"/Users/bovet/Library/Application Support/FinderSemanticSearch/venv/bin/pip\" install -r /Users/bovet/GitHub/FSS/local-doc-search/requirements.txt)",
       "Bash(\"/Users/bovet/Library/Application Support/FinderSemanticSearch/venv/bin/pip\" install PyPDF2 python-docx click)",
       "Bash(touch:*)",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(npm install)",
+      "Bash(node:*)",
+      "Bash(npm run test:ci:*)",
+      "Bash(npm test:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(curl:*)",
+      "Bash(npm run dev:*)",
+      "Bash(NODE_ENV=development npm run dev)"
     ],
     "deny": [],
     "ask": [],

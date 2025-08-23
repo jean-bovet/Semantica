@@ -11,7 +11,15 @@ async function buildFile(entry, outfile) {
     bundle: true,
     platform: 'node',
     format: 'cjs',
-    external: ['electron', '@lancedb/lancedb', 'apache-arrow', 'pdfjs-dist'],
+    external: [
+      'electron', 
+      '@lancedb/lancedb', 
+      'apache-arrow', 
+      'pdfjs-dist',
+      '@xenova/transformers',
+      'onnxruntime-node',
+      'sharp'
+    ],
     sourcemap: false,
     target: 'node18',
     minify: true,
