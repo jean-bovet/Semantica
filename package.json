@@ -8,10 +8,14 @@
     "dev": "concurrently -k -n VITE,BUILD,ELEC -c blue,magenta,green \"vite\" \"node esbuild.watch.js\" \"wait-on tcp:5173 && electronmon .\"",
     "build": "tsc -b && node esbuild.build.js && vite build",
     "dist": "npm run build && electron-builder",
-    "test": "vitest",
-    "test:ci": "vitest --run --reporter=dot",
+    "test": "NODE_ENV=test vitest --run",
+    "test:watch": "NODE_ENV=test vitest",
+    "test:fast": "NODE_ENV=test vitest --run tests/unit/fast-unit-tests.spec.ts tests/unit/shared-worker.spec.ts",
+    "test:integration": "NODE_ENV=test vitest --run tests/unit/worker-*.spec.ts tests/integration/*.spec.ts",
+    "test:unit": "NODE_ENV=test vitest --run tests/unit/*.spec.ts",
+    "test:ci": "NODE_ENV=test vitest --run --reporter=dot",
+    "test:coverage": "NODE_ENV=test vitest --run --coverage",
     "test:e2e": "playwright test",
-    "coverage": "vitest --run --coverage",
     "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {

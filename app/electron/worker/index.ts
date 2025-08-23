@@ -366,7 +366,10 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
     awaitWriteFinish: {
       stabilityThreshold: 1000,
       pollInterval: 100
-    }
+    },
+    // Use polling in test environment to avoid fsevents issues
+    usePolling: process.env.NODE_ENV === 'test',
+    interval: 100
   });
   
   watcher.on('add', (p: string) => {
