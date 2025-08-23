@@ -68,7 +68,8 @@
       "Bash(npm rm:*)",
       "Bash(npm i:*)",
       "Bash(npm ls:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": [],
