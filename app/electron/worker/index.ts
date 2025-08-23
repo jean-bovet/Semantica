@@ -16,14 +16,17 @@ import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ConfigManager } from './config';
 
 let db: any = null;
 let tbl: any = null;
 let paused = false;
 let watcher: any = null;
+let configManager: ConfigManager | null = null;
 const queue: string[] = [];
 const processing = new Set<string>();
 const fileHashes = new Map<string, string>();
+const folderFileCounts = new Map<string, number>();
 
 interface QueuedFile {
   path: string;
@@ -32,6 +35,9 @@ interface QueuedFile {
 
 async function initDB(dir: string) {
   try {
+    // Initialize config manager
+    configManager = new ConfigManager(dir);
+    
     db = await lancedb.connect(dir);
     
     tbl = await db.openTable('chunks').catch(async () => {
@@ -59,6 +65,15 @@ async function initDB(dir: string) {
     });
     
     console.log('Database initialized');
+    
+    // Schedule auto-start after initialization completes
+    setTimeout(() => {
+      const savedFolders = configManager!.getWatchedFolders();
+      if (savedFolders.length > 0) {
+        console.log('Auto-starting watch on saved folders:', savedFolders);
+        startWatching(savedFolders, configManager!.getSettings().excludePatterns);
+      }
+    }, 1000);
   } catch (error) {
     console.error('Failed to initialize database:', error);
     throw error;
@@ -186,7 +201,7 @@ async function search(query: string, k = 10) {
       page: r.page,
       offset: r.offset,
       text: r.text,
-      score: r._distance ? 1 - r._distance : 0,
+      score: r._distance !== undefined ? Math.max(0, 1 - (r._distance / 2)) : 1,
       title: r.title
     }));
   } catch (error) {
@@ -211,14 +226,72 @@ async function getStats() {
     const count = await tbl.countRows();
     return {
       totalChunks: count,
-      indexedFiles: fileHashes.size
+      indexedFiles: fileHashes.size,
+      folderStats: Array.from(folderFileCounts.entries()).map(([folder, count]) => ({
+        folder,
+        fileCount: count
+      }))
     };
   } catch (error) {
     return {
       totalChunks: 0,
-      indexedFiles: 0
+      indexedFiles: 0,
+      folderStats: []
     };
   }
+}
+
+async function startWatching(roots: string[], excludePatterns?: string[]) {
+  if (watcher) {
+    await watcher.close();
+  }
+  
+  // Reset folder counts for new watch
+  folderFileCounts.clear();
+  roots.forEach((root: string) => folderFileCounts.set(root, 0));
+  
+  watcher = chokidar.watch(roots, {
+    ignored: excludePatterns || [],
+    ignoreInitial: false,
+    persistent: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 1000,
+      pollInterval: 100
+    }
+  });
+  
+  watcher.on('add', (p: string) => {
+    if (!queue.includes(p)) {
+      queue.push(p);
+      // Update folder count
+      for (const [folder] of folderFileCounts) {
+        if (p.startsWith(folder)) {
+          folderFileCounts.set(folder, (folderFileCounts.get(folder) || 0) + 1);
+          break;
+        }
+      }
+    }
+  });
+  
+  watcher.on('change', (p: string) => {
+    if (!queue.includes(p)) queue.push(p);
+  });
+  
+  watcher.on('unlink', async (p: string) => {
+    await deleteByPath(p);
+    fileHashes.delete(p);
+    
+    // Update folder count
+    for (const [folder] of folderFileCounts) {
+      if (p.startsWith(folder)) {
+        folderFileCounts.set(folder, Math.max(0, (folderFileCounts.get(folder) || 0) - 1));
+        break;
+      }
+    }
+    
+    const idx = queue.indexOf(p);
+    if (idx !== -1) queue.splice(idx, 1);
+  });
 }
 
 async function processQueue() {
@@ -268,35 +341,11 @@ parentPort!.on('message', async (msg: any) => {
       case 'watchStart':
         const { roots, options } = msg.payload;
         
-        if (watcher) {
-          await watcher.close();
-        }
+        // Save folders to config
+        configManager?.setWatchedFolders(roots);
         
-        watcher = chokidar.watch(roots, {
-          ignored: options?.exclude || [],
-          ignoreInitial: false,
-          persistent: true,
-          awaitWriteFinish: {
-            stabilityThreshold: 1000,
-            pollInterval: 100
-          }
-        });
-        
-        watcher.on('add', (p: string) => {
-          if (!queue.includes(p)) queue.push(p);
-        });
-        
-        watcher.on('change', (p: string) => {
-          if (!queue.includes(p)) queue.push(p);
-        });
-        
-        watcher.on('unlink', async (p: string) => {
-          await deleteByPath(p);
-          fileHashes.delete(p);
-          
-          const idx = queue.indexOf(p);
-          if (idx !== -1) queue.splice(idx, 1);
-        });
+        // Start watching
+        await startWatching(roots, options?.exclude);
         
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: { success: true } });
@@ -351,6 +400,12 @@ parentPort!.on('message', async (msg: any) => {
         const stats = await getStats();
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: stats });
+        }
+        break;
+        
+      case 'getWatchedFolders':
+        if (msg.id) {
+          parentPort!.postMessage({ id: msg.id, payload: configManager?.getWatchedFolders() || [] });
         }
         break;
     }

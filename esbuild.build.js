@@ -15,7 +15,7 @@ async function buildFile(entry, outfile) {
       'electron', 
       '@lancedb/lancedb', 
       'apache-arrow', 
-      'pdfjs-dist',
+      'pdf-parse',
       '@xenova/transformers',
       'onnxruntime-node',
       'sharp',

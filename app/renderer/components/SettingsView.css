@@ -39,10 +39,21 @@
   margin-bottom: 8px;
 }
 
+.folder-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .folder-path {
   color: #e0e0e0;
   font-size: 14px;
   font-family: 'SF Mono', Monaco, monospace;
+}
+
+.folder-count {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
 }
 
 .remove-button {
@@ -104,14 +115,15 @@
 }
 
 .stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .stat-item {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 12px;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 8px;

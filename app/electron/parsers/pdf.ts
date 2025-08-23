@@ -1,55 +1,28 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import * as fs from 'fs';
+const pdfParse = require('pdf-parse');
 
 export interface PDFPage {
   page: number;
   text: string;
 }
 
-let pdfjs: any = null;
-
-async function getPdfJs() {
-  if (!pdfjs) {
-    // Dynamic import for ESM module
-    pdfjs = await import('pdfjs-dist');
-    pdfjs.GlobalWorkerOptions.workerSrc = path.join(
-      path.dirname(require.resolve('pdfjs-dist')),
-      'build/pdf.worker.mjs'
-    );
-  }
-  return pdfjs;
-}
-
 export async function parsePdf(filePath: string): Promise<PDFPage[]> {
   try {
-    const pdfjsLib = await getPdfJs();
-    const data = new Uint8Array(fs.readFileSync(filePath));
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
-    const pages: PDFPage[] = [];
+    const dataBuffer = fs.readFileSync(filePath);
+    const data = await pdfParse(dataBuffer);
     
-    for (let i = 1; i <= pdf.numPages; i++) {
-      try {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        
-        const text = textContent.items
-          .map((item: any) => item.str)
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        if (text) {
-          pages.push({ page: i, text });
-        }
-      } catch (pageError) {
-        console.error(`Failed to parse page ${i} of ${filePath}:`, pageError);
-      }
+    // pdf-parse returns all text combined, so we'll treat it as a single page
+    // Clean up and normalize the text
+    const text = data.text
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    if (text) {
+      // For compatibility, return as a single page
+      return [{ page: 1, text: text.substring(0, 50000) }]; // Limit to ~50k chars
     }
     
-    await pdf.cleanup();
-    await pdf.destroy();
-    
-    return pages;
+    return [];
   } catch (error) {
     console.error(`Failed to parse PDF ${filePath}:`, error);
     return [];

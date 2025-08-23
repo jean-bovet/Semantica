@@ -139,6 +139,10 @@ app.whenReady().then(() => {
   ipcMain.handle('db:stats', async () => {
     return sendToWorker('stats');
   });
+  
+  ipcMain.handle('indexer:getWatchedFolders', async () => {
+    return sendToWorker('getWatchedFolders');
+  });
 });
 
 app.on('window-all-closed', () => {

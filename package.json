@@ -37,7 +37,7 @@
     "apache-arrow": "^15.0.0",
     "chokidar": "^3.6.0",
     "mammoth": "^1.10.0",
-    "pdfjs-dist": "^4.7.0",
+    "pdf-parse": "^1.1.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "textract": "^2.5.0"

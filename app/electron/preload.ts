@@ -40,7 +40,10 @@ const api = {
     onProgress: (callback: (progress: IndexProgress) => void) => {
       ipcRenderer.on('indexer:progress', (_, progress) => callback(progress));
       return () => ipcRenderer.removeAllListeners('indexer:progress');
-    }
+    },
+    
+    getWatchedFolders: (): Promise<string[]> =>
+      ipcRenderer.invoke('indexer:getWatchedFolders')
   },
   
   search: {
