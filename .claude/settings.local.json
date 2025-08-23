@@ -60,7 +60,8 @@
       "Bash(npx vitest run:*)",
       "Bash(curl:*)",
       "Bash(npm run dev:*)",
-      "Bash(NODE_ENV=development npm run dev)"
+      "Bash(NODE_ENV=development npm run dev)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": [],

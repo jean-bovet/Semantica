@@ -18,7 +18,10 @@ async function watch(entry, outfile) {
       'pdfjs-dist',
       '@xenova/transformers',
       'onnxruntime-node',
-      'sharp'
+      'sharp',
+      'mammoth',
+      'textract',
+      'fsevents'
     ],
     sourcemap: true,
     target: 'node18',

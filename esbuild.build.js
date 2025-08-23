@@ -18,7 +18,10 @@ async function buildFile(entry, outfile) {
       'pdfjs-dist',
       '@xenova/transformers',
       'onnxruntime-node',
-      'sharp'
+      'sharp',
+      'mammoth',
+      'textract',
+      'fsevents'
     ],
     sourcemap: false,
     target: 'node18',

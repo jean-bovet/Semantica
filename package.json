@@ -36,9 +36,11 @@
     "@xenova/transformers": "^2.17.0",
     "apache-arrow": "^15.0.0",
     "chokidar": "^3.6.0",
+    "mammoth": "^1.10.0",
     "pdfjs-dist": "^4.7.0",
     "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+    "react-dom": "^18.3.0",
+    "textract": "^2.5.0"
   },
   "build": {
     "appId": "com.yourorg.offlinesearch",
@@ -51,7 +53,9 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "gatekeeperAssess": false
     },
     "files": [
@@ -62,7 +66,9 @@
       {
         "from": "resources/models",
         "to": "models",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asarUnpack": [

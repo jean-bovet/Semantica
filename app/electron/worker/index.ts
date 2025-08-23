@@ -8,6 +8,8 @@ try {
   console.log('PDF parsing not available');
 }
 import { parseText } from '../parsers/text';
+import { parseDocx } from '../parsers/docx';
+import { parseRtf } from '../parsers/rtf';
 import { chunkText } from '../pipeline/chunker';
 import { embed } from '../embeddings/local';
 import crypto from 'node:crypto';
@@ -119,6 +121,16 @@ async function handleFile(filePath: string) {
       }
     } else if (ext === 'txt' || ext === 'md') {
       const text = await parseText(filePath);
+      chunks = chunkText(text, 500, 60);
+    } else if (ext === 'docx') {
+      const text = await parseDocx(filePath);
+      chunks = chunkText(text, 500, 60);
+    } else if (ext === 'rtf') {
+      const text = await parseRtf(filePath);
+      chunks = chunkText(text, 500, 60);
+    } else if (ext === 'doc') {
+      // For older .doc files, try to parse as RTF (many .doc files are actually RTF)
+      const text = await parseRtf(filePath);
       chunks = chunkText(text, 500, 60);
     } else {
       return;
