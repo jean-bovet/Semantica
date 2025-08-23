@@ -38,9 +38,10 @@ export async function embed(texts: string[]): Promise<number[][]> {
     return embedImpl(texts);
   }
   
+  let output: any = null;
   try {
     const pipe = await getEmbedder();
-    const output = await pipe(texts, {
+    output = await pipe(texts, {
       pooling: 'mean',
       normalize: true
     });
@@ -59,5 +60,10 @@ export async function embed(texts: string[]): Promise<number[][]> {
   } catch (error) {
     console.error('Embedding failed:', error);
     throw error;
+  } finally {
+    // Dispose of the output tensor to free memory
+    if (output && typeof output.dispose === 'function') {
+      output.dispose();
+    }
   }
 }

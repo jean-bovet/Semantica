@@ -63,7 +63,8 @@
       "Bash(NODE_ENV=development npm run dev)",
       "Bash(npm install:*)",
       "Bash(npm uninstall:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(NODE_OPTIONS='--trace-warnings --trace-uncaught' npm run dev)"
     ],
     "deny": [],
     "ask": [],

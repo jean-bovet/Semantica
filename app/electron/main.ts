@@ -1,7 +1,27 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, crashReporter } from 'electron';
 import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import fs from 'node:fs';
+
+// Enable crash reporter to capture native crashes
+crashReporter.start({
+  productName: 'offline-mac-search',
+  companyName: 'YourOrg',
+  submitURL: '', // Leave empty to just save locally
+  uploadToServer: false,
+  ignoreSystemCrashHandler: false,
+  rateLimit: false,
+  compress: true,
+  globalExtra: {
+    _version: '1.0.0',
+    _processType: 'main'
+  }
+});
+
+// Log where crash dumps are saved
+const crashDumpDir = app.getPath('crashDumps');
+console.log('Crash dumps will be saved to:', crashDumpDir);
+fs.mkdirSync(crashDumpDir, { recursive: true });
 
 let worker: Worker | null = null;
 let win: BrowserWindow | null = null;
@@ -32,7 +52,8 @@ function spawnWorker() {
   });
   
   worker.on('exit', (code) => {
-    if (code !== 0) {
+    if (code !== 0 && code !== null) {
+      // Only respawn on actual errors, not on intentional termination
       console.error(`Worker stopped with exit code ${code}`);
       setTimeout(spawnWorker, 1000);
     }
@@ -89,13 +110,8 @@ app.whenReady().then(() => {
   
   spawnWorker();
   
-  if (isDev) {
-    const workerPath = path.join(__dirname, 'worker.cjs');
-    fs.watchFile(workerPath, { interval: 1000 }, () => {
-      console.log('Worker changed, respawning...');
-      spawnWorker();
-    });
-  }
+  // Note: In dev mode, electronmon will restart the entire app when files change
+  // We don't need to manually watch and respawn the worker
   
   ipcMain.handle('dialog:selectFolders', async () => {
     const result = await dialog.showOpenDialog(win!, {
@@ -142,6 +158,14 @@ app.whenReady().then(() => {
   
   ipcMain.handle('indexer:getWatchedFolders', async () => {
     return sendToWorker('getWatchedFolders');
+  });
+  
+  ipcMain.handle('settings:get', async () => {
+    return sendToWorker('getSettings');
+  });
+  
+  ipcMain.handle('settings:update', async (_, settings) => {
+    return sendToWorker('updateSettings', settings);
   });
 });
 

@@ -7,6 +7,14 @@ export interface AppConfig {
   settings: {
     cpuThrottle: 'low' | 'medium' | 'high';
     excludePatterns: string[];
+    fileTypes: {
+      pdf: boolean;
+      txt: boolean;
+      md: boolean;
+      docx: boolean;
+      rtf: boolean;
+      doc: boolean;
+    };
   };
   lastUpdated: string;
 }
@@ -26,7 +34,15 @@ export class ConfigManager {
       watchedFolders: [],
       settings: {
         cpuThrottle: 'medium',
-        excludePatterns: ['node_modules', '.git', '*.tmp', '.DS_Store']
+        excludePatterns: ['node_modules', '.git', '*.tmp', '.DS_Store'],
+        fileTypes: {
+          pdf: false,  // Disabled by default due to memory issues
+          txt: true,
+          md: true,
+          docx: true,
+          rtf: true,
+          doc: true
+        }
       },
       lastUpdated: new Date().toISOString()
     };
@@ -44,6 +60,10 @@ export class ConfigManager {
         }
         if (!config.settings) {
           config.settings = this.getDefaultConfig().settings;
+        }
+        // Add file types if missing
+        if (!config.settings.fileTypes) {
+          config.settings.fileTypes = this.getDefaultConfig().settings.fileTypes;
         }
         
         return config;

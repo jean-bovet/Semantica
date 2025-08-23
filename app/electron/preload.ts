@@ -61,6 +61,11 @@ const api = {
   
   db: {
     stats: () => ipcRenderer.invoke('db:stats')
+  },
+  
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    update: (settings: any) => ipcRenderer.invoke('settings:update', settings)
   }
 };
 

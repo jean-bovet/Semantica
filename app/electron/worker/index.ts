@@ -1,5 +1,13 @@
 import { parentPort } from 'node:worker_threads';
 import * as lancedb from '@lancedb/lancedb';
+
+// Monitor memory usage
+let fileCount = 0;
+setInterval(() => {
+  const usage = process.memoryUsage();
+  console.log(`Memory: RSS=${Math.round(usage.rss / 1024 / 1024)}MB, Heap=${Math.round(usage.heapUsed / 1024 / 1024)}MB/${Math.round(usage.heapTotal / 1024 / 1024)}MB, External=${Math.round(usage.external / 1024 / 1024)}MB, Files processed: ${fileCount}`);
+}, 2000);
+
 // PDF parsing is optional - will handle it if available
 let parsePdf: any = null;
 try {
@@ -65,7 +73,11 @@ async function initDB(dir: string) {
       });
       
       // Delete the initialization record
-      await table.delete("id = 'init'");
+      try {
+        await table.delete('id = "init"');
+      } catch (e) {
+        console.log('Could not delete init record (may not exist):', e.message);
+      }
       
       return table;
     });
@@ -105,11 +117,12 @@ async function initDB(dir: string) {
     }
     
     // Schedule auto-start after initialization completes
-    setTimeout(() => {
-      const savedFolders = configManager!.getWatchedFolders();
+    setTimeout(async () => {
+      const config = await configManager.getConfig();
+      const savedFolders = config.watchedFolders || [];
       if (savedFolders.length > 0) {
         console.log('Auto-starting watch on saved folders:', savedFolders);
-        startWatching(savedFolders, configManager!.getSettings().excludePatterns);
+        startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
         
         // Initialize indexed counts for each folder
         setTimeout(() => {
@@ -185,10 +198,15 @@ async function processWriteQueue() {
 
 async function deleteByPath(filePath: string) {
   try {
-    const escaped = filePath.replace(/'/g, "''");
-    await tbl.delete(`path = '${escaped}'`);
+    if (!filePath || !tbl) {
+      return;
+    }
+    
+    const escaped = filePath.replace(/"/g, '\\"');
+    const query = `path = "${escaped}"`;
+    await tbl.delete(query);
   } catch (error) {
-    console.error('Failed to delete by path:', error);
+    console.error('Failed to delete by path:', filePath, error);
   }
 }
 
@@ -199,6 +217,8 @@ function getFileHash(filePath: string): string {
 
 async function handleFile(filePath: string) {
   try {
+    fileCount++; // Track files processed
+    
     if (!fs.existsSync(filePath)) {
       await deleteByPath(filePath);
       fileHashes.delete(filePath);
@@ -215,6 +235,14 @@ async function handleFile(filePath: string) {
     const stat = fs.statSync(filePath);
     const mtime = stat.mtimeMs;
     const ext = path.extname(filePath).slice(1).toLowerCase();
+    
+    // Check if this file type is enabled
+    const fileTypes = configManager?.getSettings().fileTypes || {};
+    const isTypeEnabled = fileTypes[ext as keyof typeof fileTypes] ?? false;
+    
+    if (!isTypeEnabled) {
+      return; // Skip this file type
+    }
     
     let chunks: Array<{ text: string; offset: number; page?: number }> = [];
     
@@ -243,7 +271,7 @@ async function handleFile(filePath: string) {
     
     if (chunks.length === 0) return;
     
-    const batchSize = 32;
+    const batchSize = 16; // Reduced batch size to limit memory usage
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
@@ -268,9 +296,18 @@ async function handleFile(filePath: string) {
       });
       
       await mergeRows(rows);
+      
+      // Clear batch data immediately
+      batch.length = 0;
+      texts.length = 0;
+      vectors.length = 0;
+      rows.length = 0;
     }
     
     fileHashes.set(filePath, currentHash);
+    
+    // Clear references to help garbage collection
+    chunks = null as any;
     
     // Update indexed count for the folder based on unique files
     for (const [folder, stats] of folderStats) {
@@ -288,6 +325,11 @@ async function handleFile(filePath: string) {
     }
     
     await maybeCreateIndex();
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
   } catch (error) {
     console.error(`Failed to handle file ${filePath}:`, error);
   }
@@ -533,6 +575,21 @@ parentPort!.on('message', async (msg: any) => {
           parentPort!.postMessage({ id: msg.id, payload: configManager?.getWatchedFolders() || [] });
         }
         break;
+        
+      case 'getSettings':
+        if (msg.id) {
+          parentPort!.postMessage({ id: msg.id, payload: configManager?.getSettings() || {} });
+        }
+        break;
+        
+      case 'updateSettings':
+        if (configManager) {
+          configManager.updateSettings(msg.payload);
+          if (msg.id) {
+            parentPort!.postMessage({ id: msg.id, payload: { success: true } });
+          }
+        }
+        break;
     }
   } catch (error) {
     console.error('Worker message error:', error);
@@ -540,4 +597,14 @@ parentPort!.on('message', async (msg: any) => {
       parentPort!.postMessage({ id: msg.id, error: error.message });
     }
   }
+});
+
+// Add error handlers to prevent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Keep the worker alive
 });

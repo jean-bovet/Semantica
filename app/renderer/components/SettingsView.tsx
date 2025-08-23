@@ -9,6 +9,14 @@ function SettingsView() {
     indexedFiles: 0,
     folderStats: [] as Array<{ folder: string; totalFiles: number; indexedFiles: number }>
   });
+  const [fileTypes, setFileTypes] = useState({
+    pdf: false,
+    txt: true,
+    md: true,
+    docx: true,
+    rtf: true,
+    doc: true
+  });
   
   useEffect(() => {
     // Set up periodic stats refresh
@@ -45,9 +53,32 @@ function SettingsView() {
     
     loadFolders();
     loadStats();
+    loadSettings();
     
     return () => clearInterval(interval);
   }, []);
+  
+  const loadSettings = async () => {
+    try {
+      const settings = await window.api.settings.get();
+      if (settings?.fileTypes) {
+        setFileTypes(settings.fileTypes);
+      }
+    } catch (e) {
+      console.error('Failed to load settings:', e);
+    }
+  };
+  
+  const toggleFileType = async (type: keyof typeof fileTypes) => {
+    const newFileTypes = { ...fileTypes, [type]: !fileTypes[type] };
+    setFileTypes(newFileTypes);
+    
+    try {
+      await window.api.settings.update({ fileTypes: newFileTypes });
+    } catch (e) {
+      console.error('Failed to update file type settings:', e);
+    }
+  };
   
   const loadStats = async () => {
     const dbStats = await window.api.db.stats();
@@ -117,6 +148,73 @@ function SettingsView() {
         <button onClick={handleAddFolders} className="add-folder-button">
           Add Folders
         </button>
+      </section>
+      
+      <section className="settings-section">
+        <h3>File Types</h3>
+        <div className="file-types-grid">
+          <div className="setting-item">
+            <label className="file-type-toggle">
+              <input 
+                type="checkbox" 
+                checked={fileTypes.pdf}
+                onChange={() => toggleFileType('pdf')}
+              />
+              <span>PDF Files</span>
+              {!fileTypes.pdf && <span className="warning-text"> (Disabled due to memory issues)</span>}
+            </label>
+          </div>
+          <div className="setting-item">
+            <label className="file-type-toggle">
+              <input 
+                type="checkbox" 
+                checked={fileTypes.txt}
+                onChange={() => toggleFileType('txt')}
+              />
+              <span>Text Files (.txt)</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label className="file-type-toggle">
+              <input 
+                type="checkbox" 
+                checked={fileTypes.md}
+                onChange={() => toggleFileType('md')}
+              />
+              <span>Markdown Files (.md)</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label className="file-type-toggle">
+              <input 
+                type="checkbox" 
+                checked={fileTypes.docx}
+                onChange={() => toggleFileType('docx')}
+              />
+              <span>Word Documents (.docx)</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label className="file-type-toggle">
+              <input 
+                type="checkbox" 
+                checked={fileTypes.rtf}
+                onChange={() => toggleFileType('rtf')}
+              />
+              <span>Rich Text Files (.rtf)</span>
+            </label>
+          </div>
+          <div className="setting-item">
+            <label className="file-type-toggle">
+              <input 
+                type="checkbox" 
+                checked={fileTypes.doc}
+                onChange={() => toggleFileType('doc')}
+              />
+              <span>Legacy Word (.doc)</span>
+            </label>
+          </div>
+        </div>
       </section>
       
       <section className="settings-section">
