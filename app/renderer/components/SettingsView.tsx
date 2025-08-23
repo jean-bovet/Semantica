@@ -161,7 +161,6 @@ function SettingsView() {
                 onChange={() => toggleFileType('pdf')}
               />
               <span>PDF Files</span>
-              {!fileTypes.pdf && <span className="warning-text"> (Disabled due to memory issues)</span>}
             </label>
           </div>
           <div className="setting-item">

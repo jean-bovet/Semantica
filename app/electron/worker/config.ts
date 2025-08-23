@@ -36,7 +36,7 @@ export class ConfigManager {
         cpuThrottle: 'medium',
         excludePatterns: ['node_modules', '.git', '*.tmp', '.DS_Store'],
         fileTypes: {
-          pdf: false,  // Disabled by default due to memory issues
+          pdf: true,   // Safe to enable with isolated embedder
           txt: true,
           md: true,
           docx: true,

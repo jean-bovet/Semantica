@@ -43,10 +43,9 @@ Benchmarking and utility scripts:
 | Memory Usage | ~270MB | Stable after thousands of files |
 | Indexing Speed | ~10 files/sec | Depends on file size |
 | Search Latency | <100ms | Semantic vector search |
-| Supported Formats | 6 | TXT, MD, DOCX, RTF, DOC, PDF* |
+| Supported Formats | 6 | PDF, TXT, MD, DOCX, RTF, DOC |
 | Test Coverage | 80%+ | Unit and integration tests |
 
-*PDF disabled by default due to memory considerations
 
 ## 🚀 Quick Links
 

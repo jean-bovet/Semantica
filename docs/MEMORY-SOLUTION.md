@@ -90,11 +90,11 @@ Memory: RSS=273MB, Heap=17MB/31MB, External=5MB, Files processed: 300
 - `BATCH_SIZE`: Embeddings per batch (default: 8)
 
 ### File Type Settings
-PDF indexing disabled by default due to high memory usage:
+All file types enabled (PDF is now safe with isolated embedder):
 ```json
 {
   "fileTypes": {
-    "pdf": false,
+    "pdf": true,
     "txt": true,
     "md": true,
     "docx": true

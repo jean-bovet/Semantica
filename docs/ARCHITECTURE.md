@@ -134,7 +134,7 @@ Files are processed with **controlled parallelism** for optimal performance:
   "watchedFolders": ["..."],
   "settings": {
     "fileTypes": {
-      "pdf": false,  // Disabled by default
+      "pdf": true,
       "txt": true,
       "md": true,
       "docx": true,
