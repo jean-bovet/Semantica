@@ -607,6 +607,16 @@ parentPort!.on('message', async (msg: any) => {
           }
         }
         break;
+      
+      case 'shutdown':
+        // Clean shutdown requested
+        console.log('Worker shutting down...');
+        await shutdownEmbedder();
+        if (db) {
+          await db.close();
+        }
+        process.exit(0);
+        break;
     }
   } catch (error: any) {
     console.error('Worker message error:', error);

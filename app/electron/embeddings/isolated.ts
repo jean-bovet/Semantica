@@ -145,9 +145,17 @@ export class IsolatedEmbedder {
 
   async shutdown(): Promise<void> {
     if (this.child) {
-      this.child.send({ type: 'shutdown' });
+      try {
+        this.child.send({ type: 'shutdown' });
+        await new Promise(r => setTimeout(r, 200));
+      } catch (e) {
+        // Child may already be dead
+      }
+      this.child.kill('SIGTERM');
       await new Promise(r => setTimeout(r, 100));
-      this.child.kill('SIGKILL');
+      if (this.child.killed === false) {
+        this.child.kill('SIGKILL');
+      }
       this.child = null;
     }
     this.ready = false;

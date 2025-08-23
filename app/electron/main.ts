@@ -181,6 +181,15 @@ app.on('activate', () => {
   }
 });
 
-app.on('before-quit', () => {
-  worker?.terminate();
+app.on('before-quit', async (event) => {
+  event.preventDefault();
+  
+  // Send shutdown signal to worker and wait
+  if (worker) {
+    worker.postMessage({ type: 'shutdown' });
+    await new Promise(resolve => setTimeout(resolve, 500));
+    worker.terminate();
+  }
+  
+  app.exit(0);
 });
