@@ -26,6 +26,8 @@ let configManager: ConfigManager | null = null;
 const queue: string[] = [];
 const processing = new Set<string>();
 const fileHashes = new Map<string, string>();
+let isWriting = false;
+const writeQueue: Array<() => Promise<void>> = [];
 interface FolderStats {
   total: number;
   indexed: number;
@@ -72,15 +74,18 @@ async function initDB(dir: string) {
     
     // Load existing indexed files to prevent re-indexing
     try {
-      const existingFiles = await tbl.search([0])
-        .select(['path', 'mtime'])
+      // Get all unique file paths from the index
+      const allRows = await tbl.query()
+        .select(['path'])
         .limit(100000)
         .toArray();
       
       // Build fileHashes map from existing index
       const uniquePaths = new Set<string>();
-      existingFiles.forEach((row: any) => {
-        uniquePaths.add(row.path);
+      allRows.forEach((row: any) => {
+        if (row.path) {
+          uniquePaths.add(row.path);
+        }
       });
       
       uniquePaths.forEach(filePath => {
@@ -105,6 +110,22 @@ async function initDB(dir: string) {
       if (savedFolders.length > 0) {
         console.log('Auto-starting watch on saved folders:', savedFolders);
         startWatching(savedFolders, configManager!.getSettings().excludePatterns);
+        
+        // Initialize indexed counts for each folder
+        setTimeout(() => {
+          for (const folder of savedFolders) {
+            const stats = folderStats.get(folder);
+            if (stats) {
+              let indexedInFolder = 0;
+              for (const [path] of fileHashes) {
+                if (path.startsWith(folder)) {
+                  indexedInFolder++;
+                }
+              }
+              stats.indexed = indexedInFolder;
+            }
+          }
+        }, 500);
       }
     }, 1000);
   } catch (error) {
@@ -116,14 +137,50 @@ async function initDB(dir: string) {
 async function mergeRows(rows: any[]) {
   if (rows.length === 0) return;
   
-  try {
-    await tbl.mergeInsert('id')
-      .whenMatchedUpdateAll()
-      .whenNotMatchedInsertAll()
-      .execute(rows);
-  } catch (error) {
-    console.error('Failed to merge rows:', error);
+  // Queue the write operation to avoid concurrent writes
+  return new Promise<void>((resolve, reject) => {
+    const writeOp = async () => {
+      try {
+        await tbl.mergeInsert('id')
+          .whenMatchedUpdateAll()
+          .whenNotMatchedInsertAll()
+          .execute(rows);
+        resolve();
+      } catch (error) {
+        console.error('Failed to merge rows:', error);
+        // Retry once on conflict
+        if (error.message?.includes('Commit conflict')) {
+          try {
+            await new Promise(r => setTimeout(r, 100));
+            await tbl.mergeInsert('id')
+              .whenMatchedUpdateAll()
+              .whenNotMatchedInsertAll()
+              .execute(rows);
+            resolve();
+          } catch (retryError) {
+            console.error('Retry failed:', retryError);
+            reject(retryError);
+          }
+        } else {
+          reject(error);
+        }
+      }
+    };
+    
+    writeQueue.push(writeOp);
+    processWriteQueue();
+  });
+}
+
+async function processWriteQueue() {
+  if (isWriting || writeQueue.length === 0) return;
+  
+  isWriting = true;
+  while (writeQueue.length > 0) {
+    const writeOp = writeQueue.shift()!;
+    await writeOp();
   }
+  isWriting = false;
 }
 
 async function deleteByPath(filePath: string) {
@@ -215,10 +272,17 @@ async function handleFile(filePath: string) {
     
     fileHashes.set(filePath, currentHash);
     
-    // Update indexed count for the folder
+    // Update indexed count for the folder based on unique files
     for (const [folder, stats] of folderStats) {
       if (filePath.startsWith(folder)) {
-        stats.indexed++;
+        // Count unique indexed files in this folder
+        let indexedInFolder = 0;
+        for (const [path] of fileHashes) {
+          if (path.startsWith(folder)) {
+            indexedInFolder++;
+          }
+        }
+        stats.indexed = indexedInFolder;
         break;
       }
     }
