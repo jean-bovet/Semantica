@@ -77,13 +77,34 @@ Real-time memory tracking with automatic recovery:
 ## Data Flow
 
 ### Indexing Pipeline
-1. **File Detection**: Chokidar watches configured folders
-2. **Queue Management**: Files added to processing queue
-3. **Content Extraction**: Parse PDF/TXT/MD/DOCX files
+
+The indexing system uses a carefully orchestrated mix of parallel and sequential processing:
+
+#### File Discovery (Parallel)
+- **Chokidar** watches multiple folders simultaneously
+- Files are discovered in parallel and immediately queued
+- All discovered files go into a central queue array
+
+#### File Processing (Sequential)
+Files are processed **one at a time** to prevent memory accumulation:
+1. **Dequeue**: Take one file from queue (`queue.shift()`)
+2. **Hash Check**: Skip if file hasn't changed since last index
+3. **Content Extraction**: Parse PDF/TXT/MD/DOCX/RTF files
 4. **Text Chunking**: Split into 500-char chunks with 60-char overlap
-5. **Embedding Generation**: Send to isolated child process
-6. **Vector Storage**: Store in LanceDB with metadata
-7. **Memory Cleanup**: Clear buffers and check thresholds
+5. **Embedding Generation** (Batched):
+   - Process chunks in batches of 8
+   - Each batch sent to isolated child process
+   - Wait for embeddings before next batch
+6. **Vector Storage**: Store each batch in LanceDB with metadata
+7. **Memory Check**: Monitor and restart child if needed
+8. **Status Update**: Report progress (queued/processing/done)
+
+#### Memory Management
+- Child process auto-restarts after:
+  - 200 files processed
+  - RSS memory > 900MB
+  - External memory > 150MB
+- Restart is transparent - queue continues processing
 
 ### Search Pipeline
 1. **Query Input**: User types in search box
