@@ -14,7 +14,7 @@ async function getTransformers() {
   return transformers;
 }
 
-export type EmbedFn = (texts: string[]) => Promise<number[][]>;
+export type EmbedFn = (texts: string[], isQuery?: boolean) => Promise<number[][]>;
 let embedImpl: EmbedFn | null = null;
 
 export function setEmbedImpl(fn: EmbedFn) {
@@ -26,22 +26,28 @@ async function getEmbedder() {
     const tf = await getTransformers();
     embedderPromise = tf.pipeline(
       'feature-extraction',
-      'Xenova/all-MiniLM-L6-v2',
+      'Xenova/multilingual-e5-small',
       { quantized: true }
     );
   }
   return embedderPromise;
 }
 
-export async function embed(texts: string[]): Promise<number[][]> {
+export async function embed(texts: string[], isQuery = false): Promise<number[][]> {
   if (embedImpl) {
-    return embedImpl(texts);
+    return embedImpl(texts, isQuery);
   }
+  
+  // Add E5 prefixes based on type
+  const prefixedTexts = texts.map(text => {
+    const prefix = isQuery ? 'query: ' : 'passage: ';
+    return prefix + text;
+  });
   
   let output: any = null;
   try {
     const pipe = await getEmbedder();
-    output = await pipe(texts, {
+    output = await pipe(prefixedTexts, {
       pooling: 'mean',
       normalize: true
     });

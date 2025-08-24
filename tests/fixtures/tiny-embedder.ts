@@ -10,10 +10,18 @@ export class TinyEmbedder {
   
   /**
    * Generate embeddings for an array of texts
+   * @param texts - Array of texts to embed
+   * @param isQuery - Whether to apply query prefix (for E5 models)
    */
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], isQuery = false): Promise<number[][]> {
+    // Apply E5 prefixes to match production behavior
+    const prefixedTexts = texts.map(text => {
+      const prefix = isQuery ? 'query: ' : 'passage: ';
+      return prefix + text;
+    });
+    
     // Fast, deterministic embeddings based on text hash
-    return texts.map(text => {
+    return prefixedTexts.map(text => {
       const hash = this.hashCode(text);
       const vector = new Array(this.dim);
       
@@ -66,9 +74,9 @@ export class TinyEmbedder {
 export class MockEmbedder384 {
   private tinyEmbedder = new TinyEmbedder();
   
-  async embed(texts: string[]): Promise<number[][]> {
-    // Get tiny embeddings first
-    const tinyVectors = await this.tinyEmbedder.embed(texts);
+  async embed(texts: string[], isQuery = false): Promise<number[][]> {
+    // Get tiny embeddings first (with E5 prefixes)
+    const tinyVectors = await this.tinyEmbedder.embed(texts, isQuery);
     
     // Expand to 384 dimensions by repeating pattern
     return tinyVectors.map(tinyVec => {

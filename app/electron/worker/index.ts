@@ -288,7 +288,7 @@ async function handleFile(filePath: string) {
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
-      const vectors = await embed(texts);
+      const vectors = await embed(texts, false); // false = document chunks (use passage: prefix)
       
       const rows = batch.map((c, idx) => {
         const id = crypto.createHash('sha1')
@@ -354,7 +354,7 @@ async function handleFile(filePath: string) {
 
 async function search(query: string, k = 10) {
   try {
-    const [qvec] = await embed([query]);
+    const [qvec] = await embed([query], true); // true = search query (use query: prefix)
     const results = await tbl.search(qvec)
       .limit(k)
       .toArray();

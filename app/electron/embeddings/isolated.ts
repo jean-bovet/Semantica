@@ -8,7 +8,7 @@ export class IsolatedEmbedder {
   private ready = false;
   private initPromise: Promise<void> | null = null;
 
-  constructor(private modelName = 'Xenova/all-MiniLM-L6-v2') {}
+  constructor(private modelName = 'Xenova/multilingual-e5-small') {}
 
   private async spawnChild(): Promise<void> {
     if (this.child) {
@@ -95,7 +95,7 @@ export class IsolatedEmbedder {
     }
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], isQuery = false): Promise<number[][]> {
     await this.ensureReady();
     
     return new Promise((resolve, reject) => {
@@ -118,7 +118,7 @@ export class IsolatedEmbedder {
         }
       });
 
-      this.child!.send({ type: 'embed', id, texts });
+      this.child!.send({ type: 'embed', id, texts, isQuery });
     });
   }
 
@@ -167,11 +167,11 @@ export class IsolatedEmbedder {
 // Singleton instance
 let embedder: IsolatedEmbedder | null = null;
 
-export async function embed(texts: string[]): Promise<number[][]> {
+export async function embed(texts: string[], isQuery = false): Promise<number[][]> {
   if (!embedder) {
     embedder = new IsolatedEmbedder();
   }
-  return embedder.embed(texts);
+  return embedder.embed(texts, isQuery);
 }
 
 export async function checkEmbedderMemory(): Promise<boolean> {

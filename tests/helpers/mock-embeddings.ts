@@ -1,7 +1,13 @@
 import crypto from 'node:crypto';
 
-export function mockEmbed(texts: string[], dim: number = 384): number[][] {
-  return texts.map(text => {
+export function mockEmbed(texts: string[], dim: number = 384, isQuery = false): number[][] {
+  // Apply E5 prefixes to match production behavior
+  const prefixedTexts = texts.map(text => {
+    const prefix = isQuery ? 'query: ' : 'passage: ';
+    return prefix + text;
+  });
+  
+  return prefixedTexts.map(text => {
     const hash = crypto.createHash('sha1').update(text).digest();
     const vector = new Float32Array(dim);
     

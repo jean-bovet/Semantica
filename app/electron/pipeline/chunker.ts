@@ -6,7 +6,7 @@ export interface Chunk {
 export function chunkText(
   text: string,
   targetTokens: number = 500,
-  overlapTokens: number = 60
+  overlapTokens: number = 80  // Increased for multilingual support
 ): Chunk[] {
   if (!text || text.trim().length === 0) {
     return [];

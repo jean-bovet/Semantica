@@ -27,7 +27,7 @@ process.on('message', async (msg: any) => {
   if (msg?.type === 'init') {
     try {
       const tf = await initTransformers();
-      pipe = await tf.pipeline('feature-extraction', msg.model || 'Xenova/all-MiniLM-L6-v2', { quantized: true });
+      pipe = await tf.pipeline('feature-extraction', msg.model || 'Xenova/multilingual-e5-small', { quantized: true });
       process.send?.({ type: 'ready' });
     } catch (e: any) {
       process.send?.({ type: 'init:err', error: String(e) });
@@ -35,7 +35,14 @@ process.on('message', async (msg: any) => {
   } else if (msg?.type === 'embed') {
     let out: any;
     try {
-      out = await pipe(msg.texts, { pooling: 'mean', normalize: true });
+      // Add E5 prefixes based on type
+      const prefixedTexts = msg.texts.map((text: string, i: number) => {
+        // Use passage: for documents, query: for search queries
+        const prefix = msg.isQuery ? 'query: ' : 'passage: ';
+        return prefix + text;
+      });
+      
+      out = await pipe(prefixedTexts, { pooling: 'mean', normalize: true });
       const dim = out.dims.at(-1) ?? 384;
       const data = out.data as Float32Array;
       // copy into plain arrays so parent doesn't hold native buffers

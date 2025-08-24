@@ -100,6 +100,7 @@ describe('Database Operations', () => {
       
       // Query back the chunk
       const results = await table
+        .query()
         .where(`id = 'metadata-test'`)
         .limit(1)
         .toArray();
@@ -121,19 +122,28 @@ describe('Database Operations', () => {
           id: 'ml-doc',
           text: 'Machine learning and artificial intelligence',
           vector: new Array(384).fill(0).map((_, i) => Math.sin(i * 0.1)),
-          path: '/ml.pdf'
+          path: '/ml.pdf',
+          page: 0,
+          offset: 0,
+          hash: 'ml1'
         },
         {
           id: 'cooking-doc',
           text: 'Cooking recipes and kitchen tips',
           vector: new Array(384).fill(0).map((_, i) => Math.cos(i * 0.1)),
-          path: '/recipes.txt'
+          path: '/recipes.txt',
+          page: 0,
+          offset: 0,
+          hash: 'cook1'
         },
         {
           id: 'ml-doc2',
           text: 'Deep learning neural networks',
           vector: new Array(384).fill(0).map((_, i) => Math.sin(i * 0.1 + 0.1)),
-          path: '/ml2.pdf'
+          path: '/ml2.pdf',
+          page: 0,
+          offset: 0,
+          hash: 'ml2'
         }
       ];
       
@@ -145,7 +155,7 @@ describe('Database Operations', () => {
       const queryVector = new Array(384).fill(0).map((_, i) => Math.sin(i * 0.1 + 0.05));
       
       const results = await table
-        .search(queryVector)
+        .vectorSearch(queryVector)
         .limit(3)
         .toArray();
       
@@ -161,12 +171,12 @@ describe('Database Operations', () => {
       const queryVector = new Array(384).fill(0.5);
       
       const results2 = await table
-        .search(queryVector)
+        .vectorSearch(queryVector)
         .limit(2)
         .toArray();
       
       const results5 = await table
-        .search(queryVector)
+        .vectorSearch(queryVector)
         .limit(5)
         .toArray();
       
@@ -179,7 +189,7 @@ describe('Database Operations', () => {
       const queryVector = new Array(384).fill(0.3);
       
       const results = await table
-        .search(queryVector)
+        .vectorSearch(queryVector)
         .where("path LIKE '%.pdf'")
         .limit(10)
         .toArray();
@@ -193,7 +203,7 @@ describe('Database Operations', () => {
       const queryVector = new Array(384).fill(0.4);
       
       const results = await table
-        .search(queryVector)
+        .vectorSearch(queryVector)
         .limit(3)
         .toArray();
       
@@ -228,6 +238,7 @@ describe('Database Operations', () => {
       
       // Verify they were added
       const before = await table
+        .query()
         .where(`path = '${filePath}'`)
         .toArray();
       expect(before).toHaveLength(5);
@@ -237,6 +248,7 @@ describe('Database Operations', () => {
       
       // Verify deletion
       const after = await table
+        .query()
         .where(`path = '${filePath}'`)
         .toArray();
       expect(after).toHaveLength(0);
@@ -300,6 +312,7 @@ describe('Database Operations', () => {
       
       // Verify the update
       const results = await table
+        .query()
         .where(`path = '${filePath}'`)
         .toArray();
       
@@ -340,7 +353,7 @@ describe('Database Operations', () => {
       // Create empty table
       const emptyDb = await lancedb.connect(tempDir);
       const emptyTable = await emptyDb.createTable('empty', [
-        { id: 'dummy', text: 'dummy', vector: Float32Array.from(new Array(384).fill(0)) }
+        { id: 'dummy', text: 'dummy', vector: new Array(384).fill(0) }
       ]);
       await emptyTable.delete("id = 'dummy'");
       
@@ -371,6 +384,7 @@ describe('Database Operations', () => {
       
       // Should handle the special characters
       const results = await table
+        .query()
         .where("id = 'special1'")
         .toArray();
       

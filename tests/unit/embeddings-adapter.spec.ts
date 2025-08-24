@@ -4,7 +4,7 @@ import { mockEmbed } from '../helpers/mock-embeddings';
 
 describe('Embeddings Adapter', () => {
   beforeAll(() => {
-    setEmbedImpl(async (texts: string[]) => mockEmbed(texts));
+    setEmbedImpl(async (texts: string[], isQuery?: boolean) => mockEmbed(texts, 384, isQuery));
   });
   
   it('should return vectors with correct shape', async () => {
@@ -55,5 +55,24 @@ describe('Embeddings Adapter', () => {
     
     expect(vectors).toHaveLength(100);
     expect(vectors.every(v => v.length === 384)).toBe(true);
+  });
+  
+  it('should produce different vectors for query vs document prefixes', async () => {
+    const text = 'semantic search';
+    
+    // Embed as document (passage: prefix)
+    const docVectors = await embed([text], false);
+    
+    // Embed as query (query: prefix)
+    const queryVectors = await embed([text], true);
+    
+    // Should be different due to different prefixes
+    expect(docVectors[0]).not.toEqual(queryVectors[0]);
+    
+    // But should still be somewhat similar (same base text)
+    const dotProduct = docVectors[0].reduce((sum, val, i) => sum + val * queryVectors[0][i], 0);
+    // Prefixes make them quite different in the mock implementation
+    expect(dotProduct).not.toBeCloseTo(1.0, 2);    // Not exactly the same
+    expect(dotProduct).not.toBeCloseTo(0.0, 2);    // Not completely different
   });
 });

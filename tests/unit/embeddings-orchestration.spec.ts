@@ -327,16 +327,21 @@ class IsolatedEmbedder {
     });
   }
   
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], isQuery = false): Promise<number[][]> {
     if (texts.length === 0) return [];
     
-    // Mock embedding
+    // Mock embedding with E5 prefix support
     return new Promise((resolve, reject) => {
       setTimeout(() => {
         if (this.timeout === 100) {
           reject(new Error('timeout'));
         } else {
-          resolve(texts.map(() => new Array(384).fill(0.1)));
+          // Apply E5 prefixes for testing
+          const prefixedTexts = texts.map(text => {
+            const prefix = isQuery ? 'query: ' : 'passage: ';
+            return prefix + text;
+          });
+          resolve(prefixedTexts.map(() => new Array(384).fill(0.1)));
         }
       }, 50);
     });
