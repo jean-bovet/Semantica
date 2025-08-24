@@ -4,7 +4,7 @@ This folder contains the technical specifications and implementation details for
 
 ## Core Specifications
 
-### [ARCHITECTURE.md](./ARCHITECTURE.md)
+### [architecture.md](./architecture.md)
 Complete system architecture documentation including:
 - Multi-process design with Electron, Worker Thread, and Embedder Child Process
 - Memory isolation strategy
@@ -13,7 +13,7 @@ Complete system architecture documentation including:
 - Security features and error handling
 - Search-first UI philosophy
 
-### [MEMORY-SOLUTION.md](./MEMORY-SOLUTION.md)
+### [memory-solution.md](./memory-solution.md)
 Memory management solution that resolved critical memory leaks:
 - Process isolation architecture
 - Memory monitoring and thresholds
@@ -21,7 +21,7 @@ Memory management solution that resolved critical memory leaks:
 - Performance benchmarks showing stable 270MB usage
 - Configuration options for memory limits
 
-### [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+### [troubleshooting.md](./troubleshooting.md)
 Comprehensive troubleshooting guide:
 - Common issues and solutions
 - Scanned PDF handling

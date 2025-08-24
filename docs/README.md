@@ -9,9 +9,9 @@ This directory contains analysis and implementation documentation for the Offlin
 - **[search-quality-analysis.md](./search-quality-analysis.md)** - Current search quality metrics and chunking strategy
 
 ### `/specs/` - Technical Specifications
-- **[ARCHITECTURE.md](../specs/ARCHITECTURE.md)** - System architecture and design
-- **[MEMORY-SOLUTION.md](../specs/MEMORY-SOLUTION.md)** - Memory management implementation
-- **[TROUBLESHOOTING.md](../specs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[architecture.md](../specs/architecture.md)** - System architecture and design
+- **[memory-solution.md](../specs/memory-solution.md)** - Memory management implementation
+- **[troubleshooting.md](../specs/troubleshooting.md)** - Common issues and solutions
 
 ### `/planning/` - Future Enhancements
 - **[parser-version-tracking.md](../planning/parser-version-tracking.md)** - Automatic re-indexing system
