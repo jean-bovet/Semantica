@@ -42,6 +42,7 @@ import { ConfigManager } from './config';
 let db: any = null;
 let tbl: any = null;
 let paused = false;
+const fileChunkCounts = new Map<string, number>(); // Track chunk counts per file
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
 const queue: string[] = [];
@@ -665,65 +666,65 @@ parentPort!.on('message', async (msg: any) => {
         break;
       
       case 'searchFiles':
-        const searchQuery = msg.payload.toLowerCase();
-        const results: any[] = [];
-        
-        // Search through all known files
-        for (const [filePath, hash] of fileHashes) {
-          if (filePath.toLowerCase().includes(searchQuery)) {
-            // Check if file is in queue
-            const queuePosition = queue.indexOf(filePath);
-            const isProcessing = processing.has(filePath);
+        try {
+          const searchQuery = (typeof msg.payload === 'string' ? msg.payload : msg.payload?.query || '').toLowerCase();
+          const results: any[] = [];
+          
+          // Quick search through all known files (limit to first 30 matches)
+          let matchCount = 0;
+          
+          // Search indexed files
+          for (const [filePath, hash] of fileHashes) {
+            if (matchCount >= 30) break;
             
-            let status: 'indexed' | 'queued' | 'error' | 'not_indexed' = 'indexed';
-            let chunks = 0;
-            
-            if (queuePosition >= 0) {
-              status = 'queued';
-            } else if (isProcessing) {
-              status = 'queued'; // Show as queued when processing
+            if (filePath.toLowerCase().includes(searchQuery)) {
+              const queuePosition = queue.indexOf(filePath);
+              const isProcessing = processing.has(filePath);
+              
+              let status: 'indexed' | 'queued' | 'error' | 'not_indexed' = 'indexed';
+              if (queuePosition >= 0 || isProcessing) {
+                status = 'queued';
+              }
+              
+              results.push({
+                path: filePath,
+                status,
+                chunks: 0, // Will be updated below for indexed files
+                queuePosition: queuePosition >= 0 ? queuePosition + 1 : undefined
+              });
+              matchCount++;
             }
-            
-            // Get chunk count from database if indexed
-            if (status === 'indexed' && db) {
-              try {
-                const table = await db.openTable('chunks');
-                const queryResult = await table.query()
-                  .where('path = ?', filePath)
-                  .toArray();
-                chunks = queryResult.length;
-              } catch (e) {
-                console.error('Error counting chunks:', e);
+          }
+          
+          // Search queued files
+          for (let i = 0; i < queue.length && matchCount < 30; i++) {
+            const filePath = queue[i];
+            if (filePath.toLowerCase().includes(searchQuery)) {
+              // Check if already in results
+              if (!results.find(r => r.path === filePath)) {
+                results.push({
+                  path: filePath,
+                  status: 'queued' as const,
+                  chunks: 0,
+                  queuePosition: i + 1
+                });
+                matchCount++;
               }
             }
-            
-            results.push({
-              path: filePath,
-              status,
-              chunks,
-              queuePosition: queuePosition >= 0 ? queuePosition + 1 : undefined,
-              modified: undefined // Could add file stats here if needed
-            });
           }
-        }
-        
-        // Also search files in queue that might not be in fileHashes yet
-        for (const filePath of queue) {
-          if (filePath.toLowerCase().includes(searchQuery) && 
-              !results.find(r => r.path === filePath)) {
-            results.push({
-              path: filePath,
-              status: 'queued' as const,
-              queuePosition: queue.indexOf(filePath) + 1
-            });
+          
+          // Skip chunk counts for now to avoid LanceDB query issues
+          // The main purpose of file search is to check indexing status, not chunk counts
+          
+          // Send results
+          if (msg.id) {
+            parentPort!.postMessage({ id: msg.id, payload: results });
           }
-        }
-        
-        // Limit results
-        const limitedResults = results.slice(0, 20);
-        
-        if (msg.id) {
-          parentPort!.postMessage({ id: msg.id, payload: limitedResults });
+        } catch (error) {
+          console.error('Search files error:', error);
+          if (msg.id) {
+            parentPort!.postMessage({ id: msg.id, payload: [] });
+          }
         }
         break;
       

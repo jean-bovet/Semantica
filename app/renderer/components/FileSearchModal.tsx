@@ -90,7 +90,7 @@ function FileSearchModal({ isOpen, onClose }: FileSearchModalProps) {
   const getStatusText = (result: FileSearchResult) => {
     switch (result.status) {
       case 'indexed':
-        return `Indexed (${result.chunks} chunks)`;
+        return 'Indexed';
       case 'queued':
         return `In Queue (position ${result.queuePosition})`;
       case 'error':
