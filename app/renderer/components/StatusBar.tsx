@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getStatusText, isIndexerActive } from '../utils/statusHelpers';
 import './StatusBar.css';
 
 interface StatusBarProps {
@@ -8,6 +9,7 @@ interface StatusBarProps {
     done: number;
     errors: number;
     paused: boolean;
+    initialized?: boolean;
   };
   onSettingsClick: () => void;
   onFileSearchClick: () => void;
@@ -32,20 +34,8 @@ function StatusBar({ progress, onSettingsClick, onFileSearchClick }: StatusBarPr
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusText = () => {
-    if (progress.paused) {
-      return '⏸ Paused';
-    }
-    
-    const remaining = progress.queued + progress.processing;
-    if (remaining > 0) {
-      return `⚡ Indexing (${remaining} remaining)`;
-    }
-    
-    return '✓ Ready';
-  };
-  
-  const isActive = progress.queued > 0 || progress.processing > 0;
+  const statusText = getStatusText(progress);
+  const isActive = isIndexerActive(progress);
   const folderCount = stats.folderStats?.length || 0;
   
   return (
@@ -59,7 +49,7 @@ function StatusBar({ progress, onSettingsClick, onFileSearchClick }: StatusBarPr
           <span className="status-stat">{(stats.totalChunks / 1000).toFixed(0)}K chunks</span>
           <span className="status-separator">|</span>
           <span className={`status-indicator-text ${progress.paused ? 'paused' : ''}`}>
-            {getStatusText()}
+            {statusText}
           </span>
         </div>
         

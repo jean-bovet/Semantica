@@ -5,6 +5,7 @@ import StatusBar from './components/StatusBar';
 import Modal from './components/Modal';
 import FileSearchModal from './components/FileSearchModal';
 import { SearchProvider } from './contexts/SearchContext';
+import { normalizeProgress } from './utils/statusHelpers';
 import './App.css';
 
 declare global {
@@ -21,15 +22,18 @@ function App() {
     processing: 0,
     done: 0,
     errors: 0,
-    paused: false
+    paused: false,
+    initialized: false
   });
   
   useEffect(() => {
-    const unsubscribe = window.api.indexer.onProgress(setIndexProgress);
+    const unsubscribe = window.api.indexer.onProgress((progress) => {
+      setIndexProgress(normalizeProgress(progress));
+    });
     
     const interval = setInterval(async () => {
       const progress = await window.api.indexer.progress();
-      setIndexProgress(progress);
+      setIndexProgress(normalizeProgress(progress));
     }, 2000);
     
     return () => {

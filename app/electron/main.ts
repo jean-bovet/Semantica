@@ -54,8 +54,12 @@ function spawnWorker() {
     if (msg.type === 'ready') {
       workerReady = true;
       console.log('Worker ready');
+      // Send initial progress with initialized flag
+      sendToWorker('progress').then((progress: any) => {
+        win?.webContents.send('indexer:progress', { ...progress, initialized: true });
+      });
     } else if (msg.type === 'progress') {
-      win?.webContents.send('indexer:progress', msg.payload);
+      win?.webContents.send('indexer:progress', { ...msg.payload, initialized: true });
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
       pendingCallbacks.delete(msg.id);
@@ -156,7 +160,8 @@ if (gotTheLock) {
   });
   
   ipcMain.handle('indexer:progress', async () => {
-    return sendToWorker('progress');
+    const progress = await sendToWorker('progress');
+    return { ...progress, initialized: workerReady };
   });
   
   ipcMain.handle('search:query', async (_, { q, k }) => {

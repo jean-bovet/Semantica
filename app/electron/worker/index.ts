@@ -166,31 +166,29 @@ async function initDB(dir: string) {
     // Check for parser upgrades and queue files for re-indexing
     await checkForParserUpgrades(fileStatusTable, queue, parentPort);
     
-    // Schedule auto-start after initialization completes
-    setTimeout(async () => {
-      const config = await configManager!.getConfig();
-      const savedFolders = config.watchedFolders || [];
-      if (savedFolders.length > 0) {
-        console.log('Auto-starting watch on saved folders:', savedFolders);
-        startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
-        
-        // Initialize indexed counts for each folder
-        setTimeout(() => {
-          for (const folder of savedFolders) {
-            const stats = folderStats.get(folder);
-            if (stats) {
-              let indexedInFolder = 0;
-              for (const [path] of fileHashes) {
-                if (path.startsWith(folder)) {
-                  indexedInFolder++;
-                }
-              }
-              stats.indexed = indexedInFolder;
+    // Do auto-start synchronously during init to avoid UI flash
+    const config = await configManager!.getConfig();
+    const savedFolders = config.watchedFolders || [];
+    if (savedFolders.length > 0) {
+      console.log('Auto-starting watch on saved folders:', savedFolders);
+      await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
+      
+      // Initialize indexed counts for each folder
+      for (const folder of savedFolders) {
+        const stats = folderStats.get(folder);
+        if (stats) {
+          let indexedInFolder = 0;
+          for (const [path] of fileHashes) {
+            if (path.startsWith(folder)) {
+              indexedInFolder++;
             }
           }
-        }, 500);
+          stats.indexed = indexedInFolder;
+        }
       }
-    }, 1000);
+    }
+    
+    console.log('Worker ready');
   } catch (error) {
     console.error('Failed to initialize database:', error);
     throw error;
@@ -638,9 +636,9 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
     fileStatusCache = new Map();
   }
   
-  // After watcher is set up, scan for new and modified files
+  // After watcher is set up, scan for new and modified files synchronously
   // Smart scan: only check timestamps first, then hash if needed
-  setTimeout(async () => {
+  await (async () => {
     console.log('Scanning for new and modified files...');
     console.log('File status cache size:', fileStatusCache?.size || 0);
     console.log('Queue already has:', queue.length, 'files');
@@ -738,7 +736,7 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
       console.log('No new or modified files found');
     }
     console.log('Total queue size after scan:', queue.length);
-  }, 1000); // Small delay to let watcher stabilize
+  })(); // Execute immediately, not after delay
 
   watcher.on('add', async (p: string) => {
     // Update total file count

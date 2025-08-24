@@ -16,6 +16,7 @@ export interface IndexProgress {
   done: number;
   errors: number;
   paused: boolean;
+  initialized?: boolean;
 }
 
 const api = {
