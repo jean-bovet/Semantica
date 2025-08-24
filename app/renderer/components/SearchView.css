@@ -2,20 +2,23 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
 }
 
 .search-header {
-  padding: 24px;
+  padding: 32px 24px 24px;
   background: linear-gradient(180deg, rgba(30, 30, 30, 0.9) 0%, rgba(30, 30, 30, 0.6) 100%);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  -webkit-app-region: drag;
 }
 
 .search-form {
   display: flex;
   gap: 12px;
-  max-width: 600px;
+  max-width: 800px;
   margin: 0 auto;
+  -webkit-app-region: no-drag;
 }
 
 .search-input {
@@ -75,9 +78,8 @@
 .file-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 16px;
-  cursor: pointer;
-  user-select: none;
   transition: background 0.2s;
 }
 
@@ -89,7 +91,36 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: 12px;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .expand-icon {

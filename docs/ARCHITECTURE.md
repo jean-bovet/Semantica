@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The Offline Mac Search application uses a multi-process architecture with memory isolation to ensure stable operation during large-scale document indexing.
+The Offline Mac Search application uses a multi-process architecture with memory isolation to ensure stable operation during large-scale document indexing. The UI follows a search-first philosophy where search functionality takes center stage, with settings and configuration accessible via modal overlays to maximize search result visibility.
 
 ## Architecture Diagram
 
@@ -48,10 +48,12 @@ Main Process (Electron)
 - File path: `dist/embedder.child.cjs`
 
 ### 4. Renderer Process (`app/renderer/`)
-- React-based user interface
+- React-based user interface with search-first design
+- Full-screen search view for maximum result visibility
 - Real-time search with debouncing
-- Settings management
-- File type toggles
+- Settings accessible via modal overlay
+- Status bar with real-time indexing statistics
+- File type toggles and configuration in modal
 
 ## Memory Management Strategy
 

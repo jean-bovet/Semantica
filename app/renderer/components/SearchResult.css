@@ -1,6 +1,4 @@
 .search-result {
-  display: flex;
-  justify-content: space-between;
   padding: 12px;
   margin-bottom: 8px;
   background: rgba(255, 255, 255, 0.02);
@@ -13,7 +11,6 @@
 }
 
 .result-content {
-  flex: 1;
   overflow: hidden;
 }
 
@@ -46,35 +43,4 @@
 
 .score {
   color: rgba(0, 255, 0, 0.6);
-}
-
-.result-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-left: 16px;
-}
-
-.action-button {
-  padding: 6px 12px;
-  background: #007AFF;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.action-button:hover {
-  background: #0051D5;
-}
-
-.action-button.secondary {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.action-button.secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
 }

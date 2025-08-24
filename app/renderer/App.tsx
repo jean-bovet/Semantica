@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SearchView from './components/SearchView';
 import SettingsView from './components/SettingsView';
 import StatusBar from './components/StatusBar';
+import Modal from './components/Modal';
 import { SearchProvider } from './contexts/SearchContext';
 import './App.css';
 
@@ -12,7 +13,7 @@ declare global {
 }
 
 function App() {
-  const [activeView, setActiveView] = useState<'search' | 'settings'>('search');
+  const [showSettings, setShowSettings] = useState(false);
   const [indexProgress, setIndexProgress] = useState({
     queued: 0,
     processing: 0,
@@ -38,40 +39,22 @@ function App() {
   return (
     <SearchProvider>
       <div className="app">
-        <div className="sidebar">
-          <div className="nav">
-            <button
-              className={`nav-item ${activeView === 'search' ? 'active' : ''}`}
-              onClick={() => setActiveView('search')}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="2"/>
-                <path d="M14 14L17 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              Search
-            </button>
-            <button
-              className={`nav-item ${activeView === 'settings' ? 'active' : ''}`}
-              onClick={() => setActiveView('settings')}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="2"/>
-                <path d="M10 1V5M10 15V19M1 10H5M15 10H19" stroke="currentColor" strokeWidth="2"/>
-              </svg>
-              Settings
-            </button>
-          </div>
+        <div className="main-content">
+          <SearchView />
         </div>
         
-        <div className="main">
-          {activeView === 'search' ? (
-            <SearchView />
-          ) : (
-            <SettingsView />
-          )}
-        </div>
+        <StatusBar 
+          progress={indexProgress} 
+          onSettingsClick={() => setShowSettings(true)}
+        />
         
-        <StatusBar progress={indexProgress} />
+        <Modal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          title="Settings"
+        >
+          <SettingsView />
+        </Modal>
       </div>
     </SearchProvider>
   );

@@ -193,8 +193,6 @@ function SettingsView() {
 
   return (
     <div className="settings-view">
-      <h2>Settings</h2>
-      
       <div className="settings-group">
         <h3 className="settings-subtitle">Indexed Folders</h3>
         <div className="folder-list compact">

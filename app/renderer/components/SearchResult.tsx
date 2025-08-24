@@ -41,14 +41,6 @@ function SearchResult({ result, query }: SearchResultProps) {
     return snippet;
   };
   
-  const handleOpen = () => {
-    window.api.system.openPreview(result.path, result.page);
-  };
-  
-  const handleShowInFinder = () => {
-    window.api.system.openPath(result.path);
-  };
-  
   return (
     <div className="search-result">
       <div className="result-content">
@@ -58,12 +50,6 @@ function SearchResult({ result, query }: SearchResultProps) {
           {result.page > 0 && <span className="page-number">Page {result.page}</span>}
           <span className="score">Score: {(result.score * 100).toFixed(0)}%</span>
         </div>
-      </div>
-      <div className="result-actions">
-        <button onClick={handleOpen} className="action-button">Open</button>
-        <button onClick={handleShowInFinder} className="action-button secondary">
-          Show in Finder
-        </button>
       </div>
     </div>
   );
