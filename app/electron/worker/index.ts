@@ -100,30 +100,36 @@ async function initDB(dir: string) {
     
     console.log('Database initialized');
     
-    // Initialize file status table
+    // Initialize file status table (optional - won't fail if it doesn't work)
     try {
-      // Try to open existing table first
-      fileStatusTable = await db.openTable('file_status');
-    } catch (e) {
-      // Table doesn't exist, create it with initial data
-      try {
-        fileStatusTable = await db.createTable('file_status', [{
-          path: 'init',
+      // Check if table exists by trying to open it
+      const tables = await db.tableNames();
+      if (tables.includes('file_status')) {
+        fileStatusTable = await db.openTable('file_status');
+      } else {
+        // Create new table with dummy data (LanceDB requirement)
+        const dummyData = [{
+          path: '__init__',
           status: 'init',
           error_message: '',
           chunk_count: 0,
           last_modified: new Date().toISOString(),
           indexed_at: new Date().toISOString(),
           file_hash: ''
-        }], { mode: 'overwrite' });
+        }];
         
-        // Delete the init record
-        await fileStatusTable.delete('path = "init"').catch(() => {});
-      } catch (createError) {
-        console.error('Could not create file_status table:', createError);
-        // Continue without file status tracking
-        fileStatusTable = null;
+        fileStatusTable = await db.createTable('file_status', dummyData);
+        
+        // Try to clean up the dummy record (may fail but that's OK)
+        try {
+          await fileStatusTable.delete('path = "__init__"');
+        } catch (e) {
+          // Ignore - some versions of LanceDB don't support delete
+        }
       }
+    } catch (e) {
+      console.log('File status tracking not available (optional feature)');
+      fileStatusTable = null;
     }
     
     // Load existing indexed files to prevent re-indexing
@@ -328,10 +334,18 @@ async function handleFile(filePath: string) {
     let chunks: Array<{ text: string; offset: number; page?: number }> = [];
     
     if (ext === 'pdf' && parsePdf) {
-      const pages = await parsePdf(filePath);
-      for (const pg of pages) {
-        const pageChunks = chunkText(pg.text, 500, 60);
-        chunks.push(...pageChunks.map(c => ({ ...c, page: pg.page })));
+      try {
+        const pages = await parsePdf(filePath);
+        for (const pg of pages) {
+          const pageChunks = chunkText(pg.text, 500, 60);
+          chunks.push(...pageChunks.map(c => ({ ...c, page: pg.page })));
+        }
+      } catch (pdfError: any) {
+        // Track specific PDF error
+        const errorMsg = pdfError.message || 'Unknown PDF parsing error';
+        await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`);
+        console.warn(`PDF parsing failed for ${filePath}: ${errorMsg}`);
+        return;
       }
     } else if (ext === 'txt' || ext === 'md') {
       const text = await parseText(filePath);
