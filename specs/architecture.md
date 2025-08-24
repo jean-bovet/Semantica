@@ -157,13 +157,21 @@ The system maintains a database table to track the status of each file:
 - **error**: An error occurred during parsing
 - **queued**: File is waiting to be processed
 - **processing**: File is currently being indexed
+- **outdated**: Parser version upgraded, file needs re-indexing
 
-Supported file formats:
-- **PDF**: Extracted with pdf-parse library (text-based PDFs only)
-- **TXT/MD**: Plain text files
-- **DOCX**: Modern Word documents (XML-based)
-- **DOC**: Legacy Word documents (parsed with word-extractor)
-- **RTF**: Rich Text Format documents
+#### Parser Version Tracking
+The system tracks parser versions to automatically re-index files when parsers improve:
+- Each file type has a version number (e.g., DOC parser v2 with word-extractor support)
+- Files indexed with older parsers are automatically queued for re-indexing
+- Failed files are retried once per 24 hours with newer parser versions
+- Version history is maintained for transparency
+
+Supported file formats with current versions:
+- **PDF v1**: Extracted with pdf-parse library (text-based PDFs only)
+- **TXT/MD v1**: Plain text files
+- **DOCX v1**: Modern Word documents (XML-based with mammoth)
+- **DOC v2**: Legacy Word documents (v2: word-extractor, v1: failed RTF parsing)
+- **RTF v1**: Rich Text Format documents
 
 ### Known Limitations
 

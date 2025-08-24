@@ -29,6 +29,14 @@ Comprehensive troubleshooting guide:
 - Performance optimization tips
 - Debug commands and log locations
 
+### [parser-version-tracking.md](./parser-version-tracking.md)
+Parser version tracking system (✅ Implemented):
+- Automatic re-indexing when parsers improve
+- Version history for each file type
+- Smart detection of outdated files
+- Failed file retry mechanism
+- Transparent upgrade process
+
 ## Key Design Decisions
 
 ### Process Architecture
@@ -52,10 +60,11 @@ Comprehensive troubleshooting guide:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Core Architecture | ✅ Complete | Multi-process with memory isolation |
-| File Parsers | ✅ Complete | PDF, DOCX, DOC, RTF, TXT, MD |
+| File Parsers | ✅ Complete | PDF, DOCX, DOC v2, RTF, TXT, MD |
+| Parser Versioning | ✅ Complete | Automatic re-indexing on upgrades |
 | Search Engine | ✅ Complete | Multilingual E5 model |
 | UI Framework | ✅ Complete | React with search-first design |
-| File Status Tracking | ✅ Complete | Database persistence |
+| File Status Tracking | ✅ Complete | Database persistence with versions |
 | Memory Management | ✅ Complete | Stable at ~270MB |
 | Error Recovery | ✅ Complete | Auto-restart and retry logic |
 
@@ -81,14 +90,14 @@ Comprehensive troubleshooting guide:
 
 ## File Format Support
 
-| Format | Parser | Status | Notes |
-|--------|--------|--------|-------|
-| PDF | pdf-parse | ✅ Working | Text-based only, scanned PDFs fail |
-| DOCX | mammoth | ✅ Working | Modern Word format |
-| DOC | word-extractor | ✅ Working | Legacy Word format |
-| RTF | Custom | ✅ Working | Basic RTF stripping |
-| TXT | fs.readFile | ✅ Working | Plain text |
-| MD | fs.readFile | ✅ Working | Markdown as text |
+| Format | Parser | Version | Status | Notes |
+|--------|--------|---------|--------|-------|
+| PDF | pdf-parse | v1 | ✅ Working | Text-based only, scanned PDFs fail |
+| DOCX | mammoth | v1 | ✅ Working | Modern Word format |
+| DOC | word-extractor | v2 | ✅ Working | v2: Binary support, v1: Failed RTF parsing |
+| RTF | Custom | v1 | ✅ Working | Basic RTF stripping |
+| TXT | fs.readFile | v1 | ✅ Working | Plain text |
+| MD | fs.readFile | v1 | ✅ Working | Markdown as text |
 
 ## Related Documentation
 
