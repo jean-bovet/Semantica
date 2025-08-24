@@ -155,7 +155,51 @@ Electron (TS/Node)
 
 ---
 
-## 6) Search Flow
+## 6) Bundle Exclusion (macOS)
+
+### 6.1 Overview
+The indexer automatically excludes macOS bundle directories to improve performance and relevance. Bundles are special directory structures that macOS treats as single files (e.g., applications, frameworks).
+
+### 6.2 Implementation
+* **Configuration**: `ConfigManager` maintains:
+  - `excludeBundles: boolean` - Enable/disable bundle exclusion (default: true)
+  - `bundlePatterns: string[]` - Glob patterns for bundle types
+  
+* **Default Bundle Patterns**:
+  ```javascript
+  '**/*.app/**',        // Applications
+  '**/*.framework/**',  // Frameworks
+  '**/*.bundle/**',     // Generic bundles
+  '**/*.plugin/**',     // Plugins
+  '**/*.kext/**',       // Kernel extensions
+  '**/*.prefPane/**',   // Preference panes
+  '**/*.qlgenerator/**', // QuickLook generators
+  '**/*.dSYM/**',       // Debug symbols
+  '**/*.xcodeproj/**',  // Xcode projects
+  '**/*.playground/**', // Swift playgrounds
+  '**/*.photoslibrary/**', // Photos libraries
+  '**/*.musiclibrary/**',  // Music libraries
+  ```
+
+### 6.3 Detection Logic
+1. **Chokidar Level**: Bundle patterns are merged with user exclude patterns and passed to `chokidar.watch()` to prevent traversal
+2. **File Handler Level**: `isInsideBundle()` function double-checks paths before processing
+3. **Logging**: Bundles are logged once when first encountered (e.g., "Skipping bundle: /Applications/SDL-X.app")
+
+### 6.4 Benefits
+* **Performance**: Avoids indexing thousands of internal bundle files
+* **Relevance**: Bundle contents are typically not user documents
+* **Storage**: Reduces database size by excluding binary/resource files
+* **Speed**: Faster initial indexing and file watching
+
+### 6.5 User Control
+* Toggle bundle exclusion via settings
+* Add custom bundle patterns if needed
+* Patterns persist across app restarts
+
+---
+
+## 7) Search Flow
 
 * Query → embed (same local model) → ANN top-k (e.g., 100) → return hits with cosine scores.
 * Snippet: derive from `offset` within original text window; highlight query terms.
@@ -163,7 +207,7 @@ Electron (TS/Node)
 
 ---
 
-## 7) IPC Contract (typed)
+## 8) IPC Contract (typed)
 
 All calls originate from renderer → **main** → worker (RPC).
 **Channels (invoke/handle):**
@@ -550,7 +594,7 @@ export function chunkText(text: string, target = 500, overlap = 60) {
 
 ---
 
-## 13) UX Requirements
+## 14) UX Requirements
 
 * **Search bar** (debounce 150–250 ms) with instant results.
 * **Result cards**: snippet, page #, file title, “Open” buttons.
@@ -558,22 +602,23 @@ export function chunkText(text: string, target = 500, overlap = 60) {
 * **Settings**:
 
   * Folders + include/exclude globs
+  * Bundle exclusion toggle (macOS bundles like .app, .framework)
   * CPU throttle (Low/Med/High)
   * Model selection (E5-small default)
-  * Network: **Locked to “Disabled”**
+  * Network: **Locked to "Disabled"**
 
 ---
 
-## 14) Development Workflow & Commands
+## 15) Development Workflow & Commands
 
-### 14.1 Dev Experience
+### 15.1 Dev Experience
 
 * Renderer (Vite): HMR.
 * Main/Preload: esbuild watch + **electronmon** auto-restart.
 * Worker: built file watch → **respawn** on change.
 * No repackaging in dev.
 
-### 14.2 Scripts (example)
+### 15.2 Scripts (example)
 
 ```json
 {
@@ -608,7 +653,7 @@ export function chunkText(text: string, target = 500, overlap = 60) {
 }
 ```
 
-### 14.3 esbuild watch (main/preload/worker)
+### 15.3 esbuild watch (main/preload/worker)
 
 ```js
 // esbuild.watch.js
@@ -634,7 +679,7 @@ await Promise.all([
 ]);
 ```
 
-### 14.4 Main: worker respawn in dev
+### 15.4 Main: worker respawn in dev
 
 ```ts
 // snippet inside main.ts after spawnWorker()

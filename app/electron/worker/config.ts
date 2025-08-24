@@ -7,6 +7,8 @@ export interface AppConfig {
   settings: {
     cpuThrottle: 'low' | 'medium' | 'high';
     excludePatterns: string[];
+    excludeBundles: boolean;
+    bundlePatterns: string[];
     fileTypes: {
       pdf: boolean;
       txt: boolean;
@@ -35,6 +37,23 @@ export class ConfigManager {
       settings: {
         cpuThrottle: 'medium',
         excludePatterns: ['node_modules', '.git', '*.tmp', '.DS_Store'],
+        excludeBundles: true,
+        bundlePatterns: [
+          '**/*.app/**',
+          '**/*.framework/**',
+          '**/*.bundle/**',
+          '**/*.plugin/**',
+          '**/*.kext/**',
+          '**/*.prefPane/**',
+          '**/*.qlgenerator/**',
+          '**/*.dSYM/**',
+          '**/*.xcodeproj/**',
+          '**/*.playground/**',
+          '**/*.photoslibrary/**',
+          '**/*.musiclibrary/**',
+          '**/*.photosLibrary/**',
+          '**/*.tvlibrary/**'
+        ],
         fileTypes: {
           pdf: true,   // Safe to enable with isolated embedder
           txt: true,
@@ -64,6 +83,13 @@ export class ConfigManager {
         // Add file types if missing
         if (!config.settings.fileTypes) {
           config.settings.fileTypes = this.getDefaultConfig().settings.fileTypes;
+        }
+        // Add bundle exclusion settings if missing
+        if (config.settings.excludeBundles === undefined) {
+          config.settings.excludeBundles = true;
+        }
+        if (!config.settings.bundlePatterns) {
+          config.settings.bundlePatterns = this.getDefaultConfig().settings.bundlePatterns;
         }
         
         return config;
@@ -107,5 +133,15 @@ export class ConfigManager {
 
   getConfig(): AppConfig {
     return this.config;
+  }
+
+  getEffectiveExcludePatterns(): string[] {
+    const patterns = [...this.config.settings.excludePatterns];
+    
+    if (this.config.settings.excludeBundles) {
+      patterns.push(...this.config.settings.bundlePatterns);
+    }
+    
+    return patterns;
   }
 }

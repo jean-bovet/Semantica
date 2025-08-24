@@ -263,6 +263,33 @@ function getFileHash(filePath: string): string {
   return `${stat.size}-${stat.mtimeMs}`;
 }
 
+function isInsideBundle(filePath: string): boolean {
+  // Check if file is inside a macOS bundle based on config patterns
+  if (!configManager?.getSettings().excludeBundles) {
+    return false;
+  }
+  
+  const bundlePatterns = configManager.getSettings().bundlePatterns || [];
+  
+  // Extract bundle extensions from patterns (e.g., "**/*.app/**" -> ".app")
+  const bundleExtensions = bundlePatterns
+    .map(pattern => {
+      const match = pattern.match(/\*\.([^/]+)/);
+      return match ? `.${match[1]}` : null;
+    })
+    .filter(Boolean) as string[];
+  
+  const pathComponents = filePath.split(path.sep);
+  for (const component of pathComponents) {
+    for (const ext of bundleExtensions) {
+      if (component.endsWith(ext)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function updateFileStatus(filePath: string, status: string, error?: string, chunkCount?: number) {
   if (!fileStatusTable) return; // Skip if table not available
   
@@ -309,6 +336,29 @@ async function handleFile(filePath: string) {
       await deleteByPath(filePath);
       fileHashes.delete(filePath);
       await updateFileStatus(filePath, 'deleted');
+      return;
+    }
+    
+    // Check if file is inside a bundle and bundle exclusion is enabled
+    if (isInsideBundle(filePath)) {
+      // Log only once per unique bundle path
+      const bundlePatterns = configManager?.getSettings().bundlePatterns || [];
+      const extensions = bundlePatterns
+        .map(p => p.match(/\*\.([^/]+)/)?.[1])
+        .filter(Boolean)
+        .join('|');
+      
+      if (extensions) {
+        const regex = new RegExp(`(.*\\.(${extensions}))`, 'i');
+        const bundleMatch = filePath.match(regex);
+        if (bundleMatch) {
+          const bundlePath = bundleMatch[1];
+          if (!fileHashes.has(bundlePath + '_logged')) {
+            console.log(`Skipping bundle: ${bundlePath}`);
+            fileHashes.set(bundlePath + '_logged', 'logged');
+          }
+        }
+      }
       return;
     }
     
@@ -499,7 +549,7 @@ async function reindexAll() {
     
     // Restart the watcher to trigger re-indexing of all files
     console.log('Restarting file watcher to re-index all files...');
-    await startWatching(watchedFolders, configManager?.getSettings()?.excludePatterns);
+    await startWatching(watchedFolders, configManager?.getEffectiveExcludePatterns());
     
     console.log('Re-indexing started - files will be processed through normal queue');
     
@@ -553,8 +603,11 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
     }
   });
   
+  // Get effective exclude patterns (including bundle patterns if enabled)
+  const effectivePatterns = configManager?.getEffectiveExcludePatterns() || excludePatterns || [];
+  
   watcher = chokidar.watch(roots, {
-    ignored: excludePatterns || [],
+    ignored: effectivePatterns,
     ignoreInitial: false,
     persistent: true,
     awaitWriteFinish: {
@@ -663,7 +716,7 @@ parentPort!.on('message', async (msg: any) => {
         // Save folders to config
         configManager?.setWatchedFolders(roots);
         
-        // Start watching
+        // Start watching - will use effective patterns from config manager
         await startWatching(roots, options?.exclude);
         
         if (msg.id) {
