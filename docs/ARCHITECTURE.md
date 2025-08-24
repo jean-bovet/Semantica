@@ -159,11 +159,64 @@ The system maintains a database table to track the status of each file:
 - **processing**: File is currently being indexed
 
 Supported file formats:
-- **PDF**: Extracted with pdf-parse library
+- **PDF**: Extracted with pdf-parse library (text-based PDFs only)
 - **TXT/MD**: Plain text files
 - **DOCX**: Modern Word documents (XML-based)
 - **DOC**: Legacy Word documents (parsed with word-extractor)
 - **RTF**: Rich Text Format documents
+
+### Known Limitations
+
+#### Scanned PDFs
+Many PDFs, especially those created by scanners (e.g., PaperStream Capture, Canon scanners), contain only images of text without actual text data. These PDFs will fail to index with the error "PDF contains no extractable text". 
+
+**Identification**: These PDFs typically:
+- Have very small or zero text content (only whitespace)
+- Are created by scanner software
+- Have large file sizes relative to page count
+- Contain embedded images instead of text layers
+
+**Current Behavior**: 
+- Marked as "failed" in file status with error message
+- Visible in file search with ⚠ warning icon
+- Not searchable through semantic search
+
+### Future Recommendations
+
+#### 1. OCR Integration (High Priority)
+Implement Optical Character Recognition for scanned documents:
+- **Option A**: Integrate Tesseract.js for client-side OCR
+  - Pros: No external dependencies, privacy-preserving
+  - Cons: Slower processing, larger bundle size
+- **Option B**: Use cloud OCR services (Google Vision, AWS Textract)
+  - Pros: Fast, accurate, handles complex layouts
+  - Cons: Requires internet, privacy concerns, costs
+- **Option C**: Native macOS Vision framework integration
+  - Pros: Fast, private, already on device
+  - Cons: Platform-specific, requires native module
+
+#### 2. Enhanced File Status Tracking
+- Add "requires_ocr" status for scanned documents
+- Implement retry queue for failed files
+- Add user notification for files requiring manual intervention
+- Track OCR processing separately from regular indexing
+
+#### 3. File Format Detection Improvements
+- Pre-check PDFs to determine if OCR is needed before attempting text extraction
+- Detect encrypted or password-protected PDFs
+- Better handling of corrupted files with specific error messages
+
+#### 4. User Experience Enhancements
+- Add bulk OCR processing option in settings
+- Show preview of why files failed (e.g., "This PDF appears to be scanned")
+- Provide actionable suggestions (e.g., "Run OCR on this file to make it searchable")
+- Option to exclude certain folders from indexing if they contain mostly scanned documents
+
+#### 5. Performance Optimizations for Large Archives
+- Implement progressive indexing with priority queues
+- Add file type statistics dashboard
+- Memory usage optimization for processing many scanned documents
+- Background OCR processing with lower CPU priority
 
 ## Build System
 
