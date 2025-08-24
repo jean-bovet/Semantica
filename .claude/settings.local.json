@@ -80,7 +80,12 @@
       "Bash(NODE_ENV=test npx vitest run tests/unit/*.spec.ts)",
       "Bash(NODE_ENV=test npx vitest run tests/unit/file-types.spec.ts)",
       "Bash(NODE_ENV=test npx vitest run tests/unit/search.spec.ts)",
-      "Bash(NODE_ENV=test npx vitest run tests/unit/memory-management.spec.ts)"
+      "Bash(NODE_ENV=test npx vitest run tests/unit/memory-management.spec.ts)",
+      "Bash(npm run test:parsers:*)",
+      "Bash(npm run test:database:*)",
+      "Bash(NODE_ENV=test npx vitest run tests/unit/database-simple.spec.ts)",
+      "Bash(npm run test:embeddings:*)",
+      "Bash(npm run test:core:*)"
     ],
     "deny": [],
     "ask": [],

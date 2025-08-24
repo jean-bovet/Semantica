@@ -1,0 +1,6 @@
+This is a simple test file.
+It contains some basic text content.
+Hello 世界! Unicode test.
+
+This file is used for testing the text parser functionality.
+It should be parsed correctly and the content should be extracted.

@@ -51,7 +51,7 @@ export class TestWorker {
         }
       });
       
-      this.worker.postMessage({ type, payload, id });
+      this.worker!.postMessage({ type, payload, id });
     });
   }
 
