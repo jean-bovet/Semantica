@@ -6,15 +6,17 @@ This folder contains detailed plans for future enhancements to the Offline Mac S
 
 ### High Priority
 - 📋 [Parser Version Tracking](./parser-version-tracking.md) - Automatic re-indexing when parsers improve
+- 🧪 [Core Logic Testing](./core-logic-testing-plan.md) - Comprehensive testing for business logic
 - 🔍 [OCR Integration](./ocr-integration.md) - *To be planned* - Support for scanned documents
-- 🔄 [Incremental Sync](./incremental-sync.md) - *To be planned* - Efficient folder watching
 
 ### Medium Priority  
-- 📊 [Analytics Dashboard](./analytics-dashboard.md) - *To be planned* - Indexing statistics and insights
-- 🎯 [Smart Prioritization](./smart-prioritization.md) - *To be planned* - Intelligent queue management
+- 📈 [Test Coverage Gaps](./test-coverage-gaps.md) - Analysis of testing gaps and priorities
+- 🎯 [Testing Strategy](./testing-strategy.md) - Test optimization and best practices
+- 📊 [Testing Implementation](./testing-implementation-summary.md) - Detailed testing implementation plan
 - 🔐 [Encrypted Files](./encrypted-files.md) - *To be planned* - Support for password-protected documents
 
 ### Low Priority
+- 📊 [Analytics Dashboard](./analytics-dashboard.md) - *To be planned* - Indexing statistics and insights
 - 🌍 [Multi-language Support](./multi-language.md) - *To be planned* - Better non-English text handling
 - 📱 [Mobile Companion](./mobile-companion.md) - *To be planned* - iOS app for remote search
 - ☁️ [Cloud Backup](./cloud-backup.md) - *To be planned* - Index backup and sync
