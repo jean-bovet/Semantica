@@ -1,4 +1,8 @@
-# Architecture Documentation
+# System Architecture
+
+*Previous: [01-overview.md](./01-overview.md) | Next: [03-implementation.md](./03-implementation.md)*
+
+---
 
 ## System Overview
 
