@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fork } from 'child_process';
 import { EventEmitter } from 'events';
+import { IsolatedEmbedder } from '../../app/electron/embeddings/isolated';
+
+// Mock child_process module
+vi.mock('node:child_process', () => ({
+  fork: vi.fn()
+}));
+
+import { fork } from 'node:child_process';
 
 // Mock child process
 class MockChildProcess extends EventEmitter {
@@ -22,18 +29,15 @@ class MockChildProcess extends EventEmitter {
 
 describe('Embeddings Orchestration', () => {
   let mockChild: MockChildProcess;
-  let originalFork: any;
   
   beforeEach(() => {
     mockChild = new MockChildProcess();
     
-    // Mock child_process.fork
-    originalFork = fork;
-    (global as any).fork = vi.fn(() => mockChild);
+    // Mock fork to return our mock child process
+    vi.mocked(fork).mockReturnValue(mockChild as any);
   });
   
   afterEach(() => {
-    (global as any).fork = originalFork;
     vi.clearAllMocks();
   });
 

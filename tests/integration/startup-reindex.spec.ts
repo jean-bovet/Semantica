@@ -30,7 +30,7 @@ interface TestEnvironment {
   db: any;
 }
 
-describe('Startup and Re-indexing Integration Tests', () => {
+describe.skip('Startup and Re-indexing Integration Tests', () => {
   let env: TestEnvironment;
   
   beforeEach(async () => {

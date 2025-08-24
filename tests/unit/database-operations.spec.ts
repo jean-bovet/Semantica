@@ -268,6 +268,8 @@ describe('Database Operations', () => {
           text: 'Old content version 1',
           vector: new Array(384).fill(0.1),
           path: filePath,
+          page: 1,
+          offset: 0,
           hash: 'old1'
         },
         {
@@ -275,6 +277,8 @@ describe('Database Operations', () => {
           text: 'Old content version 2',
           vector: new Array(384).fill(0.2),
           path: filePath,
+          page: 2,
+          offset: 100,
           hash: 'old2'
         }
       ];
@@ -290,6 +294,8 @@ describe('Database Operations', () => {
           text: 'Updated content version 1',
           vector: new Array(384).fill(0.3),
           path: filePath,
+          page: 1,
+          offset: 0,
           hash: 'new1'
         },
         {
@@ -297,6 +303,8 @@ describe('Database Operations', () => {
           text: 'Updated content version 2',
           vector: new Array(384).fill(0.4),
           path: filePath,
+          page: 2,
+          offset: 100,
           hash: 'new2'
         },
         {
@@ -304,6 +312,8 @@ describe('Database Operations', () => {
           text: 'Additional new content',
           vector: new Array(384).fill(0.5),
           path: filePath,
+          page: 3,
+          offset: 200,
           hash: 'new3'
         }
       ];
@@ -324,10 +334,10 @@ describe('Database Operations', () => {
     it('should handle partial deletion with complex filters', async () => {
       // Add varied test data
       const chunks = [
-        { id: 'keep1', text: 'Keep this', vector: new Array(384).fill(0.1), path: '/keep.txt', page: 1 },
-        { id: 'del1', text: 'Delete this', vector: new Array(384).fill(0.2), path: '/delete.txt', page: 1 },
-        { id: 'keep2', text: 'Keep this too', vector: new Array(384).fill(0.3), path: '/keep.txt', page: 2 },
-        { id: 'del2', text: 'Delete this too', vector: new Array(384).fill(0.4), path: '/delete.txt', page: 2 },
+        { id: 'keep1', text: 'Keep this', vector: new Array(384).fill(0.1), path: '/keep.txt', page: 1, offset: 0, hash: 'k1' },
+        { id: 'del1', text: 'Delete this', vector: new Array(384).fill(0.2), path: '/delete.txt', page: 1, offset: 0, hash: 'd1' },
+        { id: 'keep2', text: 'Keep this too', vector: new Array(384).fill(0.3), path: '/keep.txt', page: 2, offset: 100, hash: 'k2' },
+        { id: 'del2', text: 'Delete this too', vector: new Array(384).fill(0.4), path: '/delete.txt', page: 2, offset: 100, hash: 'd2' },
       ];
       
       await table.add(chunks);
@@ -335,7 +345,7 @@ describe('Database Operations', () => {
       // Delete only specific pages from specific path
       await table.delete(`path = '/delete.txt' AND page = 1`);
       
-      const remaining = await table.toArray();
+      const remaining = await table.query().toArray();
       const deletePath = remaining.filter((r: any) => r.path === '/delete.txt');
       const keepPath = remaining.filter((r: any) => r.path === '/keep.txt');
       
