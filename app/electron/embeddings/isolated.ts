@@ -1,14 +1,21 @@
 import { fork, ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { IEmbedder, EmbedderConfig } from './IEmbedder';
 
-export class IsolatedEmbedder {
+export class IsolatedEmbedder implements IEmbedder {
   private child: ChildProcess | null = null;
   private inflight = new Map<string, { resolve: Function, reject: Function }>();
-  private filesSinceSpawn = 0;
+  public filesSinceSpawn = 0; // Made public for shouldRestart check
   private ready = false;
   private initPromise: Promise<void> | null = null;
+  private readonly maxFilesBeforeRestart = 500;
+  private readonly maxMemoryMB = 1500;
 
-  constructor(private modelName = 'Xenova/multilingual-e5-small') {}
+  constructor(private modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
+    if (config?.modelName) this.modelName = config.modelName;
+    if (config?.maxFilesBeforeRestart) this.maxFilesBeforeRestart = config.maxFilesBeforeRestart;
+    if (config?.maxMemoryMB) this.maxMemoryMB = config.maxMemoryMB;
+  }
 
   private async spawnChild(): Promise<void> {
     if (this.child) {
@@ -122,25 +129,90 @@ export class IsolatedEmbedder {
     });
   }
 
-  async checkMemoryAndRestart(): Promise<boolean> {
+  /**
+   * Initialize the embedder
+   */
+  async initialize(): Promise<boolean> {
+    try {
+      await this.ensureReady();
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize embedder:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Embed text with retry logic
+   */
+  async embedWithRetry(texts: string[], maxRetries = 3): Promise<number[][]> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await this.embed(texts);
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`Embed attempt ${attempt + 1} failed:`, error.message);
+        
+        if (attempt < maxRetries - 1) {
+          // Wait before retry with exponential backoff
+          await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+          
+          // If child process died, restart it
+          if (!this.child || !this.child.connected) {
+            await this.restart();
+          }
+        }
+      }
+    }
+    
+    throw lastError || new Error('Embed failed after retries');
+  }
+
+  /**
+   * Check if the embedder should restart
+   */
+  shouldRestart(): boolean {
     const { rss, external } = process.memoryUsage();
     const rssMB = Math.round(rss / 1024 / 1024);
     const extMB = Math.round(external / 1024 / 1024);
     
-    // Optimized limits for better performance
-    const shouldRestart = rssMB > 1500 || extMB > 300 || this.filesSinceSpawn > 500;
-    
-    if (shouldRestart && this.inflight.size === 0) {
-      console.log(`Restarting embedder: RSS=${rssMB}MB, External=${extMB}MB, Files=${this.filesSinceSpawn}`);
-      if (this.child) {
-        this.child.send({ type: 'shutdown' });
-        await new Promise(r => setTimeout(r, 100));
-        this.child.kill('SIGKILL');
+    return rssMB > this.maxMemoryMB || 
+           extMB > 300 || 
+           this.filesSinceSpawn > this.maxFilesBeforeRestart;
+  }
+
+  /**
+   * Restart the embedder
+   */
+  async restart(): Promise<void> {
+    console.log(`Restarting embedder after ${this.filesSinceSpawn} files`);
+    await this.shutdown();
+    await this.spawnChild();
+  }
+
+  /**
+   * Get embedder statistics
+   */
+  getStats() {
+    const memoryUsage = process.memoryUsage();
+    return {
+      filesSinceSpawn: this.filesSinceSpawn,
+      isReady: this.ready,
+      memoryUsage: {
+        rss: Math.round(memoryUsage.rss / 1024 / 1024),
+        heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+        external: Math.round(memoryUsage.external / 1024 / 1024)
       }
-      await this.spawnChild();
+    };
+  }
+
+  async checkMemoryAndRestart(): Promise<boolean> {
+    if (this.shouldRestart() && this.inflight.size === 0) {
+      await this.restart();
       return true;
     }
-    
     return false;
   }
 

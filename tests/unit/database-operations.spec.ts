@@ -386,6 +386,8 @@ describe('Database Operations', () => {
           text: "Text with 'quotes' and \"double quotes\"",
           vector: new Array(384).fill(0.1),
           path: "/path/with spaces/and'quotes.txt",
+          page: 1,
+          offset: 0,
           hash: 'spec1'
         }
       ];

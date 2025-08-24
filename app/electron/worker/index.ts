@@ -1,7 +1,7 @@
 import { parentPort } from 'node:worker_threads';
 import * as lancedb from '@lancedb/lancedb';
 import { PARSER_VERSIONS, getParserVersion } from './parserVersions';
-import { checkForParserUpgrades, migrateExistingFiles, shouldReindex } from './reindexManager';
+import { ReindexService } from '../services/ReindexService';
 import { 
   initializeFileStatusTable, 
   loadFileStatusCache, 
@@ -57,6 +57,7 @@ let tbl: any = null;
 let fileStatusTable: any = null; // Table to track file status
 let paused = false;
 const fileChunkCounts = new Map<string, number>(); // Track chunk counts per file
+let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
 const queue: string[] = [];
@@ -152,6 +153,9 @@ async function initDB(dir: string) {
       console.log('No existing files in index');
     }
     
+    // Initialize ReindexService with the file status table
+    reindexService = new ReindexService(fileStatusTable, console);
+    
     // Migrate existing indexed files to file status table (one-time migration)
     if (fileStatusTable) {
       const migrated = await migrateIndexedFilesToStatus(tbl, fileStatusTable, fileHashes);
@@ -161,10 +165,19 @@ async function initDB(dir: string) {
     }
     
     // Migrate existing files to include parser versions
-    await migrateExistingFiles(fileStatusTable);
+    await reindexService.migrateExistingFiles();
     
     // Check for parser upgrades and queue files for re-indexing
-    await checkForParserUpgrades(fileStatusTable, queue, parentPort);
+    const reindexResult = await reindexService.checkForParserUpgrades();
+    queue.push(...reindexResult.filesToReindex);
+    
+    // Notify parent if there were upgrades
+    if (Object.keys(reindexResult.upgradeSummary).length > 0 && parentPort) {
+      parentPort.postMessage({
+        type: 'parser-upgrade',
+        payload: reindexResult.upgradeSummary
+      });
+    }
     
     // Do auto-start synchronously during init to avoid UI flash
     const config = await configManager!.getConfig();
@@ -671,6 +684,14 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
             } else if (entry.isFile()) {
               const ext = path.extname(entry.name).slice(1).toLowerCase();
               if (['pdf', 'txt', 'md', 'docx', 'rtf', 'doc'].includes(ext)) {
+                // Update folder stats for total files count
+                for (const [folder, stats] of folderStats) {
+                  if (fullPath.startsWith(folder)) {
+                    stats.total++;
+                    break;
+                  }
+                }
+                
                 // Check if file is already in queue (e.g., from parser upgrades)
                 if (queue.includes(fullPath)) continue;
                 
@@ -756,7 +777,7 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
       const fileRecord = fileStatusCache?.get(p) || null;
       
       // Use shouldReindex to determine if file needs processing
-      if (shouldReindex(p, fileRecord)) {
+      if (reindexService.shouldReindex(p, fileRecord)) {
         queue.push(p);
       }
     }

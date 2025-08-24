@@ -88,13 +88,17 @@ describe('Worker Basic Functionality', () => {
   it('should track folder statistics', async () => {
     await worker.init(tempDir);
     
-    // Create multiple files
-    fs.writeFileSync(path.join(tempDir, 'file1.txt'), 'Content 1');
-    fs.writeFileSync(path.join(tempDir, 'file2.md'), '# Markdown content');
-    fs.writeFileSync(path.join(tempDir, 'file3.json'), '{"test": true}'); // Not indexed
+    // Create a subdirectory for test files to avoid conflicts with db files
+    const docsDir = path.join(tempDir, 'docs');
+    fs.mkdirSync(docsDir);
     
-    // Start watching
-    await worker.watchStart([tempDir]);
+    // Create multiple files
+    fs.writeFileSync(path.join(docsDir, 'file1.txt'), 'Content 1');
+    fs.writeFileSync(path.join(docsDir, 'file2.md'), '# Markdown content');
+    fs.writeFileSync(path.join(docsDir, 'file3.json'), '{"test": true}'); // Not indexed
+    
+    // Start watching the docs directory
+    await worker.watchStart([docsDir]);
     
     // Wait for indexing
     await worker.waitForIndexing(2);
@@ -103,15 +107,12 @@ describe('Worker Basic Functionality', () => {
     const stats = await worker.getStats();
     expect(stats.indexedFiles).toBe(2);
     
-    const folderStat = stats.folderStats.find((s: any) => s.folder === tempDir);
+    const folderStat = stats.folderStats.find((s: any) => s.folder === docsDir);
     expect(folderStat).toBeDefined();
     
-    // Check if folderStat has expected properties
-    if (folderStat) {
-      // Adjusted expectation - the test may be running with a mock that doesn't fully populate totalFiles
-      expect(folderStat.totalFiles).toBeDefined();
-      expect(folderStat.indexedFiles).toBe(2);
-    }
+    // The worker should have counted 2 supported files (txt, md) out of 3 total
+    expect(folderStat.totalFiles).toBe(2); // Only counts supported file types
+    expect(folderStat.indexedFiles).toBe(2);
   });
 
   it.skip('should handle file updates - requires file watching', { timeout: 10000 }, async () => {

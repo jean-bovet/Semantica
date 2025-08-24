@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import * as path from 'path';
 import * as fs from 'fs';
 import { parsePdf } from '../../app/electron/parsers/pdf';
@@ -73,34 +73,38 @@ describe('Document Parsers', () => {
   });
 
   describe('PDF Parser', () => {
-    it('should extract text from simple PDF', async () => {
-      const filePath = path.join(fixturesDir, 'simple.pdf');
-      
-      // Check if file exists and is valid
-      if (fs.existsSync(filePath)) {
-        const pages = await parsePdf(filePath);
-        // The minimal PDF contains "Hello World"
-        if (pages && pages.length > 0) {
-          expect(pages[0].text.toLowerCase()).toContain('hello');
-          expect(pages[0].page).toBe(1);
-        }
-      }
+    afterEach(() => {
+      vi.restoreAllMocks();
     });
 
-    it('should handle corrupt PDF gracefully', async () => {
-      const filePath = path.join(fixturesDir, 'corrupt.pdf');
-      const pages = await parsePdf(filePath);
+    it('should detect non-PDF files', async () => {
+      const tempFile = path.join(require('os').tmpdir(), 'not-a-pdf.pdf');
+      fs.writeFileSync(tempFile, 'NOT A PDF CONTENT');
       
-      // Should return empty array for corrupt PDFs
-      expect(pages).toEqual([]);
+      await expect(parsePdf(tempFile)).rejects.toThrow('Not a valid PDF file');
+      
+      fs.unlinkSync(tempFile);
     });
 
     it('should handle non-existent PDF files', async () => {
-      const filePath = path.join(fixturesDir, 'non-existent.pdf');
-      const pages = await parsePdf(filePath);
+      const nonExistentPath = path.join(require('os').tmpdir(), 'non-existent-' + Date.now() + '.pdf');
       
-      expect(pages).toEqual([]);
+      await expect(parsePdf(nonExistentPath)).rejects.toThrow();
     });
+
+    it('should handle empty PDF files', async () => {
+      const tempFile = path.join(require('os').tmpdir(), 'empty.pdf');
+      fs.writeFileSync(tempFile, '%PDF-1.4\n%%EOF');
+      
+      // Should throw because there's no extractable text
+      await expect(parsePdf(tempFile)).rejects.toThrow();
+      
+      fs.unlinkSync(tempFile);
+    });
+
+    // Note: Testing actual PDF parsing with pdf-parse requires valid PDF structures
+    // which are complex to create programmatically. Integration tests with real PDFs
+    // are more appropriate for validating the parsing functionality.
   });
 
   describe('Parser Selection', () => {
@@ -130,21 +134,41 @@ describe('Document Parsers', () => {
 
   describe('Error Handling', () => {
     it('should handle permission errors gracefully', async () => {
-      // Note: Actually testing permission errors is OS-dependent
-      // This is a placeholder for the pattern
-      const restrictedPath = '/root/restricted.txt';
+      // Create a test file in temp directory
+      const tempDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'parser-test-'));
+      const restrictedFile = path.join(tempDir, 'restricted.txt');
+      fs.writeFileSync(restrictedFile, 'test content');
       
-      // All parsers should handle errors gracefully
-      const results = await Promise.all([
-        parseText(restrictedPath),
-        parsePdf(restrictedPath),
-        parseRtf(restrictedPath),
-      ]);
+      // Make file unreadable (on Unix systems)
+      try {
+        fs.chmodSync(restrictedFile, 0o000);
+      } catch (e) {
+        // On Windows, chmod might not work as expected
+        // Skip this test on Windows
+        console.log('Skipping permission test on this OS');
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return;
+      }
       
-      // Text and RTF return strings, PDF returns array
-      expect(results[0]).toBe(''); // parseText
-      expect(results[1]).toEqual([]); // parsePdf returns array
-      expect(results[2]).toBe(''); // parseRtf
+      // Test each parser's error handling
+      // parseText returns empty string on error
+      const textResult = await parseText(restrictedFile);
+      expect(textResult).toBe('');
+      
+      // parsePdf throws on error (by design - caught by handleFile)
+      await expect(parsePdf(restrictedFile)).rejects.toThrow();
+      
+      // parseRtf returns empty string on error
+      const rtfResult = await parseRtf(restrictedFile);
+      expect(rtfResult).toBe('');
+      
+      // Clean up
+      try {
+        fs.chmodSync(restrictedFile, 0o644);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     });
   });
 });
