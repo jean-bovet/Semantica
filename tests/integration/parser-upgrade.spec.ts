@@ -24,18 +24,20 @@ describe('Parser Version Upgrade Integration', () => {
   it('should detect when files need re-indexing due to parser upgrades', async () => {
     // Mock file status table with old parser version
     const mockFileStatusTable = {
-      toArray: async () => [
-        {
-          path: path.join(testDir, 'test.doc'),
-          status: 'indexed',
-          parser_version: 1, // Old version
-          chunk_count: 10,
-          error_message: '',
-          last_modified: new Date().toISOString(),
-          indexed_at: new Date().toISOString(),
-          file_hash: 'abc123'
-        }
-      ],
+      query: () => ({
+        toArray: async () => [
+          {
+            path: path.join(testDir, 'test.doc'),
+            status: 'indexed',
+            parser_version: 1, // Old version
+            chunk_count: 10,
+            error_message: '',
+            last_modified: new Date().toISOString(),
+            indexed_at: new Date().toISOString(),
+            file_hash: 'abc123'
+          }
+        ]
+      }),
       delete: async () => {},
       add: async () => {}
     };
@@ -51,18 +53,20 @@ describe('Parser Version Upgrade Integration', () => {
   it('should migrate existing files without parser versions', async () => {
     // Mock file status table without parser versions
     const mockFileStatusTable = {
-      toArray: async () => [
-        {
-          path: path.join(testDir, 'test.pdf'),
-          status: 'indexed',
-          chunk_count: 5,
-          error_message: '',
-          last_modified: new Date().toISOString(),
-          indexed_at: new Date().toISOString(),
-          file_hash: 'xyz789'
-          // No parser_version field
-        }
-      ],
+      query: () => ({
+        toArray: async () => [
+          {
+            path: path.join(testDir, 'test.pdf'),
+            status: 'indexed',
+            chunk_count: 5,
+            error_message: '',
+            last_modified: new Date().toISOString(),
+            indexed_at: new Date().toISOString(),
+            file_hash: 'xyz789'
+            // No parser_version field
+          }
+        ]
+      }),
       delete: async () => {},
       add: async () => {}
     };
@@ -150,28 +154,30 @@ describe('Parser Version Upgrade Integration', () => {
   it('should queue failed .doc files for retry with new parser', async () => {
     // Mock file status table with failed .doc files
     const mockFileStatusTable = {
-      toArray: async () => [
-        {
-          path: path.join(testDir, 'failed1.doc'),
-          status: 'failed',
-          parser_version: 1, // Old parser that failed
-          chunk_count: 0,
-          error_message: 'Failed to parse as RTF',
-          last_modified: new Date().toISOString(),
-          indexed_at: new Date().toISOString(),
-          file_hash: 'fail1'
-        },
-        {
-          path: path.join(testDir, 'failed2.doc'),
-          status: 'error',
-          parser_version: null, // No version recorded
-          chunk_count: 0,
-          error_message: 'Unknown error',
-          last_modified: new Date().toISOString(),
-          indexed_at: new Date().toISOString(),
-          file_hash: 'fail2'
-        }
-      ],
+      query: () => ({
+        toArray: async () => [
+          {
+            path: path.join(testDir, 'failed1.doc'),
+            status: 'failed',
+            parser_version: 1, // Old parser that failed
+            chunk_count: 0,
+            error_message: 'Failed to parse as RTF',
+            last_modified: new Date().toISOString(),
+            indexed_at: new Date().toISOString(),
+            file_hash: 'fail1'
+          },
+          {
+            path: path.join(testDir, 'failed2.doc'),
+            status: 'error',
+            parser_version: null, // No version recorded
+            chunk_count: 0,
+            error_message: 'Unknown error',
+            last_modified: new Date().toISOString(),
+            indexed_at: new Date().toISOString(),
+            file_hash: 'fail2'
+          }
+        ]
+      }),
       delete: async () => {},
       add: async () => {}
     };
