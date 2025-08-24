@@ -60,7 +60,10 @@ const api = {
       ipcRenderer.invoke('system:openPath', path),
     
     openPreview: (path: string, page?: number) =>
-      ipcRenderer.invoke('system:openPreview', path, page)
+      ipcRenderer.invoke('system:openPreview', path, page),
+    
+    getDataPath: (): Promise<string> =>
+      ipcRenderer.invoke('system:getDataPath')
   },
   
   db: {

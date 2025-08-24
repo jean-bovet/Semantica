@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import MultiSelectDropdown from './MultiSelectDropdown';
 import './SettingsView.css';
 
 function SettingsView() {
@@ -19,6 +20,7 @@ function SettingsView() {
   });
   const [reindexing, setReindexing] = useState(false);
   const [progress, setProgress] = useState<any>(null);
+  const [dataPath, setDataPath] = useState<string>('');
   
   useEffect(() => {
     // Set up periodic stats refresh
@@ -66,6 +68,11 @@ function SettingsView() {
     loadFolders();
     loadStats();
     loadSettings();
+    
+    // Get data path
+    window.api.system.getDataPath?.().then(path => {
+      setDataPath(path || '~/Library/Application Support/offline-mac-search/data/');
+    });
     
     return () => {
       clearInterval(interval);
@@ -120,12 +127,14 @@ function SettingsView() {
   };
   
   const handlePauseResume = async () => {
-    const progress = await window.api.indexer.progress();
-    if (progress.paused) {
+    if (progress?.paused) {
       await window.api.indexer.resume();
     } else {
       await window.api.indexer.pause();
     }
+    // Update progress state immediately after action
+    const newProgress = await window.api.indexer.progress();
+    setProgress(newProgress);
   };
   
   const handleReindex = async () => {
@@ -151,30 +160,58 @@ function SettingsView() {
     }
   };
   
+  const fileTypeOptions = [
+    { value: 'pdf', label: 'PDF' },
+    { value: 'txt', label: 'TXT' },
+    { value: 'md', label: 'MD' },
+    { value: 'docx', label: 'DOCX' },
+    { value: 'rtf', label: 'RTF' },
+    { value: 'doc', label: 'DOC' }
+  ];
+
+  const selectedFileTypes = Object.entries(fileTypes)
+    .filter(([_, enabled]) => enabled)
+    .map(([type]) => type);
+
+  const handleFileTypesChange = async (selected: string[]) => {
+    const newFileTypes = {
+      pdf: selected.includes('pdf'),
+      txt: selected.includes('txt'),
+      md: selected.includes('md'),
+      docx: selected.includes('docx'),
+      rtf: selected.includes('rtf'),
+      doc: selected.includes('doc')
+    };
+    setFileTypes(newFileTypes);
+    
+    try {
+      await window.api.settings.update({ fileTypes: newFileTypes });
+    } catch (e) {
+      console.error('Failed to update file type settings:', e);
+    }
+  };
+
   return (
     <div className="settings-view">
       <h2>Settings</h2>
       
-      <section className="settings-section">
-        <h3>Indexed Folders</h3>
-        <div className="folder-list">
+      <div className="settings-group">
+        <h3 className="settings-subtitle">Indexed Folders</h3>
+        <div className="folder-list compact">
           {folders.map(folder => {
             const folderStat = stats.folderStats?.find(s => s.folder === folder);
             return (
-              <div key={folder} className="folder-item">
-                <div className="folder-info">
-                  <span className="folder-path">{folder}</span>
-                  {folderStat && (
-                    <span className="folder-count">
-                      {folderStat.indexedFiles} indexed / {folderStat.totalFiles} total files
-                    </span>
-                  )}
-                </div>
+              <div key={folder} className="folder-item compact">
+                <span className="folder-path">{folder}</span>
+                <span className="folder-stats">
+                  {folderStat ? `${folderStat.indexedFiles} / ${folderStat.totalFiles} files` : 'Loading...'}
+                </span>
                 <button 
                   onClick={() => handleRemoveFolder(folder)}
-                  className="remove-button"
+                  className="remove-button compact"
+                  title="Remove folder"
                 >
-                  Remove
+                  ×
                 </button>
               </div>
             );
@@ -183,139 +220,74 @@ function SettingsView() {
             <p className="empty-state">No folders indexed yet</p>
           )}
         </div>
-        <button onClick={handleAddFolders} className="add-folder-button">
-          Add Folders
+        <button onClick={handleAddFolders} className="add-folder-button compact">
+          + Add Folders
         </button>
-      </section>
+      </div>
       
-      <section className="settings-section">
-        <h3>File Types</h3>
-        <div className="file-types-grid">
-          <div className="setting-item">
-            <label className="file-type-toggle">
-              <input 
-                type="checkbox" 
-                checked={fileTypes.pdf}
-                onChange={() => toggleFileType('pdf')}
-              />
-              <span>PDF Files</span>
-            </label>
-          </div>
-          <div className="setting-item">
-            <label className="file-type-toggle">
-              <input 
-                type="checkbox" 
-                checked={fileTypes.txt}
-                onChange={() => toggleFileType('txt')}
-              />
-              <span>Text Files (.txt)</span>
-            </label>
-          </div>
-          <div className="setting-item">
-            <label className="file-type-toggle">
-              <input 
-                type="checkbox" 
-                checked={fileTypes.md}
-                onChange={() => toggleFileType('md')}
-              />
-              <span>Markdown Files (.md)</span>
-            </label>
-          </div>
-          <div className="setting-item">
-            <label className="file-type-toggle">
-              <input 
-                type="checkbox" 
-                checked={fileTypes.docx}
-                onChange={() => toggleFileType('docx')}
-              />
-              <span>Word Documents (.docx)</span>
-            </label>
-          </div>
-          <div className="setting-item">
-            <label className="file-type-toggle">
-              <input 
-                type="checkbox" 
-                checked={fileTypes.rtf}
-                onChange={() => toggleFileType('rtf')}
-              />
-              <span>Rich Text Files (.rtf)</span>
-            </label>
-          </div>
-          <div className="setting-item">
-            <label className="file-type-toggle">
-              <input 
-                type="checkbox" 
-                checked={fileTypes.doc}
-                onChange={() => toggleFileType('doc')}
-              />
-              <span>Legacy Word (.doc)</span>
-            </label>
-          </div>
+      <div className="settings-group">
+        <h3 className="settings-subtitle">Configuration</h3>
+        <div className="config-row">
+          <label className="config-label">File Types:</label>
+          <MultiSelectDropdown
+            options={fileTypeOptions}
+            selected={selectedFileTypes}
+            onChange={handleFileTypesChange}
+            placeholder="Select file types"
+          />
         </div>
-      </section>
-      
-      <section className="settings-section">
-        <h3>Performance</h3>
-        <div className="setting-item">
-          <label>CPU Usage</label>
+        <div className="config-row">
+          <label className="config-label">CPU Usage:</label>
           <select 
             value={cpuThrottle} 
             onChange={(e) => setCpuThrottle(e.target.value as any)}
-            className="throttle-select"
+            className="throttle-select compact"
           >
             <option value="low">Low (Slower indexing)</option>
             <option value="medium">Medium (Balanced)</option>
             <option value="high">High (Faster indexing)</option>
           </select>
         </div>
-      </section>
+      </div>
       
-      <section className="settings-section">
-        <h3>Index Statistics</h3>
-        <div className="stats">
-          <div className="stat-item">
-            <span className="stat-label">Indexed Files:</span>
-            <span className="stat-value">{stats.indexedFiles.toLocaleString()}</span>
+      <div className="settings-group">
+        <h3 className="settings-subtitle">Statistics</h3>
+        <div className="stats-container">
+          <div className="stats-line">
+            <span>{stats.indexedFiles.toLocaleString()} files indexed</span>
+            <span className="stats-separator">|</span>
+            <span>{stats.totalChunks.toLocaleString()} chunks</span>
           </div>
-          <div className="stat-item">
-            <span className="stat-label">Total Chunks:</span>
-            <span className="stat-value">{stats.totalChunks.toLocaleString()}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Index Location:</span>
-            <span className="stat-value" style={{ fontSize: '12px' }}>~/Library/Application Support/offline-mac-search/data/</span>
+          <div className="stats-path-row">
+            <span className="stats-path">{dataPath}</span>
+            <button 
+              className="reveal-button"
+              onClick={() => window.api.system.openPath(dataPath)}
+              title="Reveal in Finder"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M1 3.5C1 2.67 1.67 2 2.5 2h4.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 0010.621 4H13.5c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5h-11c-.83 0-1.5-.67-1.5-1.5v-9z"/>
+              </svg>
+            </button>
           </div>
         </div>
-      </section>
+      </div>
       
-      <section className="settings-section">
-        <h3>Indexing Control</h3>
-        <button onClick={handlePauseResume} className="control-button">
-          Pause/Resume Indexing
+      <div className="settings-actions">
+        <button 
+          onClick={handlePauseResume} 
+          className={`action-button ${progress?.paused ? 'paused' : ''}`}
+        >
+          {progress?.paused ? 'Resume Indexing' : 'Pause Indexing'}
         </button>
-      </section>
+        <button onClick={handleReindex} className="action-button" disabled={reindexing}>
+          {reindexing ? 'Re-indexing...' : 'Re-index All Documents'}
+        </button>
+      </div>
       
-      <section className="settings-section">
-        <h3>Re-index Documents</h3>
-        <div className="reindex-info">
-          <p className="reindex-description">
-            Re-index all documents with the multilingual E5 model for improved French/English search.
-          </p>
-          <button onClick={handleReindex} className="reindex-button" disabled={reindexing}>
-            {reindexing ? 'Re-indexing in progress...' : 'Re-index All Documents'}
-          </button>
-        </div>
-      </section>
-      
-      <section className="settings-section">
-        <h3>Privacy</h3>
-        <div className="privacy-notice">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="green">
-            <path d="M10 2L3 7V11C3 15.5 6.5 18 10 18C13.5 18 17 15.5 17 11V7L10 2Z" />
-          </svg>
-          <span>All processing happens on your device. No data leaves your Mac.</span>
-        </div>
-      </section>
+      <div className="privacy-footer">
+        <span>🔒 All processing happens locally</span>
+      </div>
     </div>
   );
 }

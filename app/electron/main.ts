@@ -175,6 +175,10 @@ if (gotTheLock) {
     return sendToWorker('stats');
   });
   
+  ipcMain.handle('system:getDataPath', () => {
+    return path.join(app.getPath('userData'), 'data');
+  });
+  
   ipcMain.handle('indexer:getWatchedFolders', async () => {
     return sendToWorker('getWatchedFolders');
   });
