@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 const pdfParse = require('pdf-parse');
 
+export const PARSER_VERSION = 1; // Version 1: Initial pdf-parse implementation
+
 export interface PDFPage {
   page: number;
   text: string;

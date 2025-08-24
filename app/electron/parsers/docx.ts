@@ -1,6 +1,8 @@
 import mammoth from 'mammoth';
 import fs from 'node:fs';
 
+export const PARSER_VERSION = 1; // Version 1: Initial mammoth implementation
+
 export async function parseDocx(filePath: string): Promise<string> {
   try {
     const buffer = fs.readFileSync(filePath);

@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+export const PARSER_VERSION = 1; // Version 1: Basic text/markdown parsing
+
 export async function parseText(filePath: string): Promise<string> {
   try {
     const ext = path.extname(filePath).toLowerCase();

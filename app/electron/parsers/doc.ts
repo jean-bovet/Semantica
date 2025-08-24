@@ -1,6 +1,8 @@
 const WordExtractor = require('word-extractor');
 const extractor = new WordExtractor();
 
+export const PARSER_VERSION = 2; // Version 2: Proper binary .doc support with word-extractor
+
 export async function parseDoc(filePath: string): Promise<string> {
   try {
     const doc = await extractor.extract(filePath);

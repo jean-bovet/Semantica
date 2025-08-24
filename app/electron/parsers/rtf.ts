@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 
+export const PARSER_VERSION = 1; // Version 1: Basic RTF stripping
+
 export async function parseRtf(filePath: string): Promise<string> {
   try {
     const content = fs.readFileSync(filePath, 'utf8');

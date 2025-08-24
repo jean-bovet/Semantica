@@ -87,7 +87,9 @@
       "Bash(npm run test:embeddings:*)",
       "Bash(npm run test:core:*)",
       "Bash(npx tsc:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Read(//private/tmp/**)",
+      "Bash(killall:*)"
     ],
     "deny": [],
     "ask": [],

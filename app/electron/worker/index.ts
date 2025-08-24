@@ -1,5 +1,17 @@
 import { parentPort } from 'node:worker_threads';
 import * as lancedb from '@lancedb/lancedb';
+import { PARSER_VERSIONS, getParserVersion } from './parserVersions';
+import { checkForParserUpgrades, migrateExistingFiles, shouldReindex } from './reindexManager';
+import { 
+  initializeFileStatusTable, 
+  loadFileStatusCache, 
+  scanForChanges, 
+  updateFileStatus as updateFileStatusInTable,
+  getFileHash as getFileHashFromManager,
+  isFileSupported,
+  getFileExtension
+} from './fileStatusManager';
+import { migrateIndexedFilesToStatus, cleanupOrphanedStatuses } from './migrateFileStatus';
 
 // Monitor memory usage
 let fileCount = 0;
@@ -102,33 +114,9 @@ async function initDB(dir: string) {
     
     // Initialize file status table (optional - won't fail if it doesn't work)
     try {
-      // Check if table exists by trying to open it
-      const tables = await db.tableNames();
-      if (tables.includes('file_status')) {
-        fileStatusTable = await db.openTable('file_status');
-      } else {
-        // Create new table with dummy data (LanceDB requirement)
-        const dummyData = [{
-          path: '__init__',
-          status: 'init',
-          error_message: '',
-          chunk_count: 0,
-          last_modified: new Date().toISOString(),
-          indexed_at: new Date().toISOString(),
-          file_hash: ''
-        }];
-        
-        fileStatusTable = await db.createTable('file_status', dummyData);
-        
-        // Try to clean up the dummy record (may fail but that's OK)
-        try {
-          await fileStatusTable.delete('path = "__init__"');
-        } catch (e) {
-          // Ignore - some versions of LanceDB don't support delete
-        }
-      }
+      fileStatusTable = await initializeFileStatusTable(db);
     } catch (e) {
-      console.log('File status tracking not available (optional feature)');
+      console.error('Failed to initialize file status table:', e);
       fileStatusTable = null;
     }
     
@@ -163,6 +151,20 @@ async function initDB(dir: string) {
     } catch (e) {
       console.log('No existing files in index');
     }
+    
+    // Migrate existing indexed files to file status table (one-time migration)
+    if (fileStatusTable) {
+      const migrated = await migrateIndexedFilesToStatus(tbl, fileStatusTable, fileHashes);
+      if (migrated > 0) {
+        console.log(`Created ${migrated} missing file status records`);
+      }
+    }
+    
+    // Migrate existing files to include parser versions
+    await migrateExistingFiles(fileStatusTable);
+    
+    // Check for parser upgrades and queue files for re-indexing
+    await checkForParserUpgrades(fileStatusTable, queue, parentPort);
     
     // Schedule auto-start after initialization completes
     setTimeout(async () => {
@@ -290,7 +292,7 @@ function isInsideBundle(filePath: string): boolean {
   return false;
 }
 
-async function updateFileStatus(filePath: string, status: string, error?: string, chunkCount?: number) {
+async function updateFileStatus(filePath: string, status: string, error?: string, chunkCount?: number, parserVersion?: number) {
   if (!fileStatusTable) return; // Skip if table not available
   
   try {
@@ -308,7 +310,9 @@ async function updateFileStatus(filePath: string, status: string, error?: string
       chunk_count: chunkCount || 0,
       last_modified: stats.mtime.toISOString(),
       indexed_at: new Date().toISOString(),
-      file_hash: fileHashes.get(filePath) || ''
+      file_hash: fileHashes.get(filePath) || '',
+      parser_version: parserVersion || 0,
+      last_retry: status === 'failed' || status === 'error' ? new Date().toISOString() : null
     };
     
     // Try to delete existing record (ignore errors)
@@ -321,10 +325,8 @@ async function updateFileStatus(filePath: string, status: string, error?: string
     // Insert new record
     await fileStatusTable.add([record]);
   } catch (e: any) {
-    // Silently fail - status tracking is optional
-    if (e?.message?.includes('not found')) {
-      fileStatusTable = null; // Disable if table issues
-    }
+    // Log error but don't disable the table - it might be a temporary issue
+    console.debug('Error updating file status (non-critical):', e?.message || e);
   }
 }
 
@@ -372,6 +374,7 @@ async function handleFile(filePath: string) {
     const stat = fs.statSync(filePath);
     const mtime = stat.mtimeMs;
     const ext = path.extname(filePath).slice(1).toLowerCase();
+    const parserVersion = getParserVersion(ext);
     
     // Check if this file type is enabled
     const fileTypes = configManager?.getSettings().fileTypes || {};
@@ -393,7 +396,7 @@ async function handleFile(filePath: string) {
       } catch (pdfError: any) {
         // Track specific PDF error
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
-        await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`);
+        await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`, 0, parserVersion);
         console.warn(`PDF parsing failed for ${filePath}: ${errorMsg}`);
         return;
       }
@@ -416,7 +419,7 @@ async function handleFile(filePath: string) {
     
     if (chunks.length === 0) {
       // Mark file as failed if no chunks were extracted
-      await updateFileStatus(filePath, 'failed', 'No text content extracted');
+      await updateFileStatus(filePath, 'failed', 'No text content extracted', 0, parserVersion);
       console.warn(`No text extracted from ${filePath}`);
       return;
     }
@@ -462,7 +465,7 @@ async function handleFile(filePath: string) {
     
     // Update file status as successfully indexed
     const totalChunks = chunks.length;
-    await updateFileStatus(filePath, 'indexed', undefined, totalChunks);
+    await updateFileStatus(filePath, 'indexed', undefined, totalChunks, parserVersion);
     
     // Clear references to help garbage collection
     chunks = null as any;
@@ -608,7 +611,7 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
   
   watcher = chokidar.watch(roots, {
     ignored: effectivePatterns,
-    ignoreInitial: false,
+    ignoreInitial: true,  // Don't re-scan all files on startup
     persistent: true,
     awaitWriteFinish: {
       stabilityThreshold: 1000,
@@ -619,7 +622,125 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
     interval: 100
   });
   
-  watcher.on('add', (p: string) => {
+  // Cache file status records to avoid repeated queries
+  let fileStatusCache: Map<string, any> | null = null;
+  if (fileStatusTable) {
+    try {
+      const records = await fileStatusTable.query().toArray();
+      fileStatusCache = new Map(records.map((r: any) => [r.path, r]));
+      console.log(`Loaded ${fileStatusCache.size} file status records into cache`);
+    } catch (e) {
+      console.error('Could not cache file status records:', e);
+      fileStatusCache = new Map();
+    }
+  } else {
+    console.log('File status table not available for caching');
+    fileStatusCache = new Map();
+  }
+  
+  // After watcher is set up, scan for new and modified files
+  // Smart scan: only check timestamps first, then hash if needed
+  setTimeout(async () => {
+    console.log('Scanning for new and modified files...');
+    console.log('File status cache size:', fileStatusCache?.size || 0);
+    console.log('Queue already has:', queue.length, 'files');
+    const filesToIndex: string[] = [];
+    let newCount = 0;
+    let modifiedCount = 0;
+    let skippedCount = 0;
+    let hashChecks = 0;
+    
+    for (const root of roots) {
+      // Use a simple recursive scan to find files
+      const scanDir = (dir: string) => {
+        try {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            
+            // Check if path matches exclude patterns
+            let excluded = false;
+            for (const pattern of effectivePatterns) {
+              if (typeof pattern === 'string' && fullPath.includes(pattern)) {
+                excluded = true;
+                break;
+              }
+            }
+            if (excluded) continue;
+            
+            if (entry.isDirectory()) {
+              scanDir(fullPath);
+            } else if (entry.isFile()) {
+              const ext = path.extname(entry.name).slice(1).toLowerCase();
+              if (['pdf', 'txt', 'md', 'docx', 'rtf', 'doc'].includes(ext)) {
+                // Check if file is already in queue (e.g., from parser upgrades)
+                if (queue.includes(fullPath)) continue;
+                
+                const fileRecord = fileStatusCache?.get(fullPath);
+                
+                if (!fileRecord) {
+                  // New file - not in database
+                  filesToIndex.push(fullPath);
+                  newCount++;
+                } else if (fileRecord.status === 'indexed') {
+                  // File was indexed - check if it was modified since indexing
+                  try {
+                    const stats = fs.statSync(fullPath);
+                    const fileModTime = stats.mtime.getTime();
+                    const indexedTime = new Date(fileRecord.indexed_at).getTime();
+                    
+                    // Only calculate hash if file was modified after indexing
+                    if (fileModTime > indexedTime) {
+                      hashChecks++;
+                      const currentHash = getFileHash(fullPath);
+                      if (currentHash !== fileRecord.file_hash) {
+                        filesToIndex.push(fullPath);
+                        modifiedCount++;
+                      } else {
+                        skippedCount++;
+                      }
+                    } else {
+                      skippedCount++;
+                    }
+                  } catch (e) {
+                    // File might have been deleted or become inaccessible
+                    console.debug('Error checking file:', fullPath, e);
+                  }
+                } else {
+                  // File has other status (failed, error, queued, outdated)
+                  skippedCount++;
+                }
+                // Skip files with other statuses (failed, error, etc.)
+                // They'll be handled by the retry logic in checkForParserUpgrades
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore permission errors
+        }
+      };
+      
+      if (fs.existsSync(root)) {
+        scanDir(root);
+      }
+    }
+    
+    console.log('Scan results:');
+    console.log(`  - New files: ${newCount}`);
+    console.log(`  - Modified files: ${modifiedCount}`);
+    console.log(`  - Skipped files: ${skippedCount}`);
+    console.log(`  - Hash calculations performed: ${hashChecks}`);
+    
+    if (filesToIndex.length > 0) {
+      console.log(`Adding ${filesToIndex.length} files to queue`);
+      queue.push(...filesToIndex);
+    } else {
+      console.log('No new or modified files found');
+    }
+    console.log('Total queue size after scan:', queue.length);
+  }, 1000); // Small delay to let watcher stabilize
+
+  watcher.on('add', async (p: string) => {
     // Update total file count
     for (const [folder, stats] of folderStats) {
       if (p.startsWith(folder)) {
@@ -628,12 +749,18 @@ async function startWatching(roots: string[], excludePatterns?: string[]) {
       }
     }
     
-    // Only queue supported file types that aren't already indexed
+    // Only queue supported file types
     const ext = path.extname(p).slice(1).toLowerCase();
     const supported = ['pdf', 'txt', 'md', 'docx', 'rtf', 'doc'].includes(ext);
     
-    if (supported && !queue.includes(p) && !fileHashes.has(p)) {
-      queue.push(p);
+    if (supported && !queue.includes(p)) {
+      // Check file status from cache or assume it's new
+      const fileRecord = fileStatusCache?.get(p) || null;
+      
+      // Use shouldReindex to determine if file needs processing
+      if (shouldReindex(p, fileRecord)) {
+        queue.push(p);
+      }
     }
   });
   
@@ -818,7 +945,7 @@ parentPort!.on('message', async (msg: any) => {
           // Quick search through file status table if available
           if (fileStatusTable) {
             try {
-              const allStatuses = await fileStatusTable.toArray();
+              const allStatuses = await fileStatusTable.query().toArray();
               for (const record of allStatuses) {
                 if (record.path.toLowerCase().includes(searchQuery)) {
                   // Check if currently in queue
