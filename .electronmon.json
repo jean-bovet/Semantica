@@ -1,0 +1,8 @@
+{
+  "patterns": [
+    "!dist/**",
+    "!node_modules/**",
+    "!**/*.map",
+    "!**/*.log"
+  ]
+}

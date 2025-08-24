@@ -20,7 +20,9 @@ export interface IndexProgress {
 
 const api = {
   dialog: {
-    selectFolders: () => ipcRenderer.invoke('dialog:selectFolders')
+    selectFolders: () => ipcRenderer.invoke('dialog:selectFolders'),
+    confirm: (title: string, message: string) => ipcRenderer.invoke('dialog:confirm', title, message),
+    error: (title: string, message: string) => ipcRenderer.invoke('dialog:error', title, message)
   },
   
   indexer: {
@@ -43,7 +45,9 @@ const api = {
     },
     
     getWatchedFolders: (): Promise<string[]> =>
-      ipcRenderer.invoke('indexer:getWatchedFolders')
+      ipcRenderer.invoke('indexer:getWatchedFolders'),
+    
+    reindexAll: () => ipcRenderer.invoke('indexer:reindexAll')
   },
   
   search: {

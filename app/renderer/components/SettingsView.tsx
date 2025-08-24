@@ -17,10 +17,22 @@ function SettingsView() {
     rtf: true,
     doc: true
   });
+  const [reindexing, setReindexing] = useState(false);
+  const [progress, setProgress] = useState<any>(null);
   
   useEffect(() => {
     // Set up periodic stats refresh
     const interval = setInterval(loadStats, 5000);
+    
+    // Listen for regular indexing progress
+    const unsubscribe = window.api.indexer.onProgress((newProgress) => {
+      setProgress(newProgress);
+      // If re-indexing and queue is empty, it's done
+      if (reindexing && newProgress.queued === 0 && newProgress.processing === 0) {
+        setReindexing(false);
+        loadStats();
+      }
+    });
     
     const loadFolders = async () => {
       // Migrate from localStorage if exists (one-time migration)
@@ -55,7 +67,10 @@ function SettingsView() {
     loadStats();
     loadSettings();
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
   }, []);
   
   const loadSettings = async () => {
@@ -110,6 +125,29 @@ function SettingsView() {
       await window.api.indexer.resume();
     } else {
       await window.api.indexer.pause();
+    }
+  };
+  
+  const handleReindex = async () => {
+    if (reindexing) return;
+    
+    const confirmed = await window.api.dialog.confirm(
+      'Re-index All Documents',
+      'This will delete the current index and re-index all documents with the new multilingual model. This process may take some time depending on the number of files. Continue?'
+    );
+    
+    if (!confirmed) return;
+    
+    setReindexing(true);
+    
+    try {
+      // Start re-indexing (uses normal indexing progress)
+      await window.api.indexer.reindexAll();
+      // Progress will be tracked through normal indexer progress
+    } catch (error) {
+      console.error('Re-indexing failed:', error);
+      setReindexing(false);
+      await window.api.dialog.error('Re-indexing Failed', 'An error occurred while re-indexing. Please try again.');
     }
   };
   
@@ -255,6 +293,18 @@ function SettingsView() {
         <button onClick={handlePauseResume} className="control-button">
           Pause/Resume Indexing
         </button>
+      </section>
+      
+      <section className="settings-section">
+        <h3>Re-index Documents</h3>
+        <div className="reindex-info">
+          <p className="reindex-description">
+            Re-index all documents with the multilingual E5 model for improved French/English search.
+          </p>
+          <button onClick={handleReindex} className="reindex-button" disabled={reindexing}>
+            {reindexing ? 'Re-indexing in progress...' : 'Re-index All Documents'}
+          </button>
+        </div>
       </section>
       
       <section className="settings-section">

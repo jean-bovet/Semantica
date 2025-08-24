@@ -23,8 +23,24 @@ const crashDumpDir = app.getPath('crashDumps');
 console.log('Crash dumps will be saved to:', crashDumpDir);
 fs.mkdirSync(crashDumpDir, { recursive: true });
 
+// Ensure single instance
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Someone tried to run a second instance, focus our window instead
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}
+
 let worker: Worker | null = null;
 let win: BrowserWindow | null = null;
+let mainWindow: BrowserWindow | null = null;
 let workerReady = false;
 const pendingCallbacks = new Map<string, (data: any) => void>();
 
@@ -85,8 +101,9 @@ function sendToWorker(type: string, payload: any = {}): Promise<any> {
   });
 }
 
-app.whenReady().then(() => {
-  win = new BrowserWindow({
+if (gotTheLock) {
+  app.whenReady().then(() => {
+    win = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
@@ -98,6 +115,8 @@ app.whenReady().then(() => {
     titleBarStyle: 'hiddenInset',
     vibrancy: 'sidebar'
   });
+  
+  mainWindow = win;
   
   const isDev = process.env.NODE_ENV !== 'production';
   
@@ -167,7 +186,28 @@ app.whenReady().then(() => {
   ipcMain.handle('settings:update', async (_, settings) => {
     return sendToWorker('updateSettings', settings);
   });
-});
+  
+  ipcMain.handle('indexer:reindexAll', async () => {
+    return sendToWorker('reindexAll');
+  });
+  
+  ipcMain.handle('dialog:confirm', async (_, title: string, message: string) => {
+    const { response } = await dialog.showMessageBox(mainWindow!, {
+      type: 'question',
+      buttons: ['Cancel', 'Continue'],
+      defaultId: 1,
+      cancelId: 0,
+      title,
+      message
+    });
+    return response === 1;
+  });
+  
+  ipcMain.handle('dialog:error', async (_, title: string, message: string) => {
+    dialog.showErrorBox(title, message);
+  });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

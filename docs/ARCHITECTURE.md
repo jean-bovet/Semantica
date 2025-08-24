@@ -29,6 +29,7 @@ Main Process (Electron)
 - Creates and controls BrowserWindow
 - Handles IPC communication between renderer and worker
 - Implements crash reporting
+- Enforces single instance with lock mechanism
 - File path: `dist/main.cjs`
 
 ### 2. Worker Thread (`app/electron/worker/index.ts`)
@@ -174,6 +175,30 @@ dist/
 - Node integration disabled in renderer
 - Sandbox mode for renderer process
 - Separate child process for embeddings
+
+### Single Instance Lock
+Prevents multiple instances of the application from running simultaneously:
+
+```typescript
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Focus existing window when second instance is attempted
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+}
+```
+
+This ensures:
+- Only one instance can access the database at a time
+- Prevents file lock conflicts
+- Avoids duplicate file watchers
+- Eliminates confusion during development with file watchers
 
 ### Privacy
 - No network requests during operation

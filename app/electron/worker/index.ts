@@ -374,6 +374,48 @@ async function search(query: string, k = 10) {
   }
 }
 
+async function reindexAll() {
+  console.log('Starting full re-index with multilingual E5 model...');
+  
+  try {
+    // Get all watched folders
+    const watchedFolders = configManager?.getWatchedFolders() || [];
+    if (watchedFolders.length === 0) {
+      console.log('No folders to re-index');
+      return;
+    }
+    
+    // Clear the entire index
+    if (tbl) {
+      try {
+        // Delete all existing chunks
+        await tbl.delete('1=1'); // Delete all rows
+        console.log('Cleared existing index');
+      } catch (e) {
+        console.error('Error clearing index:', e);
+      }
+    }
+    
+    // Clear file hashes to force re-indexing
+    fileHashes.clear();
+    
+    // Reset folder stats
+    for (const [folder, stats] of folderStats) {
+      stats.indexed = 0;
+    }
+    
+    // Restart the watcher to trigger re-indexing of all files
+    console.log('Restarting file watcher to re-index all files...');
+    await startWatching(watchedFolders, configManager?.getSettings()?.excludePatterns);
+    
+    console.log('Re-indexing started - files will be processed through normal queue');
+    
+  } catch (error) {
+    console.error('Re-index failed:', error);
+    throw error;
+  }
+}
+
 async function maybeCreateIndex() {
   try {
     const count = await tbl.countRows();
@@ -606,6 +648,20 @@ parentPort!.on('message', async (msg: any) => {
             parentPort!.postMessage({ id: msg.id, payload: { success: true } });
           }
         }
+        break;
+      
+      case 'reindexAll':
+        // Start re-indexing
+        reindexAll().then(() => {
+          if (msg.id) {
+            parentPort!.postMessage({ id: msg.id, payload: { success: true } });
+          }
+        }).catch(error => {
+          console.error('Re-index error:', error);
+          if (msg.id) {
+            parentPort!.postMessage({ id: msg.id, error: error.message });
+          }
+        });
         break;
       
       case 'shutdown':
