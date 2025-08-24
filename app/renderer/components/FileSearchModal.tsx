@@ -3,7 +3,7 @@ import './FileSearchModal.css';
 
 interface FileSearchResult {
   path: string;
-  status: 'indexed' | 'queued' | 'error' | 'not_indexed';
+  status: 'indexed' | 'queued' | 'error' | 'failed' | 'not_indexed';
   chunks?: number;
   queuePosition?: number;
   error?: string;
@@ -80,6 +80,8 @@ function FileSearchModal({ isOpen, onClose }: FileSearchModalProps) {
         return '⏳';
       case 'error':
         return '✗';
+      case 'failed':
+        return '⚠';
       case 'not_indexed':
         return '—';
       default:
@@ -90,11 +92,13 @@ function FileSearchModal({ isOpen, onClose }: FileSearchModalProps) {
   const getStatusText = (result: FileSearchResult) => {
     switch (result.status) {
       case 'indexed':
-        return 'Indexed';
+        return result.chunks ? `Indexed (${result.chunks} chunks)` : 'Indexed';
       case 'queued':
         return `In Queue (position ${result.queuePosition})`;
       case 'error':
-        return `Error: ${result.error}`;
+        return `Error: ${result.error || 'Unknown error'}`;
+      case 'failed':
+        return `Failed: ${result.error || 'No content extracted'}`;
       case 'not_indexed':
         return 'Not indexed';
       default:

@@ -30,6 +30,7 @@ try {
 import { parseText } from '../parsers/text';
 import { parseDocx } from '../parsers/docx';
 import { parseRtf } from '../parsers/rtf';
+import { parseDoc } from '../parsers/doc';
 import { chunkText } from '../pipeline/chunker';
 // Use isolated embedder for better memory management
 import { embed, checkEmbedderMemory, shutdownEmbedder } from '../embeddings/isolated';
@@ -41,6 +42,7 @@ import { ConfigManager } from './config';
 
 let db: any = null;
 let tbl: any = null;
+let fileStatusTable: any = null; // Table to track file status
 let paused = false;
 const fileChunkCounts = new Map<string, number>(); // Track chunk counts per file
 let watcher: any = null;
@@ -97,6 +99,32 @@ async function initDB(dir: string) {
     });
     
     console.log('Database initialized');
+    
+    // Initialize file status table
+    try {
+      // Try to open existing table first
+      fileStatusTable = await db.openTable('file_status');
+    } catch (e) {
+      // Table doesn't exist, create it with initial data
+      try {
+        fileStatusTable = await db.createTable('file_status', [{
+          path: 'init',
+          status: 'init',
+          error_message: '',
+          chunk_count: 0,
+          last_modified: new Date().toISOString(),
+          indexed_at: new Date().toISOString(),
+          file_hash: ''
+        }], { mode: 'overwrite' });
+        
+        // Delete the init record
+        await fileStatusTable.delete('path = "init"').catch(() => {});
+      } catch (createError) {
+        console.error('Could not create file_status table:', createError);
+        // Continue without file status tracking
+        fileStatusTable = null;
+      }
+    }
     
     // Load existing indexed files to prevent re-indexing
     try {
@@ -229,6 +257,44 @@ function getFileHash(filePath: string): string {
   return `${stat.size}-${stat.mtimeMs}`;
 }
 
+async function updateFileStatus(filePath: string, status: string, error?: string, chunkCount?: number) {
+  if (!fileStatusTable) return; // Skip if table not available
+  
+  try {
+    let stats: any = { mtime: new Date() };
+    try {
+      stats = fs.statSync(filePath);
+    } catch (e) {
+      // File might not exist (e.g., deleted status)
+    }
+    
+    const record = {
+      path: filePath,
+      status: status,
+      error_message: error || '',
+      chunk_count: chunkCount || 0,
+      last_modified: stats.mtime.toISOString(),
+      indexed_at: new Date().toISOString(),
+      file_hash: fileHashes.get(filePath) || ''
+    };
+    
+    // Try to delete existing record (ignore errors)
+    try {
+      await fileStatusTable.delete(`path = "${filePath}"`);
+    } catch (e) {
+      // Ignore delete errors
+    }
+    
+    // Insert new record
+    await fileStatusTable.add([record]);
+  } catch (e: any) {
+    // Silently fail - status tracking is optional
+    if (e?.message?.includes('not found')) {
+      fileStatusTable = null; // Disable if table issues
+    }
+  }
+}
+
 async function handleFile(filePath: string) {
   try {
     fileCount++; // Track files processed
@@ -236,6 +302,7 @@ async function handleFile(filePath: string) {
     if (!fs.existsSync(filePath)) {
       await deleteByPath(filePath);
       fileHashes.delete(filePath);
+      await updateFileStatus(filePath, 'deleted');
       return;
     }
     
@@ -276,14 +343,19 @@ async function handleFile(filePath: string) {
       const text = await parseRtf(filePath);
       chunks = chunkText(text, 500, 60);
     } else if (ext === 'doc') {
-      // For older .doc files, try to parse as RTF (many .doc files are actually RTF)
-      const text = await parseRtf(filePath);
+      // Use proper .doc parser for old Word files
+      const text = await parseDoc(filePath);
       chunks = chunkText(text, 500, 60);
     } else {
       return;
     }
     
-    if (chunks.length === 0) return;
+    if (chunks.length === 0) {
+      // Mark file as failed if no chunks were extracted
+      await updateFileStatus(filePath, 'failed', 'No text content extracted');
+      console.warn(`No text extracted from ${filePath}`);
+      return;
+    }
     
     const batchSize = 8; // Small batches to minimize memory usage
     for (let i = 0; i < chunks.length; i += batchSize) {
@@ -324,6 +396,10 @@ async function handleFile(filePath: string) {
     
     fileHashes.set(filePath, currentHash);
     
+    // Update file status as successfully indexed
+    const totalChunks = chunks.length;
+    await updateFileStatus(filePath, 'indexed', undefined, totalChunks);
+    
     // Clear references to help garbage collection
     chunks = null as any;
     
@@ -348,8 +424,10 @@ async function handleFile(filePath: string) {
     if (global.gc) {
       global.gc();
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to handle file ${filePath}:`, error);
+    // Track the error in the database
+    await updateFileStatus(filePath, 'error', error.message || String(error));
   }
 }
 
@@ -670,51 +748,52 @@ parentPort!.on('message', async (msg: any) => {
           const searchQuery = (typeof msg.payload === 'string' ? msg.payload : msg.payload?.query || '').toLowerCase();
           const results: any[] = [];
           
-          // Quick search through all known files (limit to first 30 matches)
-          let matchCount = 0;
-          
-          // Search indexed files
-          for (const [filePath, hash] of fileHashes) {
-            if (matchCount >= 30) break;
-            
-            if (filePath.toLowerCase().includes(searchQuery)) {
-              const queuePosition = queue.indexOf(filePath);
-              const isProcessing = processing.has(filePath);
-              
-              let status: 'indexed' | 'queued' | 'error' | 'not_indexed' = 'indexed';
-              if (queuePosition >= 0 || isProcessing) {
-                status = 'queued';
+          // Quick search through file status table if available
+          if (fileStatusTable) {
+            try {
+              const allStatuses = await fileStatusTable.toArray();
+              for (const record of allStatuses) {
+                if (record.path.toLowerCase().includes(searchQuery)) {
+                  // Check if currently in queue
+                  const queuePosition = queue.indexOf(record.path);
+                  const isProcessing = processing.has(record.path);
+                  
+                  let status = record.status;
+                  if (queuePosition >= 0 || isProcessing) {
+                    status = 'queued';
+                  }
+                  
+                  results.push({
+                    path: record.path,
+                    status: status,
+                    chunks: record.chunk_count || 0,
+                    queuePosition: queuePosition >= 0 ? queuePosition + 1 : undefined,
+                    error: record.error_message,
+                    modified: record.last_modified
+                  });
+                  
+                  if (results.length >= 30) break;
+                }
               }
-              
-              results.push({
-                path: filePath,
-                status,
-                chunks: 0, // Will be updated below for indexed files
-                queuePosition: queuePosition >= 0 ? queuePosition + 1 : undefined
-              });
-              matchCount++;
+            } catch (e) {
+              console.error('Error searching file status table:', e);
             }
           }
           
-          // Search queued files
-          for (let i = 0; i < queue.length && matchCount < 30; i++) {
+          // Also search queued files not yet in status table
+          for (let i = 0; i < queue.length && results.length < 30; i++) {
             const filePath = queue[i];
             if (filePath.toLowerCase().includes(searchQuery)) {
-              // Check if already in results
               if (!results.find(r => r.path === filePath)) {
                 results.push({
                   path: filePath,
-                  status: 'queued' as const,
+                  status: 'queued',
                   chunks: 0,
                   queuePosition: i + 1
                 });
-                matchCount++;
               }
             }
           }
-          
-          // Skip chunk counts for now to avoid LanceDB query issues
-          // The main purpose of file search is to check indexing status, not chunk counts
           
           // Send results
           if (msg.id) {

@@ -85,7 +85,8 @@
       "Bash(npm run test:database:*)",
       "Bash(NODE_ENV=test npx vitest run tests/unit/database-simple.spec.ts)",
       "Bash(npm run test:embeddings:*)",
-      "Bash(npm run test:core:*)"
+      "Bash(npm run test:core:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": [],

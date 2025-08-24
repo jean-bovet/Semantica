@@ -51,7 +51,8 @@
     "pdf-parse": "^1.1.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "textract": "^2.5.0"
+    "textract": "^2.5.0",
+    "word-extractor": "^1.0.4"
   },
   "build": {
     "appId": "com.yourorg.offlinesearch",

@@ -126,6 +126,7 @@ Files are processed with **controlled parallelism** for optimal performance:
 ~/Library/Application Support/offline-mac-search/
 ├── data/
 │   ├── chunks.lance/      # Vector database
+│   ├── file_status.lance/ # File indexing status tracking
 │   └── config.json        # User configuration
 └── Crashpad/              # Crash dumps
 ```
@@ -148,6 +149,21 @@ Files are processed with **controlled parallelism** for optimal performance:
   }
 }
 ```
+
+### File Status Tracking
+The system maintains a database table to track the status of each file:
+- **indexed**: Successfully parsed and indexed with chunk count
+- **failed**: File was parsed but no content could be extracted
+- **error**: An error occurred during parsing
+- **queued**: File is waiting to be processed
+- **processing**: File is currently being indexed
+
+Supported file formats:
+- **PDF**: Extracted with pdf-parse library
+- **TXT/MD**: Plain text files
+- **DOCX**: Modern Word documents (XML-based)
+- **DOC**: Legacy Word documents (parsed with word-extractor)
+- **RTF**: Rich Text Format documents
 
 ## Build System
 
