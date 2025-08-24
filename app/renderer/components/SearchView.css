@@ -66,25 +66,44 @@
 }
 
 .file-group {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
-  padding: 16px;
+  overflow: hidden;
 }
 
 .file-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.file-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.expand-icon {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.2s;
 }
 
 .file-header h3 {
   font-size: 16px;
   color: #ffffff;
   font-weight: 500;
+  margin: 0;
+  flex: 1;
 }
 
 .match-count {
@@ -93,6 +112,33 @@
   background: rgba(255, 255, 255, 0.05);
   padding: 4px 8px;
   border-radius: 4px;
+}
+
+.best-score {
+  font-size: 13px;
+  color: #4CAF50;
+  background: rgba(76, 175, 80, 0.15);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.file-summary {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.file-details {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.file-details .search-result:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  margin-bottom: 12px;
+  padding-bottom: 12px;
 }
 
 .no-results {
