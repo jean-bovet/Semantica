@@ -3,6 +3,7 @@ import SearchView from './components/SearchView';
 import SettingsView from './components/SettingsView';
 import StatusBar from './components/StatusBar';
 import Modal from './components/Modal';
+import FileSearchModal from './components/FileSearchModal';
 import { SearchProvider } from './contexts/SearchContext';
 import './App.css';
 
@@ -14,6 +15,7 @@ declare global {
 
 function App() {
   const [showSettings, setShowSettings] = useState(false);
+  const [showFileSearch, setShowFileSearch] = useState(false);
   const [indexProgress, setIndexProgress] = useState({
     queued: 0,
     processing: 0,
@@ -46,6 +48,7 @@ function App() {
         <StatusBar 
           progress={indexProgress} 
           onSettingsClick={() => setShowSettings(true)}
+          onFileSearchClick={() => setShowFileSearch(true)}
         />
         
         <Modal
@@ -55,6 +58,11 @@ function App() {
         >
           <SettingsView />
         </Modal>
+        
+        <FileSearchModal
+          isOpen={showFileSearch}
+          onClose={() => setShowFileSearch(false)}
+        />
       </div>
     </SearchProvider>
   );

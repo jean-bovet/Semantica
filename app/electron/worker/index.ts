@@ -664,6 +664,69 @@ parentPort!.on('message', async (msg: any) => {
         });
         break;
       
+      case 'searchFiles':
+        const searchQuery = msg.payload.toLowerCase();
+        const results: any[] = [];
+        
+        // Search through all known files
+        for (const [filePath, hash] of fileHashes) {
+          if (filePath.toLowerCase().includes(searchQuery)) {
+            // Check if file is in queue
+            const queuePosition = queue.indexOf(filePath);
+            const isProcessing = processing.has(filePath);
+            
+            let status: 'indexed' | 'queued' | 'error' | 'not_indexed' = 'indexed';
+            let chunks = 0;
+            
+            if (queuePosition >= 0) {
+              status = 'queued';
+            } else if (isProcessing) {
+              status = 'queued'; // Show as queued when processing
+            }
+            
+            // Get chunk count from database if indexed
+            if (status === 'indexed' && db) {
+              try {
+                const table = await db.openTable('chunks');
+                const queryResult = await table.query()
+                  .where('path = ?', filePath)
+                  .toArray();
+                chunks = queryResult.length;
+              } catch (e) {
+                console.error('Error counting chunks:', e);
+              }
+            }
+            
+            results.push({
+              path: filePath,
+              status,
+              chunks,
+              queuePosition: queuePosition >= 0 ? queuePosition + 1 : undefined,
+              modified: undefined // Could add file stats here if needed
+            });
+          }
+        }
+        
+        // Also search files in queue that might not be in fileHashes yet
+        for (const filePath of queue) {
+          if (filePath.toLowerCase().includes(searchQuery) && 
+              !results.find(r => r.path === filePath)) {
+            results.push({
+              path: filePath,
+              status: 'queued' as const,
+              queuePosition: queue.indexOf(filePath) + 1
+            });
+          }
+        }
+        
+        // Limit results
+        const limitedResults = results.slice(0, 20);
+        
+        if (msg.id) {
+          parentPort!.postMessage({ id: msg.id, payload: limitedResults });
+        }
+        break;
+      
       case 'shutdown':
         // Clean shutdown requested
         console.log('Worker shutting down...');

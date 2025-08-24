@@ -47,7 +47,9 @@ const api = {
     getWatchedFolders: (): Promise<string[]> =>
       ipcRenderer.invoke('indexer:getWatchedFolders'),
     
-    reindexAll: () => ipcRenderer.invoke('indexer:reindexAll')
+    reindexAll: () => ipcRenderer.invoke('indexer:reindexAll'),
+    
+    searchFiles: (query: string) => ipcRenderer.invoke('indexer:searchFiles', query)
   },
   
   search: {

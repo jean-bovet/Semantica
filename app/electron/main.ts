@@ -195,6 +195,10 @@ if (gotTheLock) {
     return sendToWorker('reindexAll');
   });
   
+  ipcMain.handle('indexer:searchFiles', async (_, query: string) => {
+    return sendToWorker('searchFiles', query);
+  });
+  
   ipcMain.handle('dialog:confirm', async (_, title: string, message: string) => {
     const { response } = await dialog.showMessageBox(mainWindow!, {
       type: 'question',
