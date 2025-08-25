@@ -27,6 +27,9 @@ async function buildFile(entry, outfile) {
     target: 'node18',
     minify: true,
     logLevel: 'info',
+    define: {
+      'process.env.NODE_ENV': '"production"'
+    }
   });
   
   console.log(`Built ${outfile}`);

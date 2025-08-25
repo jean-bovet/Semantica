@@ -8,13 +8,13 @@ export class IsolatedEmbedder implements IEmbedder {
   public filesSinceSpawn = 0; // Made public for shouldRestart check
   private ready = false;
   private initPromise: Promise<void> | null = null;
-  private readonly maxFilesBeforeRestart = 500;
-  private readonly maxMemoryMB = 1500;
+  private readonly maxFilesBeforeRestart: number;
+  private readonly maxMemoryMB: number;
 
   constructor(private modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
     if (config?.modelName) this.modelName = config.modelName;
-    if (config?.maxFilesBeforeRestart) this.maxFilesBeforeRestart = config.maxFilesBeforeRestart;
-    if (config?.maxMemoryMB) this.maxMemoryMB = config.maxMemoryMB;
+    this.maxFilesBeforeRestart = config?.maxFilesBeforeRestart || 500;
+    this.maxMemoryMB = config?.maxMemoryMB || 1500;
   }
 
   private async spawnChild(): Promise<void> {

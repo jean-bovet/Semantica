@@ -30,3 +30,4 @@ out/
 resources/models/*/
 data/
 logs/
+.claude/settings.local.json
