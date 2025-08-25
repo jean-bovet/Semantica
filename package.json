@@ -74,6 +74,16 @@
     "files": [
       "dist/**/*",
       "node_modules/**/*",
+      "!node_modules/@xenova/transformers/.cache/**",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/.github/**",
+      "!node_modules/**/examples/**",
+      "!node_modules/**/example/**",
+      "!node_modules/**/docs/**",
       "!**/*.map"
     ],
     "extraResources": [
