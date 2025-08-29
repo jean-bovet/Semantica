@@ -19,6 +19,15 @@ import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fil
 
 // Monitor memory usage
 let fileCount = 0;
+// Track previous memory values to avoid redundant logging
+let lastMemoryLog = {
+  rssMB: 0,
+  heapMB: 0,
+  heapTotalMB: 0,
+  extMB: 0,
+  fileCount: 0
+};
+
 // Memory monitoring and governor
 setInterval(async () => {
   const usage = process.memoryUsage();
@@ -27,7 +36,15 @@ setInterval(async () => {
   const heapTotalMB = Math.round(usage.heapTotal / 1024 / 1024);
   const extMB = Math.round(usage.external / 1024 / 1024);
   
-  console.log(`Memory: RSS=${rssMB}MB, Heap=${heapMB}MB/${heapTotalMB}MB, External=${extMB}MB, Files processed: ${fileCount}`);
+  // Only log if there's a significant change (>10MB RSS, >5MB Heap, or file count changed)
+  const rssChanged = Math.abs(rssMB - lastMemoryLog.rssMB) > 10;
+  const heapChanged = Math.abs(heapMB - lastMemoryLog.heapMB) > 5;
+  const filesChanged = fileCount !== lastMemoryLog.fileCount;
+  
+  if (rssChanged || heapChanged || filesChanged) {
+    console.log(`Memory: RSS=${rssMB}MB, Heap=${heapMB}MB/${heapTotalMB}MB, External=${extMB}MB, Files processed: ${fileCount}`);
+    lastMemoryLog = { rssMB, heapMB, heapTotalMB, extMB, fileCount };
+  }
   
   // Log queue status if there are files
   const stats = fileQueue.getStats();
