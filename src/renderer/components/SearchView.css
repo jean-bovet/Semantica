@@ -68,6 +68,28 @@
   padding: 24px;
 }
 
+/* Custom scrollbar styles for webkit browsers */
+.search-results::-webkit-scrollbar {
+  width: 12px;
+}
+
+.search-results::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.search-results::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: padding-box;
+}
+
 .file-group {
   margin-bottom: 24px;
   background: rgba(255, 255, 255, 0.03);
