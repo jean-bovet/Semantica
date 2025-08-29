@@ -1,5 +1,5 @@
 import { beforeAll, afterAll } from 'vitest';
-import { setEmbedImpl } from '../../app/electron/embeddings/local';
+import { setEmbedImpl } from '../../src/shared/embeddings/local';
 import { mockEmbed } from './mock-embeddings';
 import { installNoNetwork } from './no-network';
 

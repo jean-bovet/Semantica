@@ -69,7 +69,7 @@ Each parser is responsible for extracting text content from specific file format
 - **Limitations**: Text-based PDFs only, no OCR
 - **Error Handling**: Detects scanned PDFs, marks as failed
 ```typescript
-// app/electron/parsers/pdf.ts
+// src/main/parsers/pdf.ts
 export async function parsePdf(filePath: string): Promise<string> {
   const dataBuffer = await fs.readFile(filePath);
   const data = await pdfParse(dataBuffer);
@@ -84,7 +84,7 @@ export async function parsePdf(filePath: string): Promise<string> {
 - **Version 1**: Failed RTF parsing attempt
 - **Version 2**: Proper binary support with word-extractor
 ```typescript
-// app/electron/parsers/doc.ts
+// src/main/parsers/doc.ts
 import WordExtractor from 'word-extractor';
 const extractor = new WordExtractor();
 export async function parseDoc(filePath: string): Promise<string> {
@@ -97,7 +97,7 @@ export async function parseDoc(filePath: string): Promise<string> {
 - **Library**: mammoth
 - **Features**: Extracts text with structure preservation
 ```typescript
-// app/electron/parsers/docx.ts
+// src/main/parsers/docx.ts
 export async function parseDocx(filePath: string): Promise<string> {
   const result = await mammoth.extractRawText({ path: filePath });
   return result.value;
@@ -108,7 +108,7 @@ export async function parseDocx(filePath: string): Promise<string> {
 
 #### Version Registry
 ```typescript
-// app/electron/worker/parserVersions.ts
+// src/main/worker/parserVersions.ts
 export const PARSER_VERSIONS: Record<string, number> = {
   pdf: 1,    // Version 1: Initial pdf-parse implementation
   doc: 2,    // Version 2: Proper binary .doc support with word-extractor
@@ -172,7 +172,7 @@ async function checkForParserUpgrades() {
 Documents are split into manageable chunks for embedding:
 
 ```typescript
-// app/electron/pipeline/chunker.ts
+// src/main/pipeline/chunker.ts
 export function chunkText(text: string): Chunk[] {
   const chunks: Chunk[] = [];
   const chunkSize = 500;  // characters
@@ -218,7 +218,7 @@ async function generateEmbeddings(chunks: string[]): Promise<number[][]> {
 Vector database for semantic search:
 
 ```typescript
-// app/electron/worker/index.ts
+// src/main/worker/index.ts
 const db = await lancedb.connect(dbPath);
 
 // Chunks table schema
@@ -292,7 +292,7 @@ async function search(query: string, limit = 100): Promise<SearchResult[]> {
 Monitors file system changes:
 
 ```typescript
-// app/electron/worker/fileScanner.ts
+// src/main/worker/fileScanner.ts
 const watcher = chokidar.watch(watchedFolders, {
   ignored: /(^|[\/\\])\../, // Hidden files
   persistent: true,
@@ -348,10 +348,10 @@ class IndexingQueue {
 ```javascript
 // build.config.js
 const files = [
-  { input: 'app/electron/main.ts', output: 'dist/main.cjs' },
-  { input: 'app/electron/preload.ts', output: 'dist/preload.cjs' },
-  { input: 'app/electron/worker/index.ts', output: 'dist/worker.cjs' },
-  { input: 'app/electron/worker/embedder.child.ts', output: 'dist/embedder.child.cjs' }
+  { input: 'src/main/main.ts', output: 'dist/main.cjs' },
+  { input: 'src/main/preload.ts', output: 'dist/preload.cjs' },
+  { input: 'src/main/worker/index.ts', output: 'dist/worker.cjs' },
+  { input: 'src/main/worker/embedder.child.ts', output: 'dist/embedder.child.cjs' }
 ];
 
 // Each file built with esbuild

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PARSER_VERSIONS, getParserVersion, VERSION_HISTORY, getVersionHistory } from '../../app/electron/worker/parserVersions';
-import { shouldReindex, FileStatus } from '../../app/electron/worker/reindexManager';
+import { PARSER_VERSIONS, getParserVersion, VERSION_HISTORY, getVersionHistory } from '../../src/main/worker/parserVersions';
+import { shouldReindex, FileStatus } from '../../src/main/worker/reindexManager';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
 
@@ -172,11 +172,11 @@ describe('Parser Version Tracking', () => {
   describe('Parser Version Constants', () => {
     it('should export PARSER_VERSION from each parser file', async () => {
       // Test that parser files export version constants
-      const pdfParser = await import('../../app/electron/parsers/pdf');
-      const docParser = await import('../../app/electron/parsers/doc');
-      const docxParser = await import('../../app/electron/parsers/docx');
-      const textParser = await import('../../app/electron/parsers/text');
-      const rtfParser = await import('../../app/electron/parsers/rtf');
+      const pdfParser = await import('../../src/main/parsers/pdf');
+      const docParser = await import('../../src/main/parsers/doc');
+      const docxParser = await import('../../src/main/parsers/docx');
+      const textParser = await import('../../src/main/parsers/text');
+      const rtfParser = await import('../../src/main/parsers/rtf');
 
       expect(pdfParser.PARSER_VERSION).toBe(1);
       expect(docParser.PARSER_VERSION).toBe(2);

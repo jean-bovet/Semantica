@@ -4,7 +4,7 @@ import {
   isIndexerActive, 
   normalizeProgress,
   type ProgressState 
-} from '../../app/renderer/utils/statusHelpers';
+} from '../../src/renderer/utils/statusHelpers';
 
 describe('Status Helpers', () => {
   describe('getStatusText', () => {

@@ -3,8 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as lancedb from '@lancedb/lancedb';
-import { chunkText } from '../../app/electron/pipeline/chunker';
-import { parseText } from '../../app/electron/parsers/text';
+import { chunkText } from '../../src/main/pipeline/chunker';
+import { parseText } from '../../src/main/parsers/text';
 import { MockEmbedder384 } from '../fixtures/tiny-embedder';
 
 const fixturesDir = path.join(__dirname, '../fixtures');

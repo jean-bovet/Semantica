@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import * as path from 'path';
 import * as fs from 'fs';
-import { parsePdf } from '../../app/electron/parsers/pdf';
-import { parseDocx } from '../../app/electron/parsers/docx';
-import { parseRtf } from '../../app/electron/parsers/rtf';
-import { parseText } from '../../app/electron/parsers/text';
+import { parsePdf } from '../../src/main/parsers/pdf';
+import { parseDocx } from '../../src/main/parsers/docx';
+import { parseRtf } from '../../src/main/parsers/rtf';
+import { parseText } from '../../src/main/parsers/text';
 
 const fixturesDir = path.join(__dirname, '../fixtures');
 

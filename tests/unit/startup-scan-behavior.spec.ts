@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as fs from 'node:fs';
-import { scanForChanges } from '../../app/electron/worker/fileStatusManager';
-import { shouldReindex } from '../../app/electron/worker/reindexManager';
+import { scanForChanges } from '../../src/main/worker/fileStatusManager';
+import { shouldReindex } from '../../src/main/worker/reindexManager';
 
 // Mock modules
 vi.mock('node:fs');
-vi.mock('../../app/electron/worker/reindexManager', () => ({
+vi.mock('../../src/main/worker/reindexManager', () => ({
   shouldReindex: vi.fn()
 }));
 

@@ -1,4 +1,4 @@
-# Offline Mac Search
+# Semantica
 
 A privacy-first, offline semantic search application for macOS that indexes your documents locally and provides fast, intelligent search capabilities—all without sending any data off your device.
 
@@ -24,8 +24,8 @@ A privacy-first, offline semantic search application for macOS that indexes your
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/offline-mac-search.git
-cd offline-mac-search
+git clone https://github.com/yourusername/semantica.git
+cd semantica
 
 # Install dependencies
 npm install
@@ -70,7 +70,7 @@ Main Process (Electron)
 - Automatic process restart when memory thresholds exceeded
 - Process isolation allows unlimited file indexing
 
-For detailed architecture documentation, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+For detailed architecture documentation, see [specs/02-architecture.md](specs/02-architecture.md).
 
 ## 💾 Memory Management
 
@@ -80,7 +80,7 @@ The application implements sophisticated memory management through process isola
 - **Automatic Recovery**: Child process restarts when thresholds exceeded
 - **Configurable Limits**: Tune memory limits based on your system
 
-For details on the memory solution, see [docs/MEMORY-SOLUTION.md](docs/MEMORY-SOLUTION.md).
+For details on the memory solution, see [specs/archive/memory-solution.md](specs/archive/memory-solution.md).
 
 ## 🧪 Testing
 
@@ -111,7 +111,7 @@ npm run test:coverage
 - **Search**: 85% - Vector search, grouping
 - **Worker Management**: 80% - Lifecycle, messaging
 
-See [docs/testing-strategy.md](docs/testing-strategy.md) for details.
+See [planning/testing-strategy.md](planning/testing-strategy.md) for details.
 
 ## 📚 Technology Stack
 
@@ -125,7 +125,7 @@ See [docs/testing-strategy.md](docs/testing-strategy.md) for details.
 
 ## 🔧 Configuration
 
-Settings are stored in `~/Library/Application Support/offline-mac-search/data/config.json`:
+Settings are stored in `~/Library/Application Support/Semantica/data/config.json`:
 
 ```json
 {
@@ -185,9 +185,8 @@ FSS/
 │       └── components/
 ├── dist/                  # Build outputs
 ├── docs/                  # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── MEMORY-SOLUTION.md
-│   └── testing-strategy.md
+│   ├── build-instructions.md
+│   └── release-checklist.md
 ├── scripts/               # Utility scripts
 │   ├── ab-embed-benchmark.ts
 │   └── db-ingest-benchmark.ts

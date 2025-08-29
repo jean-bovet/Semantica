@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { embed, setEmbedImpl } from '../../app/electron/embeddings/local';
+import { embed, setEmbedImpl } from '../../src/shared/embeddings/local';
 import { mockEmbed } from '../helpers/mock-embeddings';
 
 describe('Embeddings Adapter', () => {

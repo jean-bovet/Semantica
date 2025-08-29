@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ReindexService, FileStatus, FileStatusRepository } from '../../app/electron/services/ReindexService';
+import { ReindexService, FileStatus, FileStatusRepository } from '../../src/main/services/ReindexService';
 import * as fs from 'node:fs';
 
 // Mock fs module
@@ -8,7 +8,7 @@ vi.mock('node:fs', () => ({
 }));
 
 // Mock the parser versions
-vi.mock('../../app/electron/worker/parserVersions', () => ({
+vi.mock('../../src/main/worker/parserVersions', () => ({
   PARSER_VERSIONS: {
     pdf: 1,
     doc: 2,

@@ -1,8 +1,8 @@
-# FinderSemanticSearch - Product Overview
+# Semantica - Product Overview
 
 ## Executive Summary
 
-FinderSemanticSearch (FSS) is an Electron-based desktop application that provides offline semantic search capabilities for Mac users. It indexes local documents and enables natural language search using vector embeddings, with 100% on-device processing for complete privacy.
+Semantica is an Electron-based desktop application that provides offline semantic search capabilities for Mac users. It indexes local documents and enables natural language search using vector embeddings, with 100% on-device processing for complete privacy.
 
 ## Product Vision
 
@@ -94,7 +94,7 @@ FinderSemanticSearch (FSS) is an Electron-based desktop application that provide
 ## Project Structure
 
 ```
-FinderSemanticSearch/
+Semantica/
 ├── app/
 │   ├── electron/        # Main process, workers
 │   └── renderer/        # React UI
@@ -128,15 +128,15 @@ FinderSemanticSearch/
 ## Getting Started
 
 ### For Users
-1. Download FSS.dmg from releases
+1. Download Semantica.dmg from releases
 2. Drag to Applications folder
 3. Launch and select folders to index
 4. Start searching with natural language
 
 ### For Developers
 ```bash
-git clone https://github.com/[repo]/FSS.git
-cd FSS
+git clone https://github.com/[repo]/semantica.git
+cd semantica
 npm install
 npm run dev
 ```
@@ -154,7 +154,7 @@ See [02-architecture.md](./02-architecture.md) for system design and [03-impleme
 
 - **Documentation**: This specs/ folder
 - **Issues**: GitHub Issues for bug reports
-- **Logs**: ~/Library/Logs/FinderSemanticSearch/
+- **Logs**: ~/Library/Logs/Semantica/
 - **Support**: File search (🔍) for diagnostics
 
 ---

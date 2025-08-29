@@ -6,7 +6,7 @@
 
 ## System Overview
 
-The Offline Mac Search application uses a multi-process architecture with memory isolation to ensure stable operation during large-scale document indexing. The UI follows a search-first philosophy where search functionality takes center stage, with settings and configuration accessible via modal overlays to maximize search result visibility.
+Semantica uses a multi-process architecture with memory isolation to ensure stable operation during large-scale document indexing. The UI follows a search-first philosophy where search functionality takes center stage, with settings and configuration accessible via modal overlays to maximize search result visibility.
 
 ## Architecture Diagram
 
@@ -28,30 +28,68 @@ Main Process (Electron)
 
 ## Core Components
 
-### 1. Main Process (`app/electron/main.ts`)
+### 1. Main Process (`src/main/main.ts`)
 - Manages application lifecycle
 - Creates and controls BrowserWindow
 - Handles IPC communication between renderer and worker
 - Implements crash reporting
 - Enforces single instance with lock mechanism
-- File path: `dist/main.cjs`
+- Build output: `dist/main.cjs`
 
-### 2. Worker Thread (`app/electron/worker/index.ts`)
+#### Initialization Sequence (Critical)
+The main process follows a strict initialization order to prevent IPC errors:
+
+1. **Single Instance Lock** (`requestSingleInstanceLock()`)
+   - Ensures only one instance runs at a time
+   - Prevents database conflicts and resource duplication
+   - Focuses existing window when second instance is attempted
+
+2. **App Ready** (`app.whenReady()`)
+   - Wait for Electron to be fully initialized
+   - Create BrowserWindow
+
+3. **Worker Thread Initialization**
+   - Spawn worker thread
+   - **CRITICAL**: Wait for worker to be ready (`waitForWorker()`)
+   - Worker must signal readiness before accepting IPC calls
+
+4. **IPC Handler Registration**
+   - Register all `ipcMain.handle()` handlers
+   - Must be done BEFORE loading window content
+   - Prevents "No handler registered" errors
+
+5. **Load Window Content**
+   - Load URL (development) or HTML file (production)
+   - This happens LAST to ensure all handlers are ready
+
+**Important**: Never load the window content before registering IPC handlers. The renderer process may attempt to call handlers immediately upon load, causing errors if handlers aren't registered yet.
+
+### 2. Worker Thread (`src/main/worker/index.ts`)
 - Owns the LanceDB instance
 - Manages file watching and indexing queue
 - Handles search queries
 - Monitors memory usage
 - Spawns and manages embedder child process
-- File path: `dist/worker.cjs`
+- **Handles model downloads sequentially** (via `modelDownloader.ts`)
+- Build output: `dist/worker.cjs`
 
-### 3. Embedder Child Process (`app/electron/worker/embedder.child.ts`)
+#### Model Download Strategy
+The worker implements sequential model downloads for better UX and reliability:
+- Downloads required files one at a time (config.json → tokenizer.json → model.onnx)
+- Checks for existing/corrupted files before downloading
+- Provides accurate progress tracking per file
+- Handles HTTP redirects (301, 302, 307, 308)
+- Cleans up partial files on failure
+- Total download: ~115MB across 5 files
+
+### 3. Embedder Child Process (`src/main/worker/embedder.child.ts`)
 - **Isolated process for memory safety**
 - Loads and runs the transformer model
 - Processes text embeddings
 - Automatically restarts when memory thresholds exceeded
-- File path: `dist/embedder.child.cjs`
+- Build output: `dist/embedder.child.cjs`
 
-### 4. Renderer Process (`app/renderer/`)
+### 4. Renderer Process (`src/renderer/`)
 - React-based user interface with search-first design
 - Full-screen search view for maximum result visibility
 - Real-time search with debouncing
@@ -127,7 +165,7 @@ Files are processed with **controlled parallelism** for optimal performance:
 
 ### Database Location
 ```
-~/Library/Application Support/offline-mac-search/
+~/Library/Application Support/Semantica/
 ├── data/
 │   ├── chunks.lance/      # Vector database
 │   ├── file_status.lance/ # File indexing status tracking
@@ -164,18 +202,9 @@ The system maintains a database table to track the status of each file:
 - **outdated**: Parser version upgraded, file needs re-indexing
 
 #### Parser Version Tracking
-The system tracks parser versions to automatically re-index files when parsers improve:
-- Each file type has a version number (e.g., DOC parser v2 with word-extractor support)
-- Files indexed with older parsers are automatically queued for re-indexing
-- Failed files are retried once per 24 hours with newer parser versions
-- Version history is maintained for transparency
+The system tracks parser versions to automatically re-index files when parsers improve. When a parser is upgraded, files indexed with the older version are automatically queued for re-indexing. Failed files are retried periodically with newer parser versions.
 
-Supported file formats with current versions:
-- **PDF v1**: Extracted with pdf-parse library (text-based PDFs only)
-- **TXT/MD v1**: Plain text files
-- **DOCX v1**: Modern Word documents (XML-based with mammoth)
-- **DOC v2**: Legacy Word documents (v2: word-extractor, v1: failed RTF parsing)
-- **RTF v1**: Rich Text Format documents
+For detailed parser implementations and version tracking, see [03-implementation.md](./03-implementation.md#parser-system).
 
 ### Known Limitations
 
@@ -232,24 +261,7 @@ Implement Optical Character Recognition for scanned documents:
 
 ## Build System
 
-### Development Build
-- Vite for React with HMR
-- esbuild for Electron files with watch mode
-- Concurrent execution with proper sequencing
-
-### Production Build
-- TypeScript compilation
-- Bundle optimization with esbuild
-- Electron Builder for DMG creation
-
-### Build Outputs
-```
-dist/
-├── main.cjs           # Main process bundle
-├── preload.cjs        # Preload script
-├── worker.cjs         # Worker thread bundle
-└── embedder.child.cjs # Embedder child process
-```
+The application uses a two-package architecture with ASAR packaging for production. For detailed build configuration and optimization strategies, see [06-build-optimization.md](./06-build-optimization.md).
 
 ## Security Features
 

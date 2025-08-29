@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { ConfigManager } from '../app/electron/worker/config';
+import { ConfigManager } from '../src/main/worker/config';
 
 describe('ConfigManager', () => {
   let tempDir: string;

@@ -1,10 +1,10 @@
 # CLAUDE.md - AI Assistant Context
 
-This file provides important context and guidelines for AI assistants working on the FinderSemanticSearch (FSS) project.
+This file provides important context and guidelines for AI assistants working on the Semantica project.
 
 ## Project Overview
 
-FinderSemanticSearch is an Electron-based application that provides offline semantic search capabilities for Mac users. It indexes local documents and enables natural language search using vector embeddings.
+Semantica is an Electron-based application that provides offline semantic search capabilities for Mac users. It indexes local documents and enables natural language search using vector embeddings.
 
 ## Key Technical Context
 
@@ -68,7 +68,7 @@ FinderSemanticSearch is an Electron-based application that provides offline sema
 5. Update documentation
 
 ### Debugging Tips
-- Check `~/Library/Logs/FinderSemanticSearch/` for logs
+- Check `~/Library/Logs/Semantica/` for logs
 - Use `window.api.db.stats()` for database metrics
 - Monitor memory with `window.api.indexer.progress()`
 - File search available via status bar icon

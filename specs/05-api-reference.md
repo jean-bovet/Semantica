@@ -264,7 +264,7 @@ interface FileStatus {
 
 ### Application Config
 
-Location: `~/Library/Application Support/offline-mac-search/data/config.json`
+Location: `~/Library/Application Support/Semantica/data/config.json`
 
 ```json
 {
@@ -306,7 +306,7 @@ Location: `~/Library/Application Support/offline-mac-search/data/config.json`
 
 ### Parser Versions
 
-Location: `app/electron/worker/parserVersions.ts`
+Location: `src/main/worker/parserVersions.ts`
 
 ```typescript
 export const PARSER_VERSIONS: Record<string, number> = {
@@ -459,4 +459,4 @@ async function createTestFiles(count: number): Promise<string[]>;
 
 ---
 
-*Back to: [README.md](./README.md) - Documentation Overview*
+*Previous: [04-operations.md](./04-operations.md) | Next: [06-build-optimization.md](./06-build-optimization.md)*

@@ -4,6 +4,37 @@
 
 ---
 
+## Application Startup Flow
+
+### First-Time User (No Model)
+1. **Application Launch**
+   - Single instance lock ensures only one app instance
+   - Main process creates BrowserWindow
+   - Worker thread spawns and initializes database
+
+2. **Model Check & Download**
+   - Worker checks for model files in `~/Library/Application Support/Semantica/models/`
+   - If missing, sequential download begins:
+     - config.json (~0.6KB)
+     - tokenizer_config.json (~0.4KB)
+     - tokenizer.json (~16MB)
+     - special_tokens_map.json (~0.2KB)
+     - model_quantized.onnx (~113MB)
+   - Progress shown in UI with per-file updates
+   - Total download: ~115MB
+
+3. **Initialization Complete**
+   - Embedder child process spawns after model ready
+   - File indexing begins automatically
+   - Search UI becomes available
+
+### Returning User (Model Exists)
+1. **Fast Startup** (<1 second)
+   - Model files verified (not re-downloaded)
+   - Embedder spawns on first embedding request
+   - Search UI available immediately
+   - Background indexing resumes
+
 ## Troubleshooting Common Issues
 
 ### Files Not Being Indexed
@@ -62,7 +93,7 @@
 
 **Solution**: 
 1. Close the app
-2. Delete the database folder: `~/Library/Application Support/offline-mac-search/data/`
+2. Delete the database folder: `~/Library/Application Support/Semantica/data/`
 3. Restart the app to recreate the database
 
 ### Performance Issues
@@ -72,7 +103,7 @@
 
 **Current limits**:
 - 5 files processed concurrently
-- Embedder restarts after 200 files or 900MB RSS
+- Embedder restarts after 500 files or 900MB RSS
 - Automatic throttling when RSS > 800MB
 
 **Solutions**:
@@ -116,16 +147,16 @@
 
 ### Where to Find Logs
 - **Console output**: Run with `npm run dev` to see all logs
-- **Crash dumps**: `~/Library/Application Support/offline-mac-search/Crashpad/`
+- **Crash dumps**: `~/Library/Application Support/Semantica/Crashpad/`
 - **File status**: Use file search to check individual file status
 
 ### Useful Debug Commands
 ```bash
 # Check database size
-du -sh ~/Library/Application\ Support/offline-mac-search/data/
+du -sh ~/Library/Application\ Support/Semantica/data/
 
 # List all indexed tables
-ls ~/Library/Application\ Support/offline-mac-search/data/
+ls ~/Library/Application\ Support/Semantica/data/
 
 # Monitor memory usage during indexing
 # Run the app with: npm run dev
@@ -169,7 +200,7 @@ Modify concurrent file processing based on system resources:
 - **High performance**: Increase to 8-10 files
 
 #### Memory Limits
-Tune memory thresholds in `app/electron/worker/config.ts`:
+Tune memory thresholds in `src/main/worker/config.ts`:
 ```typescript
 RSS_LIMIT: 1500,        // Increase for more memory
 EXTERNAL_LIMIT: 300,    // Increase for larger models
@@ -205,27 +236,27 @@ When parsers are updated:
 #### Backing Up Index
 ```bash
 # Backup entire index
-cp -r ~/Library/Application\ Support/offline-mac-search/data ~/backup/
+cp -r ~/Library/Application\ Support/Semantica/data ~/backup/
 
 # Backup just configuration
-cp ~/Library/Application\ Support/offline-mac-search/data/config.json ~/backup/
+cp ~/Library/Application\ Support/Semantica/data/config.json ~/backup/
 ```
 
 #### Restoring Index
 ```bash
 # Restore from backup
-rm -rf ~/Library/Application\ Support/offline-mac-search/data
-cp -r ~/backup/data ~/Library/Application\ Support/offline-mac-search/
+rm -rf ~/Library/Application\ Support/Semantica/data
+cp -r ~/backup/data ~/Library/Application\ Support/Semantica/
 ```
 
 #### Complete Reset
 If experiencing persistent issues:
 ```bash
 # Delete all app data
-rm -rf ~/Library/Application\ Support/offline-mac-search/
+rm -rf ~/Library/Application\ Support/Semantica/
 
 # Restart app - will recreate everything
-open /Applications/FinderSemanticSearch.app
+open /Applications/Semantica.app
 ```
 
 ## Deployment & Distribution
@@ -239,7 +270,7 @@ npm run build
 # Create DMG for distribution
 npm run package
 
-# Output: dist/FinderSemanticSearch-1.0.0.dmg
+# Output: dist/Semantica-1.0.0.dmg
 ```
 
 ### Code Signing & Notarization
@@ -248,19 +279,19 @@ For distribution outside App Store:
 # Sign the app (requires Developer ID)
 codesign --deep --force --verify --verbose \
   --sign "Developer ID Application: Your Name" \
-  dist/mac/FinderSemanticSearch.app
+  dist/mac/Semantica.app
 
 # Notarize with Apple
 xcrun altool --notarize-app \
   --primary-bundle-id "com.yourcompany.findersemanicsearch" \
   --username "your@email.com" \
   --password "@keychain:AC_PASSWORD" \
-  --file dist/FinderSemanticSearch-1.0.0.dmg
+  --file dist/Semantica-1.0.0.dmg
 ```
 
 ### Installation Instructions
 For end users:
-1. Download FinderSemanticSearch.dmg
+1. Download Semantica.dmg
 2. Open DMG file
 3. Drag app to Applications folder
 4. Launch from Applications
@@ -292,7 +323,7 @@ When reporting issues, provide:
 ### Support Resources
 - **Documentation**: This specs/ folder
 - **Issues**: GitHub Issues for bug reports
-- **Logs**: ~/Library/Logs/FinderSemanticSearch/
+- **Logs**: ~/Library/Logs/Semantica/
 - **Community**: GitHub Discussions
 
 ### Common Solutions Checklist

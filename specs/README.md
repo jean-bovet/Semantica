@@ -1,6 +1,6 @@
-# FinderSemanticSearch Documentation
+# Semantica Documentation
 
-Welcome to the technical documentation for FinderSemanticSearch (FSS), an offline semantic search application for macOS.
+Welcome to the technical documentation for Semantica, an offline semantic search application for macOS.
 
 ## 📚 Documentation Structure
 
@@ -13,6 +13,9 @@ Welcome to the technical documentation for FinderSemanticSearch (FSS), an offlin
 | [03-implementation.md](./03-implementation.md) | Technical details, memory management, parsers | ✅ Current |
 | [04-operations.md](./04-operations.md) | Troubleshooting, monitoring, deployment | ✅ Current |
 | [05-api-reference.md](./05-api-reference.md) | API documentation, schemas, configuration | ✅ Current |
+| [06-build-optimization.md](./06-build-optimization.md) | Build system, optimization, two-package architecture | ✅ Current |
+| [07-signing-distribution.md](./07-signing-distribution.md) | Code signing, notarization, distribution | ✅ Current |
+| [08-startup-flow.md](./08-startup-flow.md) | Detailed startup sequence and model download flow | ✅ Current |
 
 ### Archived Documentation
 
@@ -73,6 +76,14 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 | Encrypted files | Cannot index | Decrypt first | ❌ Won't fix |
 
 ## 🔄 Recent Updates
+
+### 2025-08-28
+- ✅ Renamed app to "Semantica" throughout codebase
+- ✅ Fixed all documentation inconsistencies
+- ✅ Standardized memory limits and paths
+- ✅ Added navigation links to all specs
+- ✅ Removed duplicate content between docs
+- ✅ Organized build and distribution documentation
 
 ### 2025-08-24
 - ✅ Implemented parser version tracking system
@@ -137,7 +148,7 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 ### Support
 - GitHub Issues: Bug reports and feature requests
 - GitHub Discussions: Community support
-- Logs: `~/Library/Logs/FinderSemanticSearch/`
+- Logs: `~/Library/Logs/Semantica/`
 
 ## 📝 Document Maintenance
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chunkText } from '../../app/electron/pipeline/chunker';
+import { chunkText } from '../../src/main/pipeline/chunker';
 
 describe('chunkText', () => {
   it('should handle empty text', () => {

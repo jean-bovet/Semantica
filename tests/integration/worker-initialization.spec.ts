@@ -3,7 +3,7 @@ import { Worker } from 'node:worker_threads';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { getStatusText } from '../../app/renderer/utils/statusHelpers';
+import { getStatusText } from '../../src/renderer/utils/statusHelpers';
 
 describe('Worker Initialization Flow', () => {
   let worker: Worker | null = null;
