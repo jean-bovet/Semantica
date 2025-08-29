@@ -1,8 +1,4 @@
 .status-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   height: 32px;
   background: rgba(30, 30, 30, 0.95);
   backdrop-filter: blur(10px);
@@ -11,7 +7,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  z-index: 1000;
+  flex-shrink: 0; /* Prevent shrinking */
 }
 
 .status-content {

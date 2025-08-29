@@ -16,7 +16,6 @@ body {
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  position: relative;
 }
 
 .main-content {
@@ -24,6 +23,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0; /* Important for flexbox children with overflow */
 }
 
 /* Loading spinner animation */
