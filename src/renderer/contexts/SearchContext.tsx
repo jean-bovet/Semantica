@@ -5,10 +5,12 @@ interface SearchContextType {
   query: string;
   results: SearchHit[];
   loading: boolean;
+  hasSearched: boolean;
   expandedFiles: Set<string>;
   setQuery: (query: string) => void;
   setResults: (results: SearchHit[]) => void;
   setLoading: (loading: boolean) => void;
+  setHasSearched: (hasSearched: boolean) => void;
   toggleExpanded: (path: string) => void;
   clearExpanded: () => void;
 }
@@ -19,6 +21,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchHit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   
   const toggleExpanded = useCallback((path: string) => {
@@ -42,10 +45,12 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       query,
       results,
       loading,
+      hasSearched,
       expandedFiles,
       setQuery,
       setResults,
       setLoading,
+      setHasSearched,
       toggleExpanded,
       clearExpanded
     }}>

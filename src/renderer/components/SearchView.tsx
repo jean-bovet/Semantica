@@ -8,10 +8,12 @@ function SearchView() {
     query, 
     results, 
     loading, 
+    hasSearched,
     expandedFiles,
     setQuery, 
     setResults, 
     setLoading,
+    setHasSearched,
     toggleExpanded,
     clearExpanded 
   } = useSearchContext();
@@ -36,14 +38,16 @@ function SearchView() {
       try {
         const hits = await window.api.search.query(query, 100);
         setResults(hits);
+        setHasSearched(true);
       } catch (err) {
         console.error('Search failed:', err);
         setResults([]);
+        setHasSearched(true);
       } finally {
         setLoading(false);
       }
     }
-  }, [query, setResults, setLoading, clearExpanded]);
+  }, [query, setResults, setLoading, setHasSearched, clearExpanded]);
   
   const groupedResults = results.reduce((acc, result) => {
     if (!acc[result.path]) {
@@ -70,7 +74,13 @@ function SearchView() {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (e.target.value === '') {
+                setHasSearched(false);
+                setResults([]);
+              }
+            }}
             placeholder="Search your documents..."
             className="search-input"
           />
@@ -128,7 +138,7 @@ function SearchView() {
           );
         })}
         
-        {results.length === 0 && query && !loading && (
+        {results.length === 0 && hasSearched && !loading && (
           <div className="no-results">
             No results found for "{query}"
           </div>
