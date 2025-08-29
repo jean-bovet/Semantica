@@ -38,6 +38,7 @@
   padding: 20px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.02);
+  -webkit-app-region: no-drag;
 }
 
 .modal-title {
@@ -56,10 +57,13 @@
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 20px;
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.2s ease;
+  padding: 0;
+  -webkit-app-region: no-drag;
+  position: relative;
+  z-index: 10;
 }
 
 .modal-close:hover {
