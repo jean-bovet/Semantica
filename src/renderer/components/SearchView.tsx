@@ -143,6 +143,33 @@ function SearchView() {
             No results found for "{query}"
           </div>
         )}
+        
+        {results.length === 0 && !hasSearched && !loading && (
+          <div className="empty-state">
+            <svg width="120" height="120" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Outer compass ring */}
+              <circle cx="40" cy="40" r="28" stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.2"/>
+              
+              {/* Inner compass ring */}
+              <circle cx="40" cy="40" r="22" stroke="currentColor" strokeWidth="1" fill="none" opacity="0.15"/>
+              
+              {/* Compass needle pointing north */}
+              <path d="M40 18L44 36L40 40L36 36L40 18Z" fill="currentColor" opacity="0.35"/>
+              <path d="M40 62L36 44L40 40L44 44L40 62Z" fill="currentColor" opacity="0.15"/>
+              
+              {/* Cardinal direction markers */}
+              <circle cx="40" cy="12" r="1.5" fill="currentColor" opacity="0.4"/>
+              <circle cx="68" cy="40" r="1.5" fill="currentColor" opacity="0.2"/>
+              <circle cx="40" cy="68" r="1.5" fill="currentColor" opacity="0.2"/>
+              <circle cx="12" cy="40" r="1.5" fill="currentColor" opacity="0.2"/>
+              
+              {/* Center pivot */}
+              <circle cx="40" cy="40" r="3" fill="currentColor" opacity="0.3"/>
+              <circle cx="40" cy="40" r="1.5" fill="currentColor" opacity="0.5"/>
+            </svg>
+            <p className="empty-state-hint">Type your query and press Enter</p>
+          </div>
+        )}
       </div>
     </div>
   );
