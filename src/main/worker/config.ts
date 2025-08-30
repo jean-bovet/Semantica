@@ -16,6 +16,10 @@ export interface AppConfig {
       docx: boolean;
       rtf: boolean;
       doc: boolean;
+      xlsx: boolean;
+      xls: boolean;
+      csv: boolean;
+      tsv: boolean;
     };
   };
   lastUpdated: string;
@@ -60,7 +64,11 @@ export class ConfigManager {
           md: true,
           docx: true,
           rtf: true,
-          doc: true
+          doc: true,
+          xlsx: true,
+          xls: true,
+          csv: true,
+          tsv: true
         }
       },
       lastUpdated: new Date().toISOString()
@@ -84,12 +92,38 @@ export class ConfigManager {
         if (!config.settings.fileTypes) {
           config.settings.fileTypes = this.getDefaultConfig().settings.fileTypes;
         }
+        // Add new spreadsheet file types if missing
+        const defaultFileTypes = this.getDefaultConfig().settings.fileTypes;
+        let needsSave = false;
+        if (!config.settings.fileTypes.xlsx) {
+          config.settings.fileTypes.xlsx = defaultFileTypes.xlsx;
+          needsSave = true;
+        }
+        if (!config.settings.fileTypes.xls) {
+          config.settings.fileTypes.xls = defaultFileTypes.xls;
+          needsSave = true;
+        }
+        if (!config.settings.fileTypes.csv) {
+          config.settings.fileTypes.csv = defaultFileTypes.csv;
+          needsSave = true;
+        }
+        if (!config.settings.fileTypes.tsv) {
+          config.settings.fileTypes.tsv = defaultFileTypes.tsv;
+          needsSave = true;
+        }
         // Add bundle exclusion settings if missing
         if (config.settings.excludeBundles === undefined) {
           config.settings.excludeBundles = true;
+          needsSave = true;
         }
         if (!config.settings.bundlePatterns) {
           config.settings.bundlePatterns = this.getDefaultConfig().settings.bundlePatterns;
+          needsSave = true;
+        }
+        
+        // Save if we made any changes
+        if (needsSave) {
+          this.saveConfig(config);
         }
         
         return config;

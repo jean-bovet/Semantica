@@ -19,7 +19,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - **Backend**: Electron, Node.js Worker Threads
 - **Database**: LanceDB for vector storage
 - **ML Model**: Xenova/multilingual-e5-small for embeddings
-- **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD
+- **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
 
 ## Important Guidelines
 

@@ -4,6 +4,8 @@ import { PARSER_VERSION as DOC_VERSION } from '../parsers/doc';
 import { PARSER_VERSION as DOCX_VERSION } from '../parsers/docx';
 import { PARSER_VERSION as TEXT_VERSION } from '../parsers/text';
 import { PARSER_VERSION as RTF_VERSION } from '../parsers/rtf';
+import { XLSX_PARSER_VERSION, XLS_PARSER_VERSION } from '../parsers/xlsx';
+import { CSV_PARSER_VERSION, TSV_PARSER_VERSION } from '../parsers/csv';
 
 export const PARSER_VERSIONS: Record<string, number> = {
   pdf: PDF_VERSION,
@@ -11,7 +13,11 @@ export const PARSER_VERSIONS: Record<string, number> = {
   docx: DOCX_VERSION,
   txt: TEXT_VERSION,
   md: TEXT_VERSION,  // Markdown uses the same parser as text
-  rtf: RTF_VERSION
+  rtf: RTF_VERSION,
+  xlsx: XLSX_PARSER_VERSION,
+  xls: XLS_PARSER_VERSION,
+  csv: CSV_PARSER_VERSION,
+  tsv: TSV_PARSER_VERSION
 };
 
 export const VERSION_HISTORY: Record<string, Record<number, string>> = {
@@ -38,6 +44,18 @@ export const VERSION_HISTORY: Record<string, Record<number, string>> = {
   },
   rtf: {
     1: "Basic RTF stripping"
+  },
+  xlsx: {
+    1: "Initial XLSX support with xlsx library"
+  },
+  xls: {
+    1: "Initial XLS support with xlsx library"
+  },
+  csv: {
+    1: "CSV parsing with encoding detection"
+  },
+  tsv: {
+    1: "TSV parsing with encoding detection"
   }
 };
 

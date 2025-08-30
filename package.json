@@ -57,6 +57,7 @@
         "chardet": "^2.1.0",
         "chokidar": "^3.6.0",
         "color-name": "^2.0.0",
+        "csv-parse": "^6.1.0",
         "electron-updater": "^6.6.2",
         "iconv-lite": "^0.7.0",
         "mammoth": "^1.10.0",
@@ -64,7 +65,8 @@
         "pdf-parse": "^1.1.1",
         "react": "^18.3.0",
         "react-dom": "^18.3.0",
-        "word-extractor": "^1.0.4"
+        "word-extractor": "^1.0.4",
+        "xlsx": "^0.18.5"
     },
     "build": {
         "appId": "ch.arizona-software.semantica",

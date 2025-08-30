@@ -76,6 +76,8 @@ import { parseText } from '../parsers/text';
 import { parseDocx } from '../parsers/docx';
 import { parseRtf } from '../parsers/rtf';
 import { parseDoc } from '../parsers/doc';
+import { parseXLSX, parseXLS } from '../parsers/xlsx';
+import { parseCSV, parseTSV } from '../parsers/csv';
 import { chunkText } from '../pipeline/chunker';
 // Use isolated embedder for better memory management
 import { embed, checkEmbedderMemory, shutdownEmbedder } from '../../shared/embeddings/isolated';
@@ -569,6 +571,18 @@ async function handleFile(filePath: string) {
       // Use proper .doc parser for old Word files
       const text = await parseDoc(filePath);
       chunks = chunkText(text, 500, 60);
+    } else if (ext === 'xlsx') {
+      const text = await parseXLSX(filePath);
+      chunks = chunkText(text, 500, 60);
+    } else if (ext === 'xls') {
+      const text = await parseXLS(filePath);
+      chunks = chunkText(text, 500, 60);
+    } else if (ext === 'csv') {
+      const text = await parseCSV(filePath);
+      chunks = chunkText(text, 500, 60);
+    } else if (ext === 'tsv') {
+      const text = await parseTSV(filePath);
+      chunks = chunkText(text, 500, 60);
     } else {
       return;
     }
@@ -861,12 +875,18 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     console.log('File status cache size:', fileStatusCache?.size || 0);
     console.log('Queue already has:', fileQueue.getStats().queued, 'files');
     
+    // Get enabled file types from config
+    const fileTypes = configManager?.getSettings().fileTypes || {};
+    const supportedExtensions = Object.entries(fileTypes)
+      .filter(([_, enabled]) => enabled)
+      .map(([ext]) => ext);
+    
     // Use the extracted scanning function
     const scanOptions: ScanOptions = {
       excludeBundles: configManager?.getSettings().excludeBundles ?? true,
       bundlePatterns: configManager?.getSettings().bundlePatterns || [],
       excludePatterns: effectivePatterns.filter(p => typeof p === 'string') as string[],
-      supportedExtensions: ['pdf', 'txt', 'md', 'docx', 'rtf', 'doc']
+      supportedExtensions
     };
     
     const scanResult = scanDirectories(roots, scanOptions);
@@ -879,7 +899,7 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     const fileScannerConfig: FileScannerConfig = {
       skipBundles: configManager?.getSettings().excludeBundles ?? true,
       bundlePatterns: configManager?.getSettings().bundlePatterns || [],
-      supportedExtensions: ['pdf', 'txt', 'md', 'docx', 'rtf', 'doc']
+      supportedExtensions
     };
     
     const supportedFiles = scanner.filterSupportedFiles(scanResult.files, fileScannerConfig);

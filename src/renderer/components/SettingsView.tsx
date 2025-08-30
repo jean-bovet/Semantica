@@ -16,7 +16,11 @@ function SettingsView() {
     md: true,
     docx: true,
     rtf: true,
-    doc: true
+    doc: true,
+    xlsx: true,
+    xls: true,
+    csv: true,
+    tsv: true
   });
   const [reindexing, setReindexing] = useState(false);
   const [progress, setProgress] = useState<any>(null);
@@ -177,7 +181,11 @@ function SettingsView() {
     { value: 'md', label: 'MD' },
     { value: 'docx', label: 'DOCX' },
     { value: 'rtf', label: 'RTF' },
-    { value: 'doc', label: 'DOC' }
+    { value: 'doc', label: 'DOC' },
+    { value: 'xlsx', label: 'XLSX' },
+    { value: 'xls', label: 'XLS' },
+    { value: 'csv', label: 'CSV' },
+    { value: 'tsv', label: 'TSV' }
   ];
 
   const selectedFileTypes = Object.entries(fileTypes)
@@ -191,7 +199,11 @@ function SettingsView() {
       md: selected.includes('md'),
       docx: selected.includes('docx'),
       rtf: selected.includes('rtf'),
-      doc: selected.includes('doc')
+      doc: selected.includes('doc'),
+      xlsx: selected.includes('xlsx'),
+      xls: selected.includes('xls'),
+      csv: selected.includes('csv'),
+      tsv: selected.includes('tsv')
     };
     setFileTypes(newFileTypes);
     
