@@ -1,12 +1,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { detectEncoding, decodeBuffer } from '../utils/encoding-detector';
 
-export const PARSER_VERSION = 1; // Version 1: Basic text/markdown parsing
+export const PARSER_VERSION = 3; // Version 3: Multi-encoding support with chardet and iconv-lite
 
 export async function parseText(filePath: string): Promise<string> {
   try {
     const ext = path.extname(filePath).toLowerCase();
-    const content = await fs.readFile(filePath, 'utf8');
+    
+    // Read file as buffer
+    const buffer = await fs.readFile(filePath);
+    
+    // Detect encoding and convert to UTF-8
+    const encoding = detectEncoding(buffer, path.basename(filePath));
+    console.log(`[TEXT PARSER] File: ${path.basename(filePath)}, Detected encoding: ${encoding}`);
+    
+    const content = decodeBuffer(buffer, encoding);
     
     if (ext === '.md') {
       return content

@@ -1,0 +1,1 @@
+This is UTF-8 text with special chars: café, naïve, €100, 日本語

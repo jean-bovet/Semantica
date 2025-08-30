@@ -20,8 +20,8 @@ describe('Parser Version Tracking', () => {
       expect(PARSER_VERSIONS.pdf).toBe(1);
       expect(PARSER_VERSIONS.doc).toBe(2);
       expect(PARSER_VERSIONS.docx).toBe(1);
-      expect(PARSER_VERSIONS.txt).toBe(1);
-      expect(PARSER_VERSIONS.md).toBe(1);
+      expect(PARSER_VERSIONS.txt).toBe(3);
+      expect(PARSER_VERSIONS.md).toBe(3);
       expect(PARSER_VERSIONS.rtf).toBe(1);
     });
 
@@ -181,7 +181,7 @@ describe('Parser Version Tracking', () => {
       expect(pdfParser.PARSER_VERSION).toBe(1);
       expect(docParser.PARSER_VERSION).toBe(2);
       expect(docxParser.PARSER_VERSION).toBe(1);
-      expect(textParser.PARSER_VERSION).toBe(1);
+      expect(textParser.PARSER_VERSION).toBe(3);
       expect(rtfParser.PARSER_VERSION).toBe(1);
     });
   });

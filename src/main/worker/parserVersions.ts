@@ -2,8 +2,8 @@ export const PARSER_VERSIONS: Record<string, number> = {
   pdf: 1,    // Version 1: Initial pdf-parse implementation
   doc: 2,    // Version 2: Proper binary .doc support with word-extractor
   docx: 1,   // Version 1: Initial mammoth implementation
-  txt: 1,    // Version 1: Basic text parsing
-  md: 1,     // Version 1: Markdown as text
+  txt: 3,    // Version 3: Multi-encoding support with chardet and iconv-lite
+  md: 3,     // Version 3: Multi-encoding support with chardet and iconv-lite
   rtf: 1     // Version 1: Basic RTF stripping
 };
 
@@ -20,10 +20,14 @@ export const VERSION_HISTORY: Record<string, Record<number, string>> = {
     1: "Initial mammoth implementation"
   },
   txt: {
-    1: "Basic text parsing"
+    1: "Basic text parsing (UTF-8 only)",
+    2: "Initial multi-encoding attempt",
+    3: "Multi-encoding support with chardet and iconv-lite"
   },
   md: {
-    1: "Markdown as text"
+    1: "Markdown as text (UTF-8 only)",
+    2: "Initial multi-encoding attempt",
+    3: "Multi-encoding support with chardet and iconv-lite"
   },
   rtf: {
     1: "Basic RTF stripping"

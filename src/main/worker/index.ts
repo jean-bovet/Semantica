@@ -245,20 +245,27 @@ async function initDB(dir: string, userDataPath: string) {
       }
     }
     
-    // Migrate existing files to include parser versions
-    await reindexService.migrateExistingFiles();
-    
-    // Check for parser upgrades and queue files for re-indexing
-    const reindexResult = await reindexService.checkForParserUpgrades();
-    fileQueue.add(reindexResult.filesToReindex);
-    
-    // Notify parent if there were upgrades
-    if (Object.keys(reindexResult.upgradeSummary).length > 0 && parentPort) {
-      parentPort.postMessage({
-        type: 'parser-upgrade',
-        payload: reindexResult.upgradeSummary
-      });
-    }
+    // Defer heavy reindexing work to after ready signal
+    setTimeout(async () => {
+      try {
+        // Migrate existing files to include parser versions
+        await reindexService.migrateExistingFiles();
+        
+        // Check for parser upgrades and queue files for re-indexing
+        const reindexResult = await reindexService.checkForParserUpgrades();
+        fileQueue.add(reindexResult.filesToReindex);
+        
+        // Notify parent if there were upgrades
+        if (Object.keys(reindexResult.upgradeSummary).length > 0 && parentPort) {
+          parentPort.postMessage({
+            type: 'parser-upgrade',
+            payload: reindexResult.upgradeSummary
+          });
+        }
+      } catch (err) {
+        console.error('Error during reindex check:', err);
+      }
+    }, 100); // Small delay to ensure ready message is sent first
     
     // Do auto-start synchronously during init to avoid UI flash
     const config = await configManager!.getConfig();
@@ -493,16 +500,32 @@ async function handleFile(filePath: string) {
     
     const currentHash = getFileHash(filePath);
     const previousHash = fileHashes.get(filePath);
-    
-    if (previousHash === currentHash) {
-      console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - Already up-to-date`);
-      return;
-    }
-    
     const stat = fs.statSync(filePath);
     const mtime = stat.mtimeMs;
     const ext = path.extname(filePath).slice(1).toLowerCase();
     const parserVersion = getParserVersion(ext);
+    
+    // Check if file needs reindexing due to parser version change
+    let needsReindex = false;
+    if (fileStatusTable) {
+      try {
+        const fileStatus = await fileStatusTable.query()
+          .filter(`path = "${filePath}"`)
+          .limit(1)
+          .toArray();
+        if (fileStatus.length > 0 && fileStatus[0].parser_version !== parserVersion) {
+          needsReindex = true;
+          console.log(`[INDEXING] 🔄 Parser version changed for ${path.basename(filePath)}: v${fileStatus[0].parser_version} -> v${parserVersion}`);
+        }
+      } catch (e) {
+        // Ignore errors in checking file status
+      }
+    }
+    
+    if (!needsReindex && previousHash === currentHash) {
+      console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - Already up-to-date`);
+      return;
+    }
     
     // Check if this file type is enabled
     const fileTypes = configManager?.getSettings().fileTypes || {};
@@ -635,15 +658,19 @@ async function search(query: string, k = 10) {
       .limit(k)
       .toArray();
     
-    return results.map((r: any) => ({
-      id: r.id,
-      path: r.path,
-      page: r.page,
-      offset: r.offset,
-      text: r.text,
-      score: r._distance !== undefined ? Math.max(0, 1 - (r._distance / 2)) : 1,
-      title: r.title
-    }));
+    const mappedResults = results.map((r: any) => {
+      return {
+        id: r.id,
+        path: r.path,
+        page: r.page || 0,
+        offset: r.offset || 0,
+        text: r.text || '',
+        score: r._distance !== undefined ? Math.max(0, 1 - (r._distance / 2)) : 1,
+        title: r.title || ''
+      };
+    });
+    
+    return mappedResults;
   } catch (error) {
     console.error('Search failed:', error);
     return [];
@@ -1099,6 +1126,7 @@ parentPort!.on('message', async (msg: any) => {
         
       case 'search':
         const results = await search(msg.payload.q, msg.payload.k);
+        
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: results });
         }
