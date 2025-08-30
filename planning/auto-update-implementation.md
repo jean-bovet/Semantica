@@ -1,8 +1,29 @@
-# Auto-Update Implementation Plan for Semantica
+# Auto-Update Complete Implementation Plan for Semantica
+
+> **Note**: For immediate implementation, see [`auto-update-minimal.md`](./auto-update-minimal.md) which uses the 2-line electron-updater approach. This document covers the full-featured implementation for Phase 2.
 
 ## Overview
 
-This document outlines the implementation plan for adding auto-update functionality to Semantica, enabling users to automatically receive and install updates without manually downloading new versions.
+This document outlines the **complete implementation plan** for advanced auto-update functionality in Semantica, including custom UI, user preferences, and detailed progress tracking.
+
+**Last Updated**: August 2025 - Aligned with official Electron documentation and best practices.
+
+## Implementation Strategy
+
+### Phase 1: Minimal Implementation (1-2 days) ✅
+**See**: [`auto-update-minimal.md`](./auto-update-minimal.md)
+- 2-line implementation with electron-updater
+- Native OS notifications
+- Automatic background downloads
+- Zero configuration for users
+
+### Phase 2: Advanced Features (When Needed)
+**This document** - Implement based on user feedback:
+- Custom update UI
+- Download progress tracking  
+- User preferences
+- Release notes display
+- Manual update controls
 
 ## Goals
 
@@ -27,17 +48,30 @@ This document outlines the implementation plan for adding auto-update functional
 - **Main Process**: Update checker and installer
 - **Renderer Process**: UI notifications and progress
 - **GitHub Releases**: Update distribution channel
-- **electron-updater**: Core update library
+- **electron-updater**: Core update library (recommended over built-in autoUpdater)
 
-## Implementation Phases
+### Why electron-updater?
+Per official Electron documentation, electron-updater provides:
+- Linux support (built-in autoUpdater only supports macOS/Windows)
+- Code signature validation on all platforms
+- Automatic metadata file generation
+- Download progress events
+- Staged rollouts support
+- Multiple provider support (GitHub, S3, generic HTTP)
 
-### Phase 1: Basic Infrastructure (Week 1)
+## Phase 2: Advanced Implementation
+
+> **Prerequisites**: Phase 1 minimal auto-update must be working first.
+
+### Component 1: Enhanced Infrastructure
 
 #### 1.1 Dependencies Installation
 ```bash
 npm install --save electron-updater
 npm install --save-dev electron-log
 ```
+
+**Note**: electron-log is strongly recommended by the Electron team for debugging update issues.
 
 #### 1.2 Project Configuration
 **File**: `package.json`
@@ -85,10 +119,26 @@ npm install --save-dev electron-log
 
 #### 1.3 Create Update Module
 **File**: `app/electron/updater.ts`
+
+**Minimal Implementation** (per official docs - only 2 lines needed):
+```typescript
+import { autoUpdater } from "electron-updater";
+import log from 'electron-log';
+
+// Configure logging
+autoUpdater.logger = log;
+autoUpdater.logger.transports.file.level = 'info';
+
+// Basic auto-update
+autoUpdater.checkForUpdatesAndNotify();
+```
+
+**Full Implementation**:
 - Core auto-updater implementation
 - Event handlers for update lifecycle
 - User notification system
 - Progress tracking
+- **Important**: Do NOT call setFeedURL - electron-builder handles this automatically
 
 #### 1.4 Entitlements Configuration
 **File**: `build/entitlements.mac.plist`
@@ -105,18 +155,24 @@ npm install --save-dev electron-log
   <true/>
   <key>com.apple.security.cs.allow-dyld-environment-variables</key>
   <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
 </dict>
 </plist>
 ```
+
+**Note**: The `hardenedRuntime: true` setting is required for notarization and auto-updates on macOS.
 
 ### Phase 2: Main Process Integration (Week 1-2)
 
 #### 2.1 Update Checker Integration
 **File**: `app/electron/main.ts`
-- Initialize updater on app ready
+- Initialize updater on app ready (with 3-10 second delay recommended)
 - Add menu item for manual update check
-- Schedule periodic update checks (every 4 hours)
+- Schedule periodic update checks (every 30 minutes per best practices)
 - Handle app lifecycle events
+- **Windows**: Check for --squirrel-firstrun flag to avoid early update checks
+- Handle 'update-downloaded' event carefully to avoid data loss
 
 #### 2.2 IPC Communication
 **File**: `app/electron/preload.ts`
@@ -160,20 +216,30 @@ interface UpdateNotificationProps {
 ### Phase 4: Code Signing & Notarization (Week 2-3)
 
 #### 4.1 Apple Developer Setup
-- [ ] Obtain Apple Developer Certificate ($99/year)
-- [ ] Create Developer ID Application certificate
-- [ ] Create Developer ID Installer certificate
-- [ ] Configure notarization credentials
+- [ ] Obtain Apple Developer Certificate ($99/year) - REQUIRED for auto-updates
+- [ ] Create Developer ID Application certificate (for distribution outside Mac App Store)
+- [ ] Create Developer ID Installer certificate (optional for .pkg installers)
+- [ ] Configure notarization credentials (REQUIRED - apps won't run on macOS without it)
+
+**Critical**: Per official docs, your application MUST be signed for automatic updates on macOS. Unsigned apps will be blocked by Gatekeeper.
 
 #### 4.2 Environment Variables
 **File**: `.env.local`
 ```bash
+# Required for notarization
 APPLE_ID=your-apple-id@email.com
-APPLE_ID_PASSWORD=app-specific-password
+APPLE_APP_SPECIFIC_PASSWORD=app-specific-password  # Generate at appleid.apple.com
 APPLE_TEAM_ID=YOUR_TEAM_ID
-CSC_LINK=path/to/certificate.p12
+
+# Required for code signing on CI/CD
+CSC_LINK=path/to/certificate.p12  # Base64 encoded on CI
 CSC_KEY_PASSWORD=certificate-password
+
+# Optional but recommended
+CSC_NAME="Developer ID Application: Your Name (TEAMID)"
 ```
+
+**Security Note**: Never store these in plaintext in your repo. Use environment variables or CI secrets.
 
 #### 4.3 Build Script Updates
 **File**: `package.json`
@@ -211,12 +277,19 @@ CSC_KEY_PASSWORD=certificate-password
 | 1.0.0 | 0.9.0 | Downgrade | Blocked |
 
 #### 5.3 Platform Testing
-- [ ] macOS Intel
-- [ ] macOS Apple Silicon
-- [ ] Windows 10
-- [ ] Windows 11
-- [ ] Ubuntu 20.04
-- [ ] Ubuntu 22.04
+- [ ] macOS Intel (signed & notarized)
+- [ ] macOS Apple Silicon (signed & notarized)
+- [ ] Windows 10 (optionally signed)
+- [ ] Windows 11 (optionally signed)
+- [ ] Linux - Note: Auto-update not supported by built-in autoUpdater, use distribution package manager
+
+#### 5.4 Development Testing
+For testing without packaging, create `dev-app-update.yml` in project root:
+```yaml
+owner: bovet
+repo: FSS
+provider: github
+```
 
 ### Phase 6: Release Process (Week 3-4)
 
@@ -269,8 +342,10 @@ interface UpdatePreferences {
 
 ### Update Channels
 - **Stable**: Production releases
-- **Beta**: Pre-release testing
-- **Nightly**: Development builds
+- **Beta**: Pre-release testing (use allowPrerelease option)
+- **Alpha**: Early testing (use allowPrerelease option)
+
+**Note**: electron-updater supports staged rollouts via percentage-based distribution.
 
 ## Security Considerations
 
@@ -286,10 +361,11 @@ interface UpdatePreferences {
 - Prevent downgrade attacks
 
 ### Network Security
-- HTTPS only for update checks
-- Certificate pinning for update server
-- Proxy support with authentication
+- HTTPS only for update checks (enforced by electron-updater)
+- Certificate validation automatic with electron-updater
+- Proxy support built-in
 - Retry with exponential backoff
+- Code signature validation on all platforms (electron-updater feature)
 
 ## Error Handling
 
@@ -337,15 +413,15 @@ interface UpdatePreferences {
 
 ## Timeline
 
-| Phase | Duration | Start Date | End Date | Status |
-|-------|----------|------------|----------|---------|
-| Phase 1: Infrastructure | 1 week | TBD | TBD | Planned |
-| Phase 2: Integration | 0.5 week | TBD | TBD | Planned |
-| Phase 3: UI Components | 0.5 week | TBD | TBD | Planned |
-| Phase 4: Code Signing | 1 week | TBD | TBD | Planned |
-| Phase 5: Testing | 0.5 week | TBD | TBD | Planned |
-| Phase 6: Release | 0.5 week | TBD | TBD | Planned |
-| **Total** | **4 weeks** | | | |
+| Phase | Duration | Status |
+|-------|----------|---------|
+| **Phase 1: Minimal** | 1-2 days | See `auto-update-minimal.md` |
+| **Phase 2: Advanced** | 2-3 weeks | Only if needed |
+| - Custom UI | 3 days | Based on feedback |
+| - Preferences | 2 days | Based on feedback |
+| - Progress tracking | 2 days | Based on feedback |
+| - Release notes | 1 day | Based on feedback |
+| - Testing | 3 days | Required |
 
 ## Success Criteria
 
@@ -364,6 +440,22 @@ interface UpdatePreferences {
 | Corrupted updates | High | Low | Checksums, signature verification |
 | User refuses updates | Medium | High | Clear value communication |
 | Breaking changes | High | Low | Careful testing, staged rollout |
+
+## Platform-Specific Considerations
+
+### macOS
+- **Requirement**: Apps MUST be signed and notarized for auto-updates
+- **Timing**: Notarization takes 5-10 minutes
+- **Certificates**: Need Developer ID Application certificate
+
+### Windows
+- **Squirrel.Windows**: Handle --squirrel-firstrun flag
+- **Code Signing**: Recommended to avoid SmartScreen warnings
+- **NSIS**: Preferred installer format
+
+### Linux
+- **Limited Support**: Consider using AppImage with electron-updater
+- **Alternative**: Use distribution package managers
 
 ## Alternative Approaches Considered
 
@@ -389,9 +481,13 @@ Implementing auto-update will significantly improve the user experience and ensu
 ## Appendix
 
 ### A. Resources
+- [Official Electron Auto-Update Tutorial](https://www.electronjs.org/docs/latest/tutorial/updates)
 - [electron-updater documentation](https://www.electron.build/auto-update)
-- [Code signing guide](https://www.electron.build/code-signing)
+- [Official Code Signing Guide](https://www.electronjs.org/docs/latest/tutorial/code-signing)
+- [electron-builder Code Signing](https://www.electron.build/code-signing)
+- [macOS Notarization Guide](https://www.electron.build/notarize)
 - [GitHub Releases API](https://docs.github.com/en/rest/releases)
+- [update.electronjs.org](https://github.com/electron/update.electronjs.org) - Free update server for OSS projects
 
 ### B. Example Update Flow Diagram
 ```

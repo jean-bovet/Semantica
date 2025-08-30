@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, shell, dialog, crashReporter } from 'elect
 import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import fs from 'node:fs';
+import { autoUpdater } from 'electron-updater';
+import log from 'electron-log';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -168,6 +170,22 @@ if (gotTheLock) {
   });
   
   mainWindow = win;
+  
+  // Configure auto-updater logging
+  autoUpdater.logger = log;
+  autoUpdater.logger.transports.file.level = 'info';
+  log.info('App starting...');
+  
+  // Initialize auto-updater after a short delay
+  setTimeout(() => {
+    log.info('Checking for updates...');
+    autoUpdater.checkForUpdatesAndNotify();
+  }, 5000); // 5 second delay to let app fully load
+  
+  // Check for updates every 30 minutes
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify();
+  }, 30 * 60 * 1000);
   
   // Spawn worker and wait for it to be ready before setting up IPC handlers
   spawnWorker();
