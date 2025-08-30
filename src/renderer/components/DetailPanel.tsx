@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './DetailPanel.css';
 
 interface Result {
@@ -16,7 +16,9 @@ interface DetailPanelProps {
   selectedFile: string | null;
   results: Result[];
   query: string;
+  width: number;
   onClose: () => void;
+  onWidthChange: (width: number) => void;
   onOpenFile: (path: string, page?: number) => void;
   onShowInFinder: (path: string) => void;
 }
@@ -25,11 +27,45 @@ function DetailPanel({
   isOpen, 
   selectedFile, 
   results, 
-  query, 
+  query,
+  width,
   onClose,
+  onWidthChange,
   onOpenFile,
   onShowInFinder
 }: DetailPanelProps) {
+  const [isResizing, setIsResizing] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      const newWidth = ((window.innerWidth - e.clientX) / window.innerWidth) * 100;
+      // Limit width between 20% and 80%
+      const clampedWidth = Math.max(20, Math.min(80, newWidth));
+      onWidthChange(clampedWidth);
+    };
+    
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+    
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+  
   if (!isOpen || !selectedFile) return null;
 
   const fileResults = results.filter(r => r.path === selectedFile);
@@ -62,8 +98,15 @@ function DetailPanel({
 
   return (
     <>
-      <div className={`detail-panel-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
-      <div className={`detail-panel ${isOpen ? 'open' : ''}`}>
+      <div 
+        ref={panelRef}
+        className={`detail-panel ${isOpen ? 'open' : ''}`}
+        style={{ width: `${width}%`, right: isOpen ? 0 : `-${width}%` }}
+      >
+        <div 
+          className="detail-resize-handle"
+          onMouseDown={() => setIsResizing(true)}
+        />
         <div className="detail-header">
           <div className="detail-title-row">
             <h3 className="detail-title">{fileTitle}</h3>

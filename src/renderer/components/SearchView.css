@@ -235,19 +235,6 @@
 
 /* Adjust results width when panel is open */
 .search-results.panel-open {
-  margin-right: 40%;
   transition: margin-right 0.3s ease;
-}
-
-/* Responsive adjustments for panel */
-@media (max-width: 1200px) {
-  .search-results.panel-open {
-    margin-right: 50%;
-  }
-}
-
-@media (max-width: 900px) {
-  .search-results.panel-open {
-    margin-right: 70%;
-  }
+  overflow-y: auto; /* Ensure scrolling remains enabled */
 }

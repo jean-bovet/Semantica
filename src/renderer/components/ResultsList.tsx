@@ -58,30 +58,29 @@ function ResultsList({
           >
             <div className="result-info">
               <span className="result-name">{fileResults[0].title || fileName}</span>
-              <span className="result-matches">
-                {fileResults.length} {fileResults.length === 1 ? 'match' : 'matches'}
-              </span>
               {isSelected && <span className="result-check">✓</span>}
               <span className="result-score">{(bestScore * 100).toFixed(0)}%</span>
             </div>
             
             <div className="result-actions" onClick={e => e.stopPropagation()}>
               <button 
+                type="button"
                 className="action-button"
                 onClick={() => onOpenFile(path, fileResults[0].page)}
                 title="Open file"
               >
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
                   <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
                 </svg>
               </button>
               <button 
+                type="button"
                 className="action-button"
                 onClick={() => onShowInFinder(path)}
                 title="Show in Finder"
               >
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                 </svg>
               </button>

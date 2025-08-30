@@ -20,6 +20,7 @@ function SearchView() {
   const debounceTimer = useRef<NodeJS.Timeout>();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(40);
   
   useEffect(() => {
     inputRef.current?.focus();
@@ -101,7 +102,10 @@ function SearchView() {
         </form>
       </div>
       
-      <div className={`search-results ${isPanelOpen ? 'panel-open' : ''}`}>
+      <div 
+        className={`search-results ${isPanelOpen ? 'panel-open' : ''}`}
+        style={isPanelOpen ? { marginRight: `${panelWidth}%` } : {}}
+      >
         {results.length > 0 && (
           <ResultsList
             results={results}
@@ -151,7 +155,9 @@ function SearchView() {
         selectedFile={selectedFile}
         results={results}
         query={query}
+        width={panelWidth}
         onClose={handlePanelClose}
+        onWidthChange={setPanelWidth}
         onOpenFile={handleOpenFile}
         onShowInFinder={handleShowInFinder}
       />
