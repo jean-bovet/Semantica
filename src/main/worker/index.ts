@@ -981,16 +981,17 @@ parentPort!.on('message', async (msg: any) => {
   try {
     switch (msg.type) {
       case 'init':
-        // Set user data path for embedder to use for model cache
-        if (msg.userDataPath) {
-          process.env.USER_DATA_PATH = msg.userDataPath;
-        }
+        // Set user data path for embedder to use for model cache, with fallback for tests
+        const userDataPath = msg.userDataPath || path.join(require('os').tmpdir(), 'semantica-test');
+        process.env.USER_DATA_PATH = userDataPath;
         
-        await initDB(msg.dbDir, msg.userDataPath);
+        // Also provide fallback for dbDir
+        const dbDir = msg.dbDir || path.join(userDataPath, 'data');
+        await initDB(dbDir, userDataPath);
         parentPort!.postMessage({ type: 'ready' });
         
         // Initialize model in background after worker is ready
-        initializeModel(msg.userDataPath).then(() => {
+        initializeModel(userDataPath).then(() => {
           // Start processing queue only after model is ready
           if (modelReady) {
             processQueue();

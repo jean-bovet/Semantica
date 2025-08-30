@@ -96,18 +96,21 @@ function spawnWorker() {
     }
   });
   
-  const dbDir = path.join(app.getPath('userData'), 'data');
+  // Get userData path with fallback for test environments
+  const userDataPath = app.getPath('userData') || path.join(require('os').tmpdir(), 'semantica-test')
+  
+  const dbDir = path.join(userDataPath, 'data');
   fs.mkdirSync(dbDir, { recursive: true });
   
   // Create models directory for ML models
-  const modelsDir = path.join(app.getPath('userData'), 'models');
+  const modelsDir = path.join(userDataPath, 'models');
   fs.mkdirSync(modelsDir, { recursive: true });
   
   // Pass both paths to worker
   worker.postMessage({ 
     type: 'init', 
     dbDir,
-    userDataPath: app.getPath('userData')
+    userDataPath
   });
 }
 
@@ -262,7 +265,8 @@ if (gotTheLock) {
   });
   
   ipcMain.handle('system:getDataPath', () => {
-    return path.join(app.getPath('userData'), 'data');
+    const userDataPath = app.getPath('userData') || path.join(require('os').tmpdir(), 'semantica-test');
+    return path.join(userDataPath, 'data');
   });
   
   ipcMain.handle('indexer:getWatchedFolders', async () => {
