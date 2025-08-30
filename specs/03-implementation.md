@@ -6,6 +6,12 @@
 
 ## Memory Management
 
+### Recent Optimizations (August 2025)
+- **Intelligent Memory Logging**: Memory usage now only logs when values change significantly (>10MB RSS, >5MB Heap, or file count changes), reducing console spam
+- **Threshold-based Reporting**: Prevents redundant memory status messages during stable operation
+
+## Memory Management
+
 ### Problem Background
 The application initially experienced severe memory leaks (1.2GB+ after 20 files) due to the transformers.js library not properly releasing tensors and native memory buffers.
 
@@ -48,6 +54,7 @@ const thresholds = {
 | Memory after 20 files | 1,200MB | 273MB | 77% reduction |
 | Memory growth rate | 50MB/file | ~0MB/file | Eliminated |
 | Crash frequency | Every 20-30 files | Never | 100% stable |
+| Log frequency | Every 2 seconds | On significant change | 90% reduction |
 | Max files indexed | ~30 | Unlimited | ∞ |
 
 ### Real-time Monitoring

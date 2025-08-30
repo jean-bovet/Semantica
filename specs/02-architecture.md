@@ -97,6 +97,33 @@ The worker implements sequential model downloads for better UX and reliability:
 - Status bar with real-time indexing statistics
 - File type toggles and configuration in modal
 
+#### UI Components Architecture
+
+**SearchView** (`components/SearchView.tsx`)
+- Main search interface with flexbox column layout
+- Fixed header with search input
+- Scrollable results area with native macOS elastic scrolling
+- Manages panel open/close state and width
+
+**ResultsList** (`components/ResultsList.tsx`)
+- Flat list design replacing card-based layout
+- Condensed rows showing: filename, score, action buttons
+- Click handling for row selection
+- Optimized button styling to prevent browser defaults
+
+**DetailPanel** (`components/DetailPanel.tsx`)
+- Slide-in panel from right (20-80% adjustable width)
+- Resizable via drag handle on left edge
+- Shows all matches for selected file
+- Keyword highlighting in match context
+- No overlay - results remain interactive
+
+**Layout Strategy**
+- Flexbox column: Header → Content → Status Bar
+- Content area uses `flex: 1` with `min-height: 0` for proper overflow
+- Panel adjusts results margin dynamically
+- All components use `flex-shrink: 0` to maintain sizes
+
 ## Memory Management Strategy
 
 ### Process Isolation

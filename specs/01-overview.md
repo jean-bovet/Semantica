@@ -40,9 +40,13 @@ Semantica is an Electron-based desktop application that provides offline semanti
 
 ### User Experience
 - **Modal Settings**: Clean overlay for configuration
-- **Status Bar**: Live indexing statistics
+- **Status Bar**: Live indexing statistics with folder/file/chunk counts
 - **File Actions**: Open in Finder, Open in Preview
 - **Keyboard Shortcuts**: CMD+K for search, ESC to close
+- **Modern Search Results**: Flat list design with condensed information
+- **Detail Panel**: Resizable slide-in panel (20-80% width) showing all matches
+- **Interactive Results**: Results remain scrollable and clickable with panel open
+- **Smart Selection**: Click same row to close panel, different row to update
 
 ## Current Implementation Status
 
@@ -56,6 +60,10 @@ Semantica is an Electron-based desktop application that provides offline semanti
 - Memory management (stable at ~270MB)
 - Error recovery and retry logic
 - File watching and incremental indexing
+- Native macOS scrollbar styling
+- Resizable detail panel with drag handle
+- Optimized result display without cards
+- Smart memory logging (only on significant changes)
 
 ### Known Limitations ⚠️
 - **Scanned PDFs**: No OCR support (require text layer)
