@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 const pdfParse = require('pdf-parse');
 
+// Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 1; // Version 1: Initial pdf-parse implementation
 
 export interface PDFPage {

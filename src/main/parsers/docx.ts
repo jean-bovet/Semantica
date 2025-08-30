@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import fs from 'node:fs';
 
+// Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 1; // Version 1: Initial mammoth implementation
 
 export async function parseDocx(filePath: string): Promise<string> {

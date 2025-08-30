@@ -1,6 +1,7 @@
 const WordExtractor = require('word-extractor');
 const extractor = new WordExtractor();
 
+// Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 2; // Version 2: Proper binary .doc support with word-extractor
 
 export async function parseDoc(filePath: string): Promise<string> {

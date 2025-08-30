@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 
+// Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 1; // Version 1: Basic RTF stripping
 
 export async function parseRtf(filePath: string): Promise<string> {

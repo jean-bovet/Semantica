@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { detectEncoding, decodeBuffer } from '../utils/encoding-detector';
 
+// Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 3; // Version 3: Multi-encoding support with chardet and iconv-lite
 
 export async function parseText(filePath: string): Promise<string> {

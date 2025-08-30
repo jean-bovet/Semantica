@@ -1,10 +1,17 @@
+// Import parser versions from each parser as single source of truth
+import { PARSER_VERSION as PDF_VERSION } from '../parsers/pdf';
+import { PARSER_VERSION as DOC_VERSION } from '../parsers/doc';
+import { PARSER_VERSION as DOCX_VERSION } from '../parsers/docx';
+import { PARSER_VERSION as TEXT_VERSION } from '../parsers/text';
+import { PARSER_VERSION as RTF_VERSION } from '../parsers/rtf';
+
 export const PARSER_VERSIONS: Record<string, number> = {
-  pdf: 1,    // Version 1: Initial pdf-parse implementation
-  doc: 2,    // Version 2: Proper binary .doc support with word-extractor
-  docx: 1,   // Version 1: Initial mammoth implementation
-  txt: 3,    // Version 3: Multi-encoding support with chardet and iconv-lite
-  md: 3,     // Version 3: Multi-encoding support with chardet and iconv-lite
-  rtf: 1     // Version 1: Basic RTF stripping
+  pdf: PDF_VERSION,
+  doc: DOC_VERSION,
+  docx: DOCX_VERSION,
+  txt: TEXT_VERSION,
+  md: TEXT_VERSION,  // Markdown uses the same parser as text
+  rtf: RTF_VERSION
 };
 
 export const VERSION_HISTORY: Record<string, Record<number, string>> = {
