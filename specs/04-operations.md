@@ -68,7 +68,25 @@
 - The app now uses `word-extractor` library which handles most .doc files
 - If still failing, convert to .docx format using Microsoft Word or LibreOffice
 
-#### 3. Files Show as "Failed" or "Error" Status
+#### 3. Text Files Show Garbled Characters (�)
+**Problem**: Text files encoded in non-UTF-8 formats display replacement characters.
+
+**Cause**: Files encoded in ISO-8859-1, Windows-1252, Mac Roman, or other legacy encodings.
+
+**Solution**: 
+- **Automatic fix in v1.0.0+**: The app now automatically detects and converts various encodings
+- **Supported encodings**: UTF-8, UTF-16LE/BE, ISO-8859-x, Windows-125x, Mac Roman, ASCII
+- **Re-indexing**: Files will be automatically re-indexed with proper encoding detection
+
+**Manual verification**:
+```bash
+# Check file encoding
+file -I yourfile.txt
+# or
+chardetect yourfile.txt
+```
+
+#### 4. Files Show as "Failed" or "Error" Status
 **Problem**: Various parsing errors can occur.
 
 **How to check**:
@@ -80,6 +98,7 @@
 - **"Not a valid PDF"**: File may be corrupted. Try opening in a PDF reader to verify.
 - **"No text content extracted"**: File may be empty or contain only formatting.
 - **Permission errors**: Check file permissions in Finder.
+- **Encoding errors**: Should be automatically handled in v1.0.0+
 
 ### Database Issues
 

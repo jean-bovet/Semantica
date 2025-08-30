@@ -100,7 +100,20 @@ npm run test:unit     # Unit tests only
 npm run test:e2e      # E2E tests only
 ```
 
-## Recent Updates (2025-08-24)
+## Recent Updates
+
+### 2025-08-30 - Text Encoding Detection
+- **Fixed garbled text issue**: Text files with non-UTF-8 encodings (ISO-8859-1, Windows-1252, etc.) now display correctly
+- **Multi-encoding support**: Added automatic encoding detection using `chardet` library
+- **Encoding conversion**: Proper conversion to UTF-8 using `iconv-lite`
+- **UTF-16 detection**: Special handling for UTF-16LE/BE files with and without BOM
+- **Mac Roman support**: Added detection for Mac Roman encoded files (common in legacy Mac files)
+- **Encoding utility**: Created `src/main/utils/encoding-detector.ts` for reusable encoding detection
+- **Parser versioning**: Centralized parser versions with single source of truth in each parser file
+- **Comprehensive tests**: Added 30+ unit tests for encoding detection and conversion
+- **Parser version 3**: Text and markdown parsers updated to version 3 with encoding support
+
+### 2025-08-24
 - Implemented search-first UI with modal settings
 - Added file search feature in status bar
 - Fixed .doc file parsing with word-extractor

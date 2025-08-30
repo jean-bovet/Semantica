@@ -113,18 +113,58 @@ export async function parseDocx(filePath: string): Promise<string> {
 }
 ```
 
+#### Text/Markdown Parser (v3)
+- **Version 1**: Basic UTF-8 only support
+- **Version 2**: Initial multi-encoding attempt
+- **Version 3**: Full multi-encoding support with automatic detection
+- **Libraries**: chardet (detection), iconv-lite (conversion)
+- **Supported Encodings**: UTF-8, UTF-16LE/BE, ISO-8859-x, Windows-125x, Mac Roman, ASCII
+```typescript
+// src/main/utils/encoding-detector.ts
+export function detectEncoding(buffer: Buffer): string | null {
+  // 1. Check for UTF-16 BOMs
+  // 2. Heuristic detection for UTF-16 without BOM
+  // 3. Use chardet for other encodings
+  // 4. Special handling for Mac Roman
+  return encoding;
+}
+
+// src/main/parsers/text.ts
+export async function parseText(filePath: string): Promise<string> {
+  const buffer = await fs.readFile(filePath);
+  const encoding = detectEncoding(buffer);
+  const content = decodeBuffer(buffer, encoding);
+  // Strip markdown if .md file
+  return processContent(content);
+}
+```
+
 ### Parser Version Tracking
 
 #### Version Registry
+Parser versions are defined as a single source of truth in each parser file and imported centrally:
+
 ```typescript
+// Each parser exports its version
+// src/main/parsers/text.ts
+export const PARSER_VERSION = 3; // Multi-encoding support
+
+// src/main/parsers/doc.ts  
+export const PARSER_VERSION = 2; // Binary .doc support
+
+// Central registry imports from parsers
 // src/main/worker/parserVersions.ts
+import { PARSER_VERSION as PDF_VERSION } from '../parsers/pdf';
+import { PARSER_VERSION as DOC_VERSION } from '../parsers/doc';
+import { PARSER_VERSION as TEXT_VERSION } from '../parsers/text';
+
 export const PARSER_VERSIONS: Record<string, number> = {
-  pdf: 1,    // Version 1: Initial pdf-parse implementation
-  doc: 2,    // Version 2: Proper binary .doc support with word-extractor
-  docx: 1,   // Version 1: Initial mammoth implementation
-  txt: 1,    // Version 1: Basic text parsing
-  md: 1,     // Version 1: Markdown as text
-  rtf: 1     // Version 1: Basic RTF stripping
+  pdf: PDF_VERSION,   // Version 1: Initial pdf-parse
+  doc: DOC_VERSION,   // Version 2: Binary .doc support
+  docx: DOCX_VERSION, // Version 1: Mammoth implementation
+  txt: TEXT_VERSION,  // Version 3: Multi-encoding support
+  md: TEXT_VERSION,   // Version 3: Uses text parser
+  rtf: RTF_VERSION    // Version 1: Basic RTF stripping
 };
 ```
 
