@@ -173,7 +173,7 @@ if (gotTheLock) {
   
   // Configure auto-updater logging
   autoUpdater.logger = log;
-  autoUpdater.logger.transports.file.level = 'info';
+  (autoUpdater.logger as any).transports.file.level = 'info';
   log.info('App starting...');
   
   // Initialize auto-updater after a short delay
