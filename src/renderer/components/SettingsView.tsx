@@ -4,7 +4,6 @@ import './SettingsView.css';
 
 function SettingsView() {
   const [folders, setFolders] = useState<string[]>([]);
-  const [cpuThrottle, setCpuThrottle] = useState<'low' | 'medium' | 'high'>('medium');
   const [stats, setStats] = useState({ 
     totalChunks: 0, 
     indexedFiles: 0,
@@ -256,18 +255,6 @@ function SettingsView() {
             onChange={handleFileTypesChange}
             placeholder="Select file types"
           />
-        </div>
-        <div className="config-row">
-          <label className="config-label">CPU Usage:</label>
-          <select 
-            value={cpuThrottle} 
-            onChange={(e) => setCpuThrottle(e.target.value as any)}
-            className="throttle-select compact"
-          >
-            <option value="low">Low (Slower indexing)</option>
-            <option value="medium">Medium (Balanced)</option>
-            <option value="high">High (Faster indexing)</option>
-          </select>
         </div>
       </div>
       
