@@ -65,6 +65,8 @@ Memory: RSS=274MB, Heap=18MB/32MB, External=5MB, Files processed: 200
 Memory: RSS=273MB, Heap=17MB/31MB, External=5MB, Files processed: 300
 ```
 
+> **Historical Note**: For the complete evolution of our memory management solution, including the initial problems and iterative improvements, see [specs/archive/memory-solution.md](./archive/memory-solution.md).
+
 ## Parser System
 
 ### File Parser Implementation

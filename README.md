@@ -84,34 +84,22 @@ For details on the memory solution, see [specs/archive/memory-solution.md](specs
 
 ## 🧪 Testing
 
-### Current Status
 ✅ **All tests passing** - 81 tests across 10 files  
 ⏱️ **Fast execution** - Complete suite runs in ~3.3 seconds  
 📊 **85%+ coverage** - Core functionality well tested
 
 ```bash
-# Run all tests (recommended)
+# Run all tests
 npm test
 
-# Run fast unit tests only
-npm run test:fast
-
-# Run tests in watch mode during development
+# Run with watch mode during development
 npm run test:watch
 
-# Generate coverage report
-npm run test:coverage
+# Run specific test file
+npm run test:fast
 ```
 
-### Test Coverage
-- **Text Processing**: 100% - Chunking, parsing
-- **Configuration**: 100% - Settings, persistence
-- **File Types**: 100% - Detection, filtering
-- **Memory Management**: 90% - Thresholds, monitoring
-- **Search**: 85% - Vector search, grouping
-- **Worker Management**: 80% - Lifecycle, messaging
-
-See [planning/testing-strategy.md](planning/testing-strategy.md) for details.
+See [planning/testing-strategy.md](planning/testing-strategy.md) for detailed test coverage, strategy, and maintenance guidelines.
 
 ## 📚 Technology Stack
 
