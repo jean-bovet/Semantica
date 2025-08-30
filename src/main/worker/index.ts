@@ -16,6 +16,10 @@ import { migrateIndexedFilesToStatus, cleanupOrphanedStatuses } from './migrateF
 import { ReindexOrchestrator } from './ReindexOrchestrator';
 import { FileScanner } from './fileScanner';
 import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
+import { FolderRemovalManager } from './FolderRemovalManager';
+
+// Create folder removal manager instance
+const folderRemovalManager = new FolderRemovalManager();
 
 // Monitor memory usage
 let fileCount = 0;
@@ -762,17 +766,57 @@ async function getStats() {
   }
 }
 
+async function cleanupRemovedFolders(removedFolders: string[]) {
+  if (!tbl || removedFolders.length === 0) return;
+  
+  try {
+    // Remove files from in-memory cache
+    const removedCount = folderRemovalManager.removeFilesFromCache(fileHashes, removedFolders);
+    console.log(`[CLEANUP] Removed ${removedCount} files from cache`);
+    
+    // Get all paths from database once
+    const allRecords = await tbl.query().select(['path']).toArray();
+    const allPaths = allRecords.map((r: any) => r.path);
+    
+    // Identify which database paths need to be deleted
+    const pathsToDelete = folderRemovalManager.filterPathsInFolders(allPaths, removedFolders);
+    console.log(`[CLEANUP] Found ${pathsToDelete.length} files to delete from database`);
+    
+    // Delete from vector database
+    for (const path of pathsToDelete) {
+      await deleteByPath(path);
+    }
+    
+    // Delete from file status table
+    if (fileStatusTable) {
+      for (const path of pathsToDelete) {
+        try {
+          await fileStatusTable.delete(`path = "${path}"`);
+        } catch (e) {
+          // Ignore individual deletion errors
+        }
+      }
+    }
+    
+    console.log(`[CLEANUP] Completed cleanup for ${removedFolders.length} folder(s)`);
+  } catch (error) {
+    console.error('[CLEANUP] Error during folder cleanup:', error);
+  }
+}
+
 async function startWatching(roots: string[], excludePatterns?: string[], forceReindex: boolean = false) {
   if (watcher) {
     await watcher.close();
   }
   
-  // Initialize folder stats (don't clear existing indexed counts)
-  roots.forEach((root: string) => {
-    if (!folderStats.has(root)) {
-      folderStats.set(root, { total: 0, indexed: 0 });
-    }
-  });
+  // Use FolderRemovalManager to handle folder cleanup
+  const removedFolders = folderRemovalManager.updateFolderStats(folderStats, roots);
+  
+  // If folders were removed, delete their files from the database
+  if (removedFolders.length > 0) {
+    console.log(`[CLEANUP] Removing files from ${removedFolders.length} folder(s): ${removedFolders.join(', ')}`);
+    await cleanupRemovedFolders(removedFolders);
+  }
   
   // Get effective exclude patterns (including bundle patterns if enabled)
   const effectivePatterns = configManager?.getEffectiveExcludePatterns() || excludePatterns || [];

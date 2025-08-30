@@ -119,6 +119,17 @@ function SettingsView() {
   };
   
   const handleRemoveFolder = async (folder: string) => {
+    // Get folder stats to show in confirmation
+    const folderStat = stats.folderStats?.find(s => s.folder === folder);
+    const fileCount = folderStat ? folderStat.indexedFiles : 0;
+    
+    const confirmed = await window.api.dialog.confirm(
+      'Remove Folder',
+      `Are you sure you want to remove "${folder}" from indexing?\n\nThis will permanently delete ${fileCount.toLocaleString()} indexed file${fileCount !== 1 ? 's' : ''} from this folder. This action cannot be undone.`
+    );
+    
+    if (!confirmed) return;
+    
     const newFolders = folders.filter(f => f !== folder);
     setFolders(newFolders);
     // Config is persisted by the worker  
