@@ -15,30 +15,43 @@
 ### Problem Background
 The application initially experienced severe memory leaks (1.2GB+ after 20 files) due to the transformers.js library not properly releasing tensors and native memory buffers.
 
-### Solution: Process Isolation
+### Solution: Production-Ready Memory Management
 
-We implemented complete process isolation for the embedding model, which resolved the memory leak entirely.
+We implemented a comprehensive memory management system with automatic restarts and state preservation.
 
 #### Key Components
 
-**1. Embedder Child Process**
-A separate Node.js process that exclusively handles embedding generation:
-- Loads the transformer model in isolation
-- Processes embedding requests via IPC
-- Automatically restarts when memory limits exceeded
-- Uses dynamic imports for ES module compatibility
+**1. RestartableProcess Base Class**
+Abstract foundation for process lifecycle management:
+- Configurable memory thresholds
+- State save/restore pattern
+- Message handling with callbacks
+- Restart limits and delays
 
-**2. Memory Governor**
-Monitors memory usage and triggers automatic restarts:
+**2. WorkerManager (Worker Thread)**
+Manages the main worker thread with:
 ```javascript
-const thresholds = {
-  rssLimit: 1500,       // MB (optimized from 900)
-  externalLimit: 300,   // MB (optimized from 150)
-  filesLimit: 500       // Files before restart (optimized from 200)
+const config = {
+  memoryThreshold: 800 * 1024 * 1024,  // 800MB RSS
+  checkInterval: 30000,                 // 30 seconds
+  maxRestarts: 10,
+  restartDelay: 1000                    // 1 second
 };
 ```
 
-**3. Optimizations Applied**
+**3. EmbedderManager (Child Process)**
+Manages the embedder process with dual triggers:
+```javascript
+const config = {
+  memoryThreshold: 300 * 1024 * 1024,  // 300MB external
+  maxFilesBeforeRestart: 200,          // File count trigger
+  checkInterval: 30000,
+  maxRestarts: 50,
+  restartDelay: 1000
+};
+```
+
+**4. Optimizations Applied**
 - Reduced batch size from 32 to 8 items
 - Added explicit tensor disposal
 - Immediate array cleanup after processing

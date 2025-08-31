@@ -11,12 +11,14 @@ graph TD
     Start([App Starts]) --> MainProcess[Main Process: main.ts]
     
     MainProcess --> CreateWindow[Create Browser Window]
-    MainProcess --> SpawnWorker[Spawn Worker Thread]
+    MainProcess --> CreateWorkerManager[Create AppWorkerManager]
     
     CreateWindow --> LoadUI[Load React App]
     
-    SpawnWorker --> InitWorker[Worker: Initialize DB]
+    CreateWorkerManager --> StartWorker[WorkerManager: Start Worker Thread]
+    StartWorker --> InitWorker[Worker: Initialize DB]
     InitWorker --> WorkerReady[Worker Sends 'ready']
+    StartWorker --> MonitorMemory[Monitor Memory (800MB threshold)]
     
     LoadUI --> AppComponent[App.tsx Component Mounts]
     
@@ -37,7 +39,8 @@ graph TD
     WorkerDownload --> PauseQueue[Pause File Processing Queue]
     WorkerDownload --> CreateEmbedder[Create IsolatedEmbedder Singleton]
     
-    CreateEmbedder --> SpawnChild[Spawn Child Process:<br/>embedder.child.cjs]
+    CreateEmbedder --> CreateEmbedderMgr[Create EmbedderManager<br/>(300MB/200 files threshold)]
+    CreateEmbedderMgr --> SpawnChild[Spawn Child Process:<br/>embedder.child.cjs]
     
     SpawnChild --> InitTransformers[Initialize Transformers.js]
     InitTransformers --> SetupCache[Setup Model Cache Path:<br/>/Library/.../models/]

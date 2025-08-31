@@ -10,9 +10,9 @@ Semantica is an Electron-based application that provides offline semantic search
 
 ### Architecture
 - **Multi-process design**: Main process, Worker thread, and Embedder child process
-- **Memory isolation**: Embedder process auto-restarts to prevent memory leaks
+- **Production memory management**: WorkerManager (800MB) and EmbedderManager (300MB/200 files)
 - **Search-first UI**: Full-screen search with modal settings overlay
-- See [architecture.md](./specs/architecture.md) for complete details
+- See [02-architecture.md](./specs/02-architecture.md) for complete details
 
 ### Technology Stack
 - **Frontend**: React, TypeScript, Tailwind CSS
@@ -42,10 +42,11 @@ Semantica is an Electron-based application that provides offline semantic search
 - See [testing strategy](./planning/testing-strategy.md) for details
 
 ### Memory Management
-- Worker process limited to 1500MB RSS
-- Embedder process limited to 300MB external
-- Auto-restart after 200-500 files or memory threshold
-- See [memory-solution.md](./specs/memory-solution.md) for implementation
+- **WorkerManager**: Auto-restarts worker at 800MB RSS
+- **EmbedderManager**: Auto-restarts embedder at 300MB external or 200 files
+- **State preservation**: Maintains progress across restarts
+- **Graceful shutdown**: 5-second drain period before restart
+- See [memory-management-complete.md](./specs/memory-management-complete.md) for implementation
 
 ### Database Operations
 - LanceDB requires initialization with dummy data
@@ -102,6 +103,16 @@ npm run test:e2e      # E2E tests only
 
 ## Recent Updates
 
+### 2025-08-31 - Production-Ready Memory Management
+- **Implemented WorkerManager**: Worker thread auto-restarts at 800MB RSS with state preservation
+- **Implemented EmbedderManager**: Embedder process auto-restarts at 300MB external or 200 files
+- **RestartableProcess base class**: Reusable foundation for process lifecycle management
+- **Complete integration**: Both managers fully integrated into main.ts and isolated.ts
+- **Graceful shutdown**: 5-second drain period for pending work before restart
+- **State preservation**: Maintains progress across restarts for seamless operation
+- **Comprehensive testing**: 445 passing tests including integration tests
+- **Architecture updated**: Process hierarchy documented in specs/02-architecture.md
+
 ### 2025-08-30 - Text Encoding Detection
 - **Fixed garbled text issue**: Text files with non-UTF-8 encodings (ISO-8859-1, Windows-1252, etc.) now display correctly
 - **Multi-encoding support**: Added automatic encoding detection using `chardet` library
@@ -122,9 +133,8 @@ npm run test:e2e      # E2E tests only
 - Reorganized docs into specs/planning folders
 
 ## Resources
-- [Architecture](./specs/architecture.md) - System design
-- [Memory Solution](./specs/memory-solution.md) - Memory management
-- [Troubleshooting](./specs/troubleshooting.md) - Common issues
-- [Documentation Standards](./specs/documentation-standards.md) - File naming conventions
+- [Architecture](./specs/02-architecture.md) - System design with process hierarchy
+- [Memory Management](./specs/11-memory-management.md) - Production-ready memory system
+- [Startup Flow](./specs/08-startup-flow.md) - Application initialization sequence
+- [Historical Issues](./specs/history/) - Resolved issues and their solutions
 - [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
-- Never run `npm run dev` without asking me first

@@ -16,11 +16,15 @@ Welcome to the technical documentation for Semantica, an offline semantic search
 | [06-build-optimization.md](./06-build-optimization.md) | Build system, optimization, two-package architecture | ✅ Current |
 | [07-signing-distribution.md](./07-signing-distribution.md) | Code signing, notarization, distribution | ✅ Current |
 | [08-startup-flow.md](./08-startup-flow.md) | Detailed startup sequence and model download flow | ✅ Current |
+| [09-auto-update-deployment.md](./09-auto-update-deployment.md) | Auto-update system and deployment | ✅ Current |
+| [10-release-process.md](./10-release-process.md) | Release workflow and versioning | ✅ Current |
+| [11-memory-management.md](./11-memory-management.md) | Production memory management system | ✅ Current |
 
-### Archived Documentation
+### Historical Documentation
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [history/](./history/) | Resolved issues and their solutions | 📚 Historical |
 | [archive/complete-specification-v2.md](./archive/complete-specification-v2.md) | Original comprehensive spec | 📦 Archived |
 
 ### Related Documentation
@@ -55,7 +59,7 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 | **Parser Versioning** | ✅ Production | 1.0 | Automatic re-indexing on upgrades |
 | **Search Engine** | ✅ Production | 1.0 | Multilingual E5 model |
 | **UI Framework** | ✅ Production | 1.0 | React with search-first design |
-| **Memory Management** | ✅ Production | 3.0 | Stable at ~270MB |
+| **Memory Management** | ✅ Production | 4.0 | WorkerManager + EmbedderManager |
 | **Error Recovery** | ✅ Production | 1.0 | Auto-restart and retry logic |
 
 ### Performance Metrics
@@ -76,6 +80,13 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 | Encrypted files | Cannot index | Decrypt first | ❌ Won't fix |
 
 ## 🔄 Recent Updates
+
+### 2025-08-31
+- ✅ Implemented production-ready memory management system
+- ✅ Integrated WorkerManager and EmbedderManager
+- ✅ Added RestartableProcess base class for reusability
+- ✅ Organized historical issues into history/ folder
+- ✅ Updated all documentation to reflect current implementation
 
 ### 2025-08-28
 - ✅ Renamed app to "Semantica" throughout codebase
