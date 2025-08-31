@@ -18,6 +18,7 @@ import { FileScanner } from './fileScanner';
 import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
+import { setupProfiling, profileHandleFile, timeOperation, recordEvent } from './profiling-integration';
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
@@ -62,6 +63,7 @@ setInterval(async () => {
   // Check if embedder needs restart
   const restarted = await checkEmbedderMemory();
   if (restarted) {
+    recordEvent('embedderRestart'); // Track for profiling
     console.log('[MEMORY] ♾️ Embedder process restarted due to memory limits');
   }
 }, 2000);
@@ -117,6 +119,7 @@ const fileQueue = new ConcurrentQueue({
     });
   },
   onMemoryThrottle: (newLimit, memoryMB) => {
+    recordEvent(newLimit < concurrencySettings.optimal ? 'throttleStart' : 'throttleEnd'); // Track throttling
     console.log(`[MEMORY] ⚠️ Adjusting concurrency: ${newLimit} (RSS: ${Math.round(memoryMB)}MB)`);
   }
 });
@@ -297,6 +300,9 @@ async function initDB(dir: string, userDataPath: string) {
       }
     }
     
+    // Setup profiling if enabled
+    setupProfiling();
+    
     console.log('Worker ready');
   } catch (error) {
     console.error('Failed to initialize database:', error);
@@ -471,7 +477,8 @@ async function updateFileStatus(filePath: string, status: string, error?: string
   }
 }
 
-async function handleFile(filePath: string) {
+// Original handleFile function (renamed for profiling wrapper)
+async function handleFileOriginal(filePath: string) {
   try {
     fileCount++; // Track files processed
     console.log(`[INDEXING] Starting: ${filePath}`);
@@ -668,6 +675,9 @@ async function handleFile(filePath: string) {
     await updateFileStatus(filePath, 'error', error.message || String(error));
   }
 }
+
+// Wrap handleFile with profiling
+const handleFile = profileHandleFile(handleFileOriginal);
 
 async function search(query: string, k = 10) {
   try {
@@ -1308,6 +1318,16 @@ parentPort!.on('message', async (msg: any) => {
       case 'shutdown':
         // Clean shutdown requested
         console.log('Worker shutting down...');
+        
+        // Generate profiling report if enabled
+        if (process.env.PROFILE === 'true') {
+          const { profiler } = require('./profiling-integration');
+          if (profiler.isEnabled()) {
+            console.log('🔬 [PROFILING] Generating performance report...');
+            await profiler.saveReport();
+          }
+        }
+        
         await shutdownEmbedder();
         if (db) {
           await db.close();
@@ -1338,6 +1358,15 @@ process.on('exit', async () => {
 });
 
 process.on('SIGTERM', async () => {
+  // Generate profiling report if enabled
+  if (process.env.PROFILE === 'true') {
+    const { profiler } = require('./profiling-integration');
+    if (profiler.isEnabled()) {
+      console.log('🔬 [PROFILING] Generating performance report...');
+      await profiler.saveReport();
+    }
+  }
+  
   await shutdownEmbedder();
   process.exit(0);
 });
