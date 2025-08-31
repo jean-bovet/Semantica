@@ -44,8 +44,8 @@ const thresholds = {
 - Immediate array cleanup after processing
 - Yield to event loop between batches
 - Force garbage collection when available
-- **Parallel file processing**: Up to 5 files concurrently
-- **Memory-based throttling**: Reduces parallelism if RSS > 800MB
+- **CPU-aware parallel processing**: Scales with CPU cores (cores - 1, minimum 4)
+- **Memory-based throttling**: Reduces to 1/4 of cores if RSS > 800MB
 
 ### Memory Performance Results
 
@@ -66,6 +66,52 @@ Memory: RSS=273MB, Heap=17MB/31MB, External=5MB, Files processed: 300
 ```
 
 > **Historical Note**: For the complete evolution of our memory management solution, including the initial problems and iterative improvements, see [specs/archive/memory-solution.md](./archive/memory-solution.md).
+
+## CPU-Aware Concurrency
+
+### Overview
+The indexing system automatically scales concurrent file processing based on available CPU cores, providing optimal performance across different hardware configurations.
+
+### Implementation
+Located in `src/main/worker/cpuConcurrency.ts`:
+
+```typescript
+export function calculateOptimalConcurrency(cpuCount?: number): {
+  cpuCount: number;
+  optimal: number;
+  throttled: number;
+}
+```
+
+### Concurrency Formula
+- **Normal Operation**: `max(4, cores - 1)` - Uses all cores minus 1 for system responsiveness
+- **Memory Throttled**: `max(2, floor(cores / 4))` - Reduces to 1/4 of cores when memory pressure detected
+- **Minimum Thresholds**: Never below 4 concurrent (normal) or 2 concurrent (throttled)
+
+### Performance Scaling
+
+| CPU Cores | Normal Concurrency | Throttled | Improvement vs Fixed 5 |
+|-----------|-------------------|-----------|------------------------|
+| 4 cores   | 4 files          | 2 files   | -20%                   |
+| 6 cores   | 5 files          | 2 files   | 0%                     |
+| 8 cores   | 7 files          | 2 files   | +40%                   |
+| 10 cores  | 9 files          | 2 files   | +80%                   |
+| 12 cores  | 11 files         | 3 files   | +120%                  |
+| 16 cores  | 15 files         | 4 files   | +200%                  |
+| 32 cores  | 31 files         | 8 files   | +520%                  |
+
+### Benefits
+- **Zero Configuration**: Automatically detects and adapts to hardware
+- **Scalable Performance**: Better utilization on powerful machines
+- **System Responsiveness**: Reserves CPU headroom for other tasks
+- **Dynamic Throttling**: Adjusts based on memory pressure
+
+### Testing
+Comprehensive unit tests in `tests/unit/cpu-concurrency.spec.ts` verify:
+- Minimum threshold enforcement
+- Scaling calculations for various core counts
+- Throttling logic
+- Edge cases (1-3 cores)
 
 ## Parser System
 

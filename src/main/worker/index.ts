@@ -17,6 +17,7 @@ import { ReindexOrchestrator } from './ReindexOrchestrator';
 import { FileScanner } from './fileScanner';
 import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
+import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
@@ -94,10 +95,15 @@ const fileChunkCounts = new Map<string, number>(); // Track chunk counts per fil
 let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
+
+// CPU-aware concurrency settings
+const concurrencySettings = calculateOptimalConcurrency();
+console.log(`[PERFORMANCE] ${getConcurrencyMessage(concurrencySettings)}`);
+
 const fileQueue = new ConcurrentQueue({
-  maxConcurrent: 5,
+  maxConcurrent: concurrencySettings.optimal,
   memoryThresholdMB: 800,
-  throttledConcurrent: 2,
+  throttledConcurrent: concurrencySettings.throttled,
   onProgress: (queued, processing) => {
     // Report progress to main process
     parentPort?.postMessage({

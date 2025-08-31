@@ -6,9 +6,9 @@ A privacy-first, offline semantic search application for macOS that indexes your
 
 - 🔒 **100% Offline**: All processing happens on your Mac. No data leaves your device.
 - 🚀 **Fast Semantic Search**: Uses local embeddings and vector search for intelligent results
-- 📁 **Multi-format Support**: Indexes PDF, TXT, Markdown, DOCX, RTF, and DOC files
+- 📁 **Multi-format Support**: Indexes PDF, TXT, Markdown, DOCX, RTF, DOC, XLSX, XLS, CSV files
 - 🔄 **Real-time Indexing**: Watches folders and automatically indexes new/changed files
-- ⚡ **Native Performance**: Built with Electron and optimized for macOS
+- ⚡ **Native Performance**: CPU-aware concurrency scales with your hardware (4-31 files in parallel)
 - 🎯 **Smart Chunking**: Intelligent text segmentation for better search results
 - 💾 **Memory Safe**: Process isolation prevents memory leaks during large-scale indexing
 

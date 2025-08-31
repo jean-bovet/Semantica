@@ -159,8 +159,10 @@ The indexing system uses a carefully orchestrated mix of parallel and sequential
 
 #### File Processing (Parallel with Limits)
 Files are processed with **controlled parallelism** for optimal performance:
-1. **Concurrent Processing**: Up to 5 files processed simultaneously
-2. **Memory-Based Throttling**: Reduces parallelism if RSS > 800MB
+1. **CPU-Aware Concurrency**: Automatically scales with system capabilities
+   - Uses all CPU cores minus 1 (minimum 4 concurrent files)
+   - Example: 8-core M2 = 7 concurrent, 10-core M1 Pro = 9 concurrent
+2. **Memory-Based Throttling**: Reduces to 1/4 of cores if RSS > 800MB
 3. **Per-File Pipeline**:
    - **Hash Check**: Skip if file hasn't changed since last index
    - **Content Extraction**: Parse PDF/TXT/MD/DOCX/RTF files
