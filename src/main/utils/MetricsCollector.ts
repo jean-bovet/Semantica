@@ -33,7 +33,7 @@ export interface Metrics {
 }
 
 export class MetricsCollector {
-  private metrics: Metrics;
+  private metrics: Metrics = {} as Metrics;
   private timers: Map<string, number> = new Map();
   private samples: Map<string, number[]> = new Map();
   

@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+import { WorkerManager } from './utils/WorkerManager';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -40,28 +41,10 @@ if (!gotTheLock) {
   });
 }
 
-let worker: Worker | null = null;
-let win: BrowserWindow | null = null;
-let mainWindow: BrowserWindow | null = null;
-let workerReady = false;
-let isDownloadingModel = false;
-const pendingCallbacks = new Map<string, (data: any) => void>();
-
-function spawnWorker() {
-  worker?.terminate().catch(() => {});
-  workerReady = false;
-  
-  worker = new Worker(path.join(__dirname, 'worker.cjs'));
-  
-  worker.on('message', (msg: any) => {
-    if (msg.type === 'ready') {
-      workerReady = true;
-      console.log('Worker ready');
-      // Send initial progress with initialized flag
-      sendToWorker('progress').then((progress: any) => {
-        win?.webContents.send('indexer:progress', { ...progress, initialized: true });
-      });
-    } else if (msg.type === 'model:ready') {
+// Custom WorkerManager that handles app-specific messages
+class AppWorkerManager extends WorkerManager {
+  protected handleWorkerMessage(msg: any): void {
+    if (msg.type === 'model:ready') {
       // Model is ready (either found or downloaded)
       console.log('Model ready:', msg.payload);
       win?.webContents.send('model:check:result', { exists: msg.payload.ready });
@@ -77,24 +60,20 @@ function spawnWorker() {
     } else if (msg.type === 'model:download:complete') {
       isDownloadingModel = false;
       win?.webContents.send('model:download:complete');
-    } else if (msg.id && pendingCallbacks.has(msg.id)) {
-      const callback = pendingCallbacks.get(msg.id)!;
-      pendingCallbacks.delete(msg.id);
-      callback(msg.payload);
     }
-  });
-  
-  worker.on('error', (err) => {
-    console.error('Worker error:', err);
-  });
-  
-  worker.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      // Only respawn on actual errors, not on intentional termination
-      console.error(`Worker stopped with exit code ${code}`);
-      setTimeout(spawnWorker, 1000);
-    }
-  });
+  }
+}
+
+let workerManager: AppWorkerManager | null = null;
+let win: BrowserWindow | null = null;
+let mainWindow: BrowserWindow | null = null;
+let isDownloadingModel = false;
+
+async function initializeWorker() {
+  // Shutdown existing worker if any
+  if (workerManager) {
+    await workerManager.shutdown();
+  }
   
   // Get userData path with fallback for test environments
   const userDataPath = app.getPath('userData') || path.join(require('os').tmpdir(), 'semantica-test')
@@ -106,55 +85,35 @@ function spawnWorker() {
   const modelsDir = path.join(userDataPath, 'models');
   fs.mkdirSync(modelsDir, { recursive: true });
   
-  // Pass both paths to worker
-  worker.postMessage({ 
-    type: 'init', 
-    dbDir,
-    userDataPath
-  });
-}
-
-async function waitForWorker(timeout = 10000): Promise<void> {
-  const startTime = Date.now();
-  while (!workerReady) {
-    if (Date.now() - startTime > timeout) {
-      throw new Error('Worker initialization timeout');
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
+  // Initialize WorkerManager with proper config
+  workerManager = new AppWorkerManager(
+    path.join(__dirname, 'worker.cjs'),
+    { dbDir, userDataPath }
+  );
+  
+  // Start the worker
+  try {
+    await workerManager.start();
+    console.log('Worker initialized and ready');
+    
+    // Send initial progress with initialized flag
+    const progress = await sendToWorker('progress');
+    win?.webContents.send('indexer:progress', { ...progress, initialized: true });
+  } catch (err) {
+    console.error('Failed to initialize worker:', err);
   }
+  
 }
 
-function sendToWorker(type: string, payload: any = {}): Promise<any> {
-  return new Promise(async (resolve, reject) => {
-    // For model operations, ensure worker is ready first
-    if ((type === 'checkModel' || type === 'downloadModel') && !workerReady) {
-      try {
-        await waitForWorker();
-      } catch (err) {
-        reject(err);
-        return;
-      }
-    }
-    
-    if (!worker || !workerReady) {
-      reject(new Error('Worker not ready'));
-      return;
-    }
-    
-    const id = Math.random().toString(36).substring(7);
-    pendingCallbacks.set(id, resolve);
-    
-    worker.postMessage({ type, payload, id });
-    
-    // Use longer timeout for model operations (5 minutes)
-    const timeout = (type === 'checkModel' || type === 'downloadModel') ? 300000 : 30000;
-    setTimeout(() => {
-      if (pendingCallbacks.has(id)) {
-        pendingCallbacks.delete(id);
-        reject(new Error('Worker timeout'));
-      }
-    }, timeout);
-  });
+// waitForWorker removed - WorkerManager handles this internally
+
+async function sendToWorker(type: string, payload: any = {}): Promise<any> {
+  if (!workerManager) {
+    throw new Error('Worker not initialized');
+  }
+  
+  // WorkerManager automatically waits for ready state
+  return workerManager.sendMessage({ type, payload });
 }
 
 if (gotTheLock) {
@@ -202,9 +161,12 @@ if (gotTheLock) {
   }, 30 * 60 * 1000);
   
   // Spawn worker and wait for it to be ready before setting up IPC handlers
-  spawnWorker();
+  initializeWorker();
   try {
-    await waitForWorker();
+    // WorkerManager waits internally
+    if (!workerManager) {
+      throw new Error('Worker not initialized');
+    }
     console.log('Worker initialized successfully');
   } catch (err) {
     console.error('Failed to initialize worker:', err);
@@ -246,7 +208,7 @@ if (gotTheLock) {
   
   ipcMain.handle('indexer:progress', async () => {
     // Return a default progress if worker is not ready yet
-    if (!workerReady) {
+    if (!workerManager?.isReady()) {
       return {
         queued: 0,
         processing: 0,
@@ -256,7 +218,7 @@ if (gotTheLock) {
       };
     }
     const progress = await sendToWorker('progress');
-    return { ...progress, initialized: workerReady };
+    return { ...progress, initialized: workerManager?.isReady() || false };
   });
   
   ipcMain.handle('search:query', async (_, { q, k }) => {
@@ -344,10 +306,8 @@ app.on('before-quit', async (event) => {
   event.preventDefault();
   
   // Send shutdown signal to worker and wait
-  if (worker) {
-    worker.postMessage({ type: 'shutdown' });
-    await new Promise(resolve => setTimeout(resolve, 500));
-    worker.terminate();
+  if (workerManager) {
+    await workerManager.shutdown();
   }
   
   app.exit(0);

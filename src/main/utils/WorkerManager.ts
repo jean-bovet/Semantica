@@ -21,6 +21,8 @@ export class WorkerManager extends RestartableProcess {
   protected spawn(): Worker {
     const worker = new Worker(this.config.scriptPath);
     this.workerReady = false;
+    // Send init data immediately after spawning
+    worker.postMessage({ type: 'init', ...this.initData });
     return worker;
   }
 
@@ -32,8 +34,6 @@ export class WorkerManager extends RestartableProcess {
       if (msg.type === 'ready') {
         this.workerReady = true;
         console.log('Worker ready');
-        // Send init data
-        worker.postMessage({ type: 'init', ...this.initData });
       }
       // Handle memory response
       else if (msg.type === 'memory' && msg.id) {
