@@ -1,268 +1,86 @@
-import { fork, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { IEmbedder, EmbedderConfig } from './IEmbedder';
+import { EmbedderManager } from '../../main/utils/EmbedderManager';
 
+/**
+ * IsolatedEmbedder using production-ready EmbedderManager
+ * Provides automatic memory management and restart capabilities
+ */
 export class IsolatedEmbedder implements IEmbedder {
-  private child: ChildProcess | null = null;
-  private inflight = new Map<string, { resolve: Function, reject: Function }>();
-  public filesSinceSpawn = 0; // Made public for shouldRestart check
-  private ready = false;
+  private manager: EmbedderManager;
+  private modelName: string;
   private initPromise: Promise<void> | null = null;
-  private spawning = false; // Prevent multiple spawns
-  private readonly maxFilesBeforeRestart: number;
-  private readonly maxMemoryMB: number;
-  constructor(private modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
-    if (config?.modelName) this.modelName = config.modelName;
-    this.maxFilesBeforeRestart = config?.maxFilesBeforeRestart || 500;
-    this.maxMemoryMB = config?.maxMemoryMB || 1500;
-  }
-  
-  public async initialize(): Promise<boolean> {
-    // Ensure child process is spawned and model is loaded
-    // Model MUST already exist at this point (checked by worker)
-    await this.ensureReady();
-    return true;
-  }
 
-  private async spawnChild(): Promise<void> {
-    // Prevent multiple simultaneous spawns
-    if (this.spawning) {
-      console.log('[ISOLATED] Already spawning, skipping...');
-      return;
-    }
+  constructor(modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
+    this.modelName = modelName;
     
-    this.spawning = true;
-    
-    console.log('[ISOLATED] Spawning embedder child process...');
-    if (this.child) {
-      console.log('[ISOLATED] Killing existing child process');
-      this.child.kill('SIGKILL');
-      this.child = null;
-    }
-
-    this.ready = false;
-    this.filesSinceSpawn = 0;
-    this.inflight.clear();
-
-    // In production with ASAR, the embedder.child.cjs is in the dist folder
-    // For testing, process.resourcesPath might be undefined
+    // Get paths for embedder script and model cache
     const childPath = process.env.NODE_ENV === 'production' && process.resourcesPath
       ? path.join(process.resourcesPath, 'app.asar', 'dist', 'embedder.child.cjs')
       : path.join(__dirname, 'embedder.child.cjs');
     
-    // Set model cache directory to userData instead of node_modules
-    // In worker thread, electron is not available, use USER_DATA_PATH env var
     const userDataPath = process.env.USER_DATA_PATH || path.join(require('os').homedir(), '.offline-search');
     const modelCachePath = path.join(userDataPath, 'models');
     
-    this.child = fork(childPath, [], { 
-      execArgv: ['--expose-gc'],
-      silent: false,
-      env: {
-        ...process.env,
-        TRANSFORMERS_CACHE: modelCachePath,
-        XDG_CACHE_HOME: modelCachePath
-      }
-    });
-
-    this.child.on('message', (msg: any) => {
-      if (msg.type === 'ready') {
-        console.log('[ISOLATED] Received ready signal from child');
-        this.ready = true;
-      } else if (msg.type === 'init:err') {
-        console.error('[ISOLATED] Embedder init failed:', msg.error);
-        this.ready = false;
-      } else if (msg.id) {
-        const handler = this.inflight.get(msg.id);
-        if (handler) {
-          this.inflight.delete(msg.id);
-          if (msg.type === 'embed:ok') {
-            handler.resolve(msg.vectors);
-          } else {
-            handler.reject(new Error(msg.error));
-          }
-        }
-      }
-    });
-
-    this.child.on('error', (err) => {
-      console.error('Embedder child error:', err);
-      for (const handler of this.inflight.values()) {
-        handler.reject(err);
-      }
-      this.inflight.clear();
-    });
-
-    this.child.on('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        console.error(`Embedder child exited with code ${code}`);
-      }
-      this.ready = false;
-      for (const handler of this.inflight.values()) {
-        handler.reject(new Error('Embedder process exited'));
-      }
-      this.inflight.clear();
-    });
-
-    // Send init message
-    console.log('[ISOLATED] Sending init message to child');
-    this.child.send({ type: 'init', model: this.modelName });
-
-    // Wait for ready (model should already exist, but may need to reload)
-    console.log('[ISOLATED] Waiting for child to be ready...');
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          console.error('[ISOLATED] Embedder init timeout after 60 seconds');
-          // Kill the child process if it's not responding
-          if (this.child) {
-            console.log('[ISOLATED] Killing unresponsive child process');
-            this.child.kill('SIGKILL');
-            this.child = null;
-          }
-          reject(new Error('Embedder init timeout'));
-        }, 60000); // 60 seconds (model needs to reload after restart)
-        
-        let logged = false;
-        const checkReady = setInterval(() => {
-          if (!logged) {
-            console.log('[ISOLATED] Waiting for ready signal...');
-            logged = true;
-          }
-          if (this.ready) {
-            console.log('[ISOLATED] Child is ready!');
-            clearInterval(checkReady);
-            clearTimeout(timeout);
-            resolve();
-          }
-        }, 5000); // Log every 5 seconds
-      });
-    } finally {
-      // Always mark spawning as complete, even on error
-      this.spawning = false;
-    }
+    // Create EmbedderManager with production settings
+    this.manager = new EmbedderManager(childPath, modelName, modelCachePath);
+    
+    // Note: EmbedderManager has fixed thresholds for production reliability
+    // config parameters are accepted for compatibility but not applied
   }
-
-  private async ensureReady(): Promise<void> {
-    if (!this.ready || !this.child) {
-      if (!this.initPromise) {
-        this.initPromise = this.spawnChild()
-          .catch((err) => {
-            console.error('[ISOLATED] Failed to spawn child:', err);
-            // Reset state on failure
-            this.ready = false;
-            this.child = null;
-            this.spawning = false;
-            throw err;
-          })
-          .finally(() => {
-            this.initPromise = null;
-          });
-      }
-      await this.initPromise;
-    }
+  
+  public async initialize(): Promise<boolean> {
+    // Start the embedder manager
+    await this.manager.start();
+    await this.manager.waitForReady();
+    return true;
   }
 
   async embed(texts: string[], isQuery = false): Promise<number[][]> {
-    await this.ensureReady();
+    // Use manager's embed method which handles retries and restarts
+    const vectors = await this.manager.embed(texts.map(text => 
+      isQuery ? `query: ${text}` : `passage: ${text}`
+    ));
     
-    // Double-check child process is available
-    if (!this.child || !this.child.connected) {
-      throw new Error('Embedder child process is not connected');
-    }
-    
-    return new Promise((resolve, reject) => {
-      const id = Math.random().toString(36).slice(2);
-      
-      const timeout = setTimeout(() => {
-        this.inflight.delete(id);
-        reject(new Error('Embed timeout'));
-      }, 60000);
-
-      this.inflight.set(id, {
-        resolve: (vectors: number[][]) => {
-          clearTimeout(timeout);
-          this.filesSinceSpawn++;
-          resolve(vectors);
-        },
-        reject: (err: Error) => {
-          clearTimeout(timeout);
-          reject(err);
-        }
-      });
-
-      try {
-        if (!this.child) {
-          throw new Error('Child process is not available');
-        }
-        this.child.send({ type: 'embed', id, texts, isQuery });
-      } catch (err) {
-        this.inflight.delete(id);
-        clearTimeout(timeout);
-        reject(new Error(`Failed to send message to embedder: ${err}`));
-      }
-    });
+    // Convert Float32Array[] to number[][]
+    return vectors.map(vec => Array.from(vec));
   }
 
-
   /**
-   * Embed text with retry logic
+   * Embed text with retry logic (now handled by EmbedderManager)
    */
   async embedWithRetry(texts: string[], maxRetries = 3): Promise<number[][]> {
-    let lastError: Error | null = null;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        return await this.embed(texts);
-      } catch (error: any) {
-        lastError = error;
-        console.warn(`Embed attempt ${attempt + 1} failed:`, error.message);
-        
-        if (attempt < maxRetries - 1) {
-          // Wait before retry with exponential backoff
-          await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
-          
-          // If child process died, restart it
-          if (!this.child || !this.child.connected) {
-            await this.restart();
-          }
-        }
-      }
-    }
-    
-    throw lastError || new Error('Embed failed after retries');
+    // EmbedderManager already handles retries internally
+    return this.embed(texts);
   }
 
   /**
    * Check if the embedder should restart
    */
   shouldRestart(): boolean {
-    const { rss, external } = process.memoryUsage();
-    const rssMB = Math.round(rss / 1024 / 1024);
-    const extMB = Math.round(external / 1024 / 1024);
-    
-    return rssMB > this.maxMemoryMB || 
-           extMB > 300 || 
-           this.filesSinceSpawn > this.maxFilesBeforeRestart;
+    // Delegate to manager's internal logic
+    const fileCount = this.manager.getFilesSinceSpawn();
+    return fileCount >= 200; // Manager handles this internally
   }
 
   /**
    * Restart the embedder
    */
   async restart(): Promise<void> {
-    console.log(`Restarting embedder after ${this.filesSinceSpawn} files`);
-    await this.shutdown();
-    await this.spawnChild();
+    await this.manager.restart();
   }
 
   /**
    * Get embedder statistics
    */
   getStats() {
+    const filesSinceSpawn = this.manager.getFilesSinceSpawn();
+    const isReady = this.manager.isReady();
     const memoryUsage = process.memoryUsage();
+    
     return {
-      filesSinceSpawn: this.filesSinceSpawn,
-      isReady: this.ready,
+      filesSinceSpawn,
+      isReady,
       memoryUsage: {
         rss: Math.round(memoryUsage.rss / 1024 / 1024),
         heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
@@ -272,30 +90,18 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   async checkMemoryAndRestart(): Promise<boolean> {
-    if (this.shouldRestart() && this.inflight.size === 0) {
-      await this.restart();
-      return true;
-    }
-    return false;
+    // Manager checks both memory and file count internally
+    await this.manager.checkAndRestartIfNeeded();
+    return false; // Manager handles restart internally
   }
 
   async shutdown(): Promise<void> {
-    if (this.child) {
-      try {
-        this.child.send({ type: 'shutdown' });
-        await new Promise(r => setTimeout(r, 200));
-      } catch (e) {
-        // Child may already be dead
-      }
-      this.child.kill('SIGTERM');
-      await new Promise(r => setTimeout(r, 100));
-      if (this.child.killed === false) {
-        this.child.kill('SIGKILL');
-      }
-      this.child = null;
-    }
-    this.ready = false;
-    this.inflight.clear();
+    await this.manager.shutdown();
+  }
+
+  // Expose filesSinceSpawn for compatibility
+  get filesSinceSpawn(): number {
+    return this.manager.getFilesSinceSpawn();
   }
 }
 
@@ -308,10 +114,10 @@ export async function embed(texts: string[], isQuery = false): Promise<number[][
   // If embedder doesn't exist and not already initializing, create it
   if (!embedder && !embedderInitializing) {
     embedderInitializing = true;
-    // Increase the restart threshold to reduce frequency of restarts
+    // Use production settings with EmbedderManager
     embedder = new IsolatedEmbedder('Xenova/multilingual-e5-small', {
-      maxFilesBeforeRestart: 1000,  // Increased from 500 to reduce restart frequency
-      maxMemoryMB: 1500
+      maxFilesBeforeRestart: 200,  // EmbedderManager default
+      maxMemoryMB: 300  // External memory threshold
     });
     embedderInitPromise = embedder.initialize().then(() => {
       embedderInitializing = false;
@@ -332,8 +138,8 @@ export async function embed(texts: string[], isQuery = false): Promise<number[][
   // If still no embedder after waiting, try once more
   if (!embedder) {
     embedder = new IsolatedEmbedder('Xenova/multilingual-e5-small', {
-      maxFilesBeforeRestart: 1000,
-      maxMemoryMB: 1500
+      maxFilesBeforeRestart: 200,
+      maxMemoryMB: 300
     });
     await embedder.initialize();
   }
@@ -354,4 +160,3 @@ export async function shutdownEmbedder(): Promise<void> {
     embedder = null;
   }
 }
-
