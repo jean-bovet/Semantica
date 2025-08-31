@@ -1,63 +1,37 @@
-// Import parser versions from each parser as single source of truth
-import { PARSER_VERSION as PDF_VERSION } from '../parsers/pdf';
-import { PARSER_VERSION as DOC_VERSION } from '../parsers/doc';
-import { PARSER_VERSION as DOCX_VERSION } from '../parsers/docx';
-import { PARSER_VERSION as TEXT_VERSION } from '../parsers/text';
-import { PARSER_VERSION as RTF_VERSION } from '../parsers/rtf';
-import { XLSX_PARSER_VERSION, XLS_PARSER_VERSION } from '../parsers/xlsx';
-import { CSV_PARSER_VERSION, TSV_PARSER_VERSION } from '../parsers/csv';
+/**
+ * Parser Versions - Auto-generated from Parser Registry
+ * This file is now completely derived from the central registry
+ */
 
-export const PARSER_VERSIONS: Record<string, number> = {
-  pdf: PDF_VERSION,
-  doc: DOC_VERSION,
-  docx: DOCX_VERSION,
-  txt: TEXT_VERSION,
-  md: TEXT_VERSION,  // Markdown uses the same parser as text
-  rtf: RTF_VERSION,
-  xlsx: XLSX_PARSER_VERSION,
-  xls: XLS_PARSER_VERSION,
-  csv: CSV_PARSER_VERSION,
-  tsv: TSV_PARSER_VERSION
-};
+import { PARSER_REGISTRY } from '../parsers/registry';
 
-export const VERSION_HISTORY: Record<string, Record<number, string>> = {
-  pdf: {
-    1: "Initial pdf-parse implementation",
-    // Future: 2: "Added OCR support for scanned PDFs"
-  },
-  doc: {
-    1: "Attempted to parse as RTF (failed for most files)",
-    2: "Proper binary .doc support with word-extractor"
-  },
-  docx: {
-    1: "Initial mammoth implementation"
-  },
-  txt: {
-    1: "Basic text parsing (UTF-8 only)",
-    2: "Initial multi-encoding attempt",
-    3: "Multi-encoding support with chardet and iconv-lite"
-  },
-  md: {
-    1: "Markdown as text (UTF-8 only)",
-    2: "Initial multi-encoding attempt",
-    3: "Multi-encoding support with chardet and iconv-lite"
-  },
-  rtf: {
-    1: "Basic RTF stripping"
-  },
-  xlsx: {
-    1: "Initial XLSX support with xlsx library"
-  },
-  xls: {
-    1: "Initial XLS support with xlsx library"
-  },
-  csv: {
-    1: "CSV parsing with encoding detection"
-  },
-  tsv: {
-    1: "TSV parsing with encoding detection"
+// Auto-generate parser versions from registry
+export const PARSER_VERSIONS: Record<string, number> = (() => {
+  const versions: Record<string, number> = {};
+  
+  for (const [key, definition] of Object.entries(PARSER_REGISTRY)) {
+    // Map each extension to its parser version
+    for (const ext of definition.extensions) {
+      versions[ext] = definition.version;
+    }
   }
-};
+  
+  return versions;
+})();
+
+// Auto-generate version history from registry
+export const VERSION_HISTORY: Record<string, Record<number, string>> = (() => {
+  const history: Record<string, Record<number, string>> = {};
+  
+  for (const [key, definition] of Object.entries(PARSER_REGISTRY)) {
+    // Map each extension to its version history
+    for (const ext of definition.extensions) {
+      history[ext] = definition.versionHistory;
+    }
+  }
+  
+  return history;
+})();
 
 export interface ParserVersion {
   ext: string;
@@ -72,3 +46,16 @@ export function getParserVersion(ext: string): number {
 export function getVersionHistory(ext: string): Record<number, string> | undefined {
   return VERSION_HISTORY[ext.toLowerCase()];
 }
+
+// Re-export parser versions for backward compatibility
+// These are no longer needed but kept to avoid breaking changes
+export const PARSER_VERSION = 1;  // Generic fallback
+export const PDF_VERSION = PARSER_REGISTRY.pdf.version;
+export const DOC_VERSION = PARSER_REGISTRY.doc.version;
+export const DOCX_VERSION = PARSER_REGISTRY.docx.version;
+export const TEXT_VERSION = PARSER_REGISTRY.text.version;
+export const RTF_VERSION = PARSER_REGISTRY.rtf.version;
+export const XLSX_PARSER_VERSION = PARSER_REGISTRY.excel.version;
+export const XLS_PARSER_VERSION = PARSER_REGISTRY.excel.version;
+export const CSV_PARSER_VERSION = PARSER_REGISTRY.csv.version;
+export const TSV_PARSER_VERSION = PARSER_REGISTRY.tsv.version;

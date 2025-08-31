@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import MultiSelectDropdown from './MultiSelectDropdown';
+import { PARSER_INFO, getFileTypeOptions, ParserKey } from '../../shared/parserRegistry';
 import './SettingsView.css';
 
 function SettingsView() {
@@ -9,18 +10,13 @@ function SettingsView() {
     indexedFiles: 0,
     folderStats: [] as Array<{ folder: string; totalFiles: number; indexedFiles: number }>
   });
-  const [fileTypes, setFileTypes] = useState({
-    pdf: false,
-    txt: true,
-    md: true,
-    docx: true,
-    rtf: true,
-    doc: true,
-    xlsx: true,
-    xls: true,
-    csv: true,
-    tsv: true
-  });
+  // Initialize file types from registry
+  const [fileTypes, setFileTypes] = useState<Record<ParserKey, boolean>>(
+    Object.keys(PARSER_INFO).reduce((acc, key) => {
+      acc[key as ParserKey] = PARSER_INFO[key as ParserKey].enabledByDefault;
+      return acc;
+    }, {} as Record<ParserKey, boolean>)
+  );
   const [reindexing, setReindexing] = useState(false);
   const [progress, setProgress] = useState<any>(null);
   const [dataPath, setDataPath] = useState<string>('');
@@ -174,36 +170,20 @@ function SettingsView() {
     }
   };
   
-  const fileTypeOptions = [
-    { value: 'pdf', label: 'PDF' },
-    { value: 'txt', label: 'TXT' },
-    { value: 'md', label: 'MD' },
-    { value: 'docx', label: 'DOCX' },
-    { value: 'rtf', label: 'RTF' },
-    { value: 'doc', label: 'DOC' },
-    { value: 'xlsx', label: 'XLSX' },
-    { value: 'xls', label: 'XLS' },
-    { value: 'csv', label: 'CSV' },
-    { value: 'tsv', label: 'TSV' }
-  ];
+  // Generate file type options from registry
+  const fileTypeOptions = getFileTypeOptions();
 
   const selectedFileTypes = Object.entries(fileTypes)
     .filter(([_, enabled]) => enabled)
     .map(([type]) => type);
 
   const handleFileTypesChange = async (selected: string[]) => {
-    const newFileTypes = {
-      pdf: selected.includes('pdf'),
-      txt: selected.includes('txt'),
-      md: selected.includes('md'),
-      docx: selected.includes('docx'),
-      rtf: selected.includes('rtf'),
-      doc: selected.includes('doc'),
-      xlsx: selected.includes('xlsx'),
-      xls: selected.includes('xls'),
-      csv: selected.includes('csv'),
-      tsv: selected.includes('tsv')
-    };
+    // Generate file types object from selected array
+    const newFileTypes = Object.keys(PARSER_INFO).reduce((acc, key) => {
+      acc[key as ParserKey] = selected.includes(key);
+      return acc;
+    }, {} as Record<ParserKey, boolean>);
+    
     setFileTypes(newFileTypes);
     
     try {

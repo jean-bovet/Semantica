@@ -65,6 +65,9 @@ setInterval(async () => {
   }
 }, 2000);
 
+import { getParserForExtension, getEnabledExtensions } from '../parsers/registry';
+import { chunkText } from '../pipeline/chunker';
+
 // PDF parsing is optional - will handle it if available
 let parsePdf: any = null;
 try {
@@ -72,13 +75,6 @@ try {
 } catch (e) {
   console.log('PDF parsing not available');
 }
-import { parseText } from '../parsers/text';
-import { parseDocx } from '../parsers/docx';
-import { parseRtf } from '../parsers/rtf';
-import { parseDoc } from '../parsers/doc';
-import { parseXLSX, parseXLS } from '../parsers/xlsx';
-import { parseCSV, parseTSV } from '../parsers/csv';
-import { chunkText } from '../pipeline/chunker';
 // Use isolated embedder for better memory management
 import { embed, checkEmbedderMemory, shutdownEmbedder } from '../../shared/embeddings/isolated';
 import crypto from 'node:crypto';
@@ -533,17 +529,27 @@ async function handleFile(filePath: string) {
       return;
     }
     
+    // Find parser for this file extension
+    const parserEntry = getParserForExtension(ext);
+    if (!parserEntry) {
+      console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - No parser for .${ext}`);
+      return;
+    }
+    
+    const [parserKey, parserDef] = parserEntry;
+    
     // Check if this file type is enabled
     const fileTypes = configManager?.getSettings().fileTypes || {};
-    const isTypeEnabled = fileTypes[ext as keyof typeof fileTypes] ?? false;
+    const isTypeEnabled = fileTypes[parserKey as keyof typeof fileTypes] ?? false;
     
     if (!isTypeEnabled) {
       console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - File type disabled`);
-      return; // Skip this file type
+      return;
     }
     
     let chunks: Array<{ text: string; offset: number; page?: number }> = [];
     
+    // Special handling for PDF (backward compatibility)
     if (ext === 'pdf' && parsePdf) {
       try {
         const pages = await parsePdf(filePath);
@@ -552,39 +558,27 @@ async function handleFile(filePath: string) {
           chunks.push(...pageChunks.map(c => ({ ...c, page: pg.page })));
         }
       } catch (pdfError: any) {
-        // Track specific PDF error
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
         await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`, 0, parserVersion);
         console.warn(`[INDEXING] ⚠️ Failed: ${path.basename(filePath)} - PDF: ${errorMsg}`);
         return;
       }
-    } else if (ext === 'txt' || ext === 'md') {
-      const text = await parseText(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'docx') {
-      const text = await parseDocx(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'rtf') {
-      const text = await parseRtf(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'doc') {
-      // Use proper .doc parser for old Word files
-      const text = await parseDoc(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'xlsx') {
-      const text = await parseXLSX(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'xls') {
-      const text = await parseXLS(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'csv') {
-      const text = await parseCSV(filePath);
-      chunks = chunkText(text, 500, 60);
-    } else if (ext === 'tsv') {
-      const text = await parseTSV(filePath);
-      chunks = chunkText(text, 500, 60);
     } else {
-      return;
+      // Dynamic parser loading for all other file types
+      try {
+        const parserModule = await parserDef.parser();
+        const text = await parserModule(filePath);
+        
+        // Use parser-specific chunk settings or defaults
+        const chunkSize = parserDef.chunkSize || 500;
+        const chunkOverlap = parserDef.chunkOverlap || 60;
+        chunks = chunkText(text, chunkSize, chunkOverlap);
+      } catch (parseError: any) {
+        const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
+        await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
+        console.warn(`[INDEXING] ⚠️ Failed: ${path.basename(filePath)} - ${errorMsg}`);
+        return;
+      }
     }
     
     if (chunks.length === 0) {
@@ -875,11 +869,9 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     console.log('File status cache size:', fileStatusCache?.size || 0);
     console.log('Queue already has:', fileQueue.getStats().queued, 'files');
     
-    // Get enabled file types from config
+    // Get enabled extensions from registry based on config
     const fileTypes = configManager?.getSettings().fileTypes || {};
-    const supportedExtensions = Object.entries(fileTypes)
-      .filter(([_, enabled]) => enabled)
-      .map(([ext]) => ext);
+    const supportedExtensions = getEnabledExtensions(fileTypes);
     
     // Use the extracted scanning function
     const scanOptions: ScanOptions = {
