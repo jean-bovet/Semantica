@@ -18,37 +18,34 @@ import { FileScanner } from './fileScanner';
 import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
+import { MemoryMonitor } from '../../shared/utils/memoryMonitor';
+
+// Set process title (won't show separately since worker threads share main process)
+// But useful for debugging and in some process monitoring tools
+if (typeof process !== 'undefined' && process.title) {
+  process.title = 'Semantica-Worker';
+}
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
 
-// Monitor memory usage
-let fileCount = 0;
-// Track previous memory values to avoid redundant logging
-let lastMemoryLog = {
-  rssMB: 0,
-  heapMB: 0,
-  heapTotalMB: 0,
-  extMB: 0,
-  fileCount: 0
-};
+// Initialize memory monitoring
+const memoryMonitor = new MemoryMonitor({
+  logPrefix: 'WORKER Memory',
+  counterName: 'Files processed',
+  rssThreshold: 10,
+  heapThreshold: 5,
+  intervalMs: 2000
+});
+
+// Start monitoring
+memoryMonitor.start();
 
 // Memory monitoring and governor
 setInterval(async () => {
-  const usage = process.memoryUsage();
-  const rssMB = Math.round(usage.rss / 1024 / 1024);
-  const heapMB = Math.round(usage.heapUsed / 1024 / 1024);
-  const heapTotalMB = Math.round(usage.heapTotal / 1024 / 1024);
-  const extMB = Math.round(usage.external / 1024 / 1024);
-  
-  // Only log if there's a significant change (>10MB RSS, >5MB Heap, or file count changed)
-  const rssChanged = Math.abs(rssMB - lastMemoryLog.rssMB) > 10;
-  const heapChanged = Math.abs(heapMB - lastMemoryLog.heapMB) > 5;
-  const filesChanged = fileCount !== lastMemoryLog.fileCount;
-  
-  if (rssChanged || heapChanged || filesChanged) {
-    console.log(`Memory: RSS=${rssMB}MB, Heap=${heapMB}MB/${heapTotalMB}MB, External=${extMB}MB, Files processed: ${fileCount}`);
-    lastMemoryLog = { rssMB, heapMB, heapTotalMB, extMB, fileCount };
+  // Check for high memory and potentially pause
+  if (memoryMonitor.isMemoryHigh(600)) {
+    console.log('[WORKER] ⚠️ High memory usage detected, consider restarting worker');
   }
   
   // Log queue status if there are files
@@ -473,7 +470,7 @@ async function updateFileStatus(filePath: string, status: string, error?: string
 
 async function handleFile(filePath: string) {
   try {
-    fileCount++; // Track files processed
+    memoryMonitor.increment(); // Track files processed
     console.log(`[INDEXING] Starting: ${filePath}`);
     
     if (!fs.existsSync(filePath)) {

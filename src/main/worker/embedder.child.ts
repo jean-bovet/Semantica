@@ -1,9 +1,26 @@
 // A tiny child process that only embeds, then exits when told.
 import path from 'node:path';
 import fs from 'node:fs';
+import { MemoryMonitor } from '../../shared/utils/memoryMonitor';
+
+// Set process title for easier identification in Activity Monitor / ps commands
+process.title = 'Semantica-Embedder';
 
 let transformers: any = null;
 let pipe: any = null;
+
+// Initialize memory monitoring for embedder
+const memoryMonitor = new MemoryMonitor({
+  logPrefix: 'EMBEDDER Memory',
+  counterName: 'Embeddings created',
+  rssThreshold: 10,
+  heapThreshold: 5,
+  intervalMs: 2000,
+  trackArrayBuffers: true // Track array buffers for tensor memory
+});
+
+// Start monitoring
+memoryMonitor.start();
 
 async function initTransformers() {
   if (!transformers) {
@@ -107,6 +124,7 @@ process.on('message', async (msg: any) => {
         for (let j = 0; j < dim; j++) v[j] = data[i + j];
         res.push(v);
       }
+      memoryMonitor.increment(res.length); // Track number of embeddings created
       process.send?.({ type: 'embed:ok', id: msg.id, vectors: res });
     } catch (e: any) {
       process.send?.({ type: 'embed:err', id: msg.id, error: String(e) });
