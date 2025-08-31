@@ -17,13 +17,14 @@ describe('chunkText', () => {
   
   it('should respect target token size', () => {
     const text = 'First sentence. '.repeat(100);
-    const chunks = chunkText(text, 100, 20);
+    const chunks = chunkText(text, 1000, 100);  // Updated to match new defaults
     
     expect(chunks.length).toBeGreaterThan(1);
     
     for (const chunk of chunks) {
-      const estimatedTokens = Math.ceil(chunk.text.length / 4);
-      expect(estimatedTokens).toBeLessThanOrEqual(150);
+      // With 1000 char target, expect chunks around 800-1200 chars
+      expect(chunk.text.length).toBeLessThanOrEqual(1200);
+      expect(chunk.text.length).toBeGreaterThanOrEqual(100); // At least the overlap size
     }
   });
   

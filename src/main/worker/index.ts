@@ -19,12 +19,16 @@ import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fil
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
 import { MemoryMonitor } from '../../shared/utils/memoryMonitor';
+import { MetricsCollector } from '../utils/MetricsCollector';
 
 // Set process title (won't show separately since worker threads share main process)
 // But useful for debugging and in some process monitoring tools
 if (typeof process !== 'undefined' && process.title) {
   process.title = 'Semantica-Worker';
 }
+
+// Initialize metrics collection
+const metricsCollector = new MetricsCollector();
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
@@ -60,6 +64,7 @@ setInterval(async () => {
   const restarted = await checkEmbedderMemory();
   if (restarted) {
     console.log('[MEMORY] ♾️ Embedder process restarted due to memory limits');
+    metricsCollector.incrementRestarts('embedder');
   }
 }, 2000);
 
@@ -470,6 +475,7 @@ async function updateFileStatus(filePath: string, status: string, error?: string
 
 async function handleFile(filePath: string) {
   try {
+    metricsCollector.startTimer('file_processing');
     memoryMonitor.increment(); // Track files processed
     console.log(`[INDEXING] Starting: ${filePath}`);
     
@@ -507,6 +513,7 @@ async function handleFile(filePath: string) {
     const previousHash = fileHashes.get(filePath);
     const stat = fs.statSync(filePath);
     const mtime = stat.mtimeMs;
+    metricsCollector.incrementBytes(stat.size);
     const ext = path.extname(filePath).slice(1).toLowerCase();
     const parserVersion = getParserVersion(ext);
     
@@ -555,7 +562,9 @@ async function handleFile(filePath: string) {
     // Special handling for PDF (backward compatibility)
     if (ext === 'pdf' && parsePdf) {
       try {
+        metricsCollector.startTimer('parsing');
         const pages = await parsePdf(filePath);
+        metricsCollector.endTimer('parsing');
         for (const pg of pages) {
           const pageChunks = chunkText(pg.text, 500, 60);
           chunks.push(...pageChunks.map(c => ({ ...c, page: pg.page })));
@@ -569,13 +578,18 @@ async function handleFile(filePath: string) {
     } else {
       // Dynamic parser loading for all other file types
       try {
+        metricsCollector.startTimer('parsing');
         const parserModule = await parserDef.parser();
         const text = await parserModule(filePath);
+        metricsCollector.endTimer('parsing');
         
         // Use parser-specific chunk settings or defaults
         const chunkSize = parserDef.chunkSize || 500;
         const chunkOverlap = parserDef.chunkOverlap || 60;
+        metricsCollector.startTimer('chunking');
         chunks = chunkText(text, chunkSize, chunkOverlap);
+        metricsCollector.endTimer('chunking');
+        metricsCollector.incrementChunks(chunks.length);
       } catch (parseError: any) {
         const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
         await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
@@ -588,19 +602,45 @@ async function handleFile(filePath: string) {
       // Mark file as failed if no chunks were extracted
       await updateFileStatus(filePath, 'failed', 'No text content extracted', 0, parserVersion);
       console.warn(`[INDEXING] ⚠️ Failed: ${path.basename(filePath)} - No text content extracted`);
+      metricsCollector.incrementErrors('parsing');
+      metricsCollector.endTimer('file_processing');
       return;
     }
     
-    const batchSize = 8; // Small batches to minimize memory usage
+    // Adaptive batch size for optimal performance
+    let batchSize = 32; // Start with recommended batch size
+    const MAX_BATCH_SIZE = 64;
+    const MIN_BATCH_SIZE = 8;
+    const TARGET_LATENCY_MS = 200;
+    
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
+      
+      metricsCollector.startTimer('embedding');
+      const startTime = performance.now();
       const vectors = await embed(texts, false); // false = document chunks (use passage: prefix)
+      const latency = performance.now() - startTime;
+      metricsCollector.endTimer('embedding');
+      metricsCollector.incrementEmbeddings(texts.length);
+      metricsCollector.recordBatch(texts.length);
+      
+      // Adapt batch size based on latency
+      if (latency < TARGET_LATENCY_MS * 0.5 && batchSize < MAX_BATCH_SIZE) {
+        batchSize = Math.min(MAX_BATCH_SIZE, Math.floor(batchSize * 1.2));
+        metricsCollector.recordBatchAdjustment();
+      } else if (latency > TARGET_LATENCY_MS * 1.5 && batchSize > MIN_BATCH_SIZE) {
+        batchSize = Math.max(MIN_BATCH_SIZE, Math.floor(batchSize * 0.8));
+        metricsCollector.recordBatchAdjustment();
+      }
       
       const rows = batch.map((c, idx) => {
         const id = crypto.createHash('sha1')
           .update(`${filePath}:${c.page || 0}:${c.offset}`)
           .digest('hex');
+        
+        // Convert vector to Float32Array for efficient storage
+        const vectorArray = new Float32Array(vectors[idx]);
         
         return {
           id,
@@ -609,7 +649,7 @@ async function handleFile(filePath: string) {
           page: c.page || 0,
           offset: c.offset,
           text: c.text,
-          vector: vectors[idx],
+          vector: vectorArray,
           type: ext,
           title: path.basename(filePath)
         };
@@ -634,6 +674,8 @@ async function handleFile(filePath: string) {
     const totalChunks = chunks.length;
     await updateFileStatus(filePath, 'indexed', undefined, totalChunks, parserVersion);
     console.log(`[INDEXING] ✅ Success: ${path.basename(filePath)} - ${totalChunks} chunks created`);
+    metricsCollector.incrementFiles();
+    metricsCollector.endTimer('file_processing');
     
     // Clear references to help garbage collection
     chunks = null as any;
@@ -663,13 +705,17 @@ async function handleFile(filePath: string) {
     console.error(`[INDEXING] ❌ Error: ${path.basename(filePath)} -`, error.message || error);
     // Track the error in the database
     await updateFileStatus(filePath, 'error', error.message || String(error));
+    metricsCollector.incrementErrors(error.message?.includes('embed') ? 'embedding' : 'parsing');
+    metricsCollector.endTimer('file_processing');
   }
 }
 
 async function search(query: string, k = 10) {
   try {
     const [qvec] = await embed([query], true); // true = search query (use query: prefix)
-    const results = await tbl.search(qvec)
+    // Convert to Float32Array for consistent binary format
+    const queryVector = new Float32Array(qvec);
+    const results = await tbl.search(queryVector)
       .limit(k)
       .toArray();
     
@@ -1233,6 +1279,26 @@ parentPort!.on('message', async (msg: any) => {
         });
         break;
       
+      case 'getMetrics':
+        // Return current metrics
+        if (msg.id) {
+          parentPort!.postMessage({ 
+            id: msg.id, 
+            payload: metricsCollector.getMetrics()
+          });
+        }
+        break;
+      
+      case 'getMetricsSummary':
+        // Return formatted metrics summary
+        if (msg.id) {
+          parentPort!.postMessage({ 
+            id: msg.id, 
+            payload: metricsCollector.getSummary()
+          });
+        }
+        break;
+      
       case 'searchFiles':
         try {
           const searchQuery = (typeof msg.payload === 'string' ? msg.payload : msg.payload?.query || '').toLowerCase();
@@ -1302,10 +1368,111 @@ parentPort!.on('message', async (msg: any) => {
         }
         break;
       
+      case 'getMemory':
+        // Return memory usage for RestartableProcess monitoring
+        const memUsage = process.memoryUsage();
+        if (msg.id) {
+          parentPort!.postMessage({ 
+            type: 'memory',
+            id: msg.id, 
+            payload: memUsage
+          });
+        }
+        break;
+      
+      case 'getState':
+        // Return current worker state for graceful restart
+        const state = {
+          watchedFolders: configManager?.getWatchedFolders() || [],
+          settings: configManager?.getSettings() || {},
+          queueStats: fileQueue.getStats(),
+          queuedFiles: fileQueue.getQueuedFiles(),
+          processingFiles: fileQueue.getProcessingFiles(),
+          fileHashes: Array.from(fileHashes.entries()),
+          folderStats: Array.from(folderStats.entries()),
+          paused: paused
+        };
+        if (msg.id) {
+          parentPort!.postMessage({ 
+            type: 'state',
+            id: msg.id, 
+            payload: state 
+          });
+        }
+        break;
+      
+      case 'restoreState':
+        // Restore worker state after restart
+        const restoredState = msg.state;
+        if (restoredState) {
+          // Restore file hashes
+          if (restoredState.fileHashes) {
+            fileHashes.clear();
+            for (const [path, hash] of restoredState.fileHashes) {
+              fileHashes.set(path, hash);
+            }
+          }
+          
+          // Restore folder stats
+          if (restoredState.folderStats) {
+            folderStats.clear();
+            for (const [folder, stats] of restoredState.folderStats) {
+              folderStats.set(folder, stats);
+            }
+          }
+          
+          // Restore paused state
+          if (restoredState.paused !== undefined) {
+            paused = restoredState.paused;
+            if (paused) {
+              fileQueue.pause();
+            }
+          }
+          
+          // Re-enqueue files that were queued or processing
+          if (restoredState.queuedFiles) {
+            for (const file of restoredState.queuedFiles) {
+              if (!fileQueue.isProcessing(file)) {
+                fileQueue.add(file);
+              }
+            }
+          }
+          if (restoredState.processingFiles) {
+            for (const file of restoredState.processingFiles) {
+              if (!fileQueue.isProcessing(file)) {
+                fileQueue.add(file);
+              }
+            }
+          }
+          
+          console.log('[WORKER] State restored after restart');
+        }
+        
+        if (msg.id) {
+          parentPort!.postMessage({ 
+            id: msg.id, 
+            payload: { success: true } 
+          });
+        }
+        break;
+      
       case 'shutdown':
-        // Clean shutdown requested
-        console.log('Worker shutting down...');
+        // Clean shutdown requested with graceful draining
+        console.log('Worker shutting down gracefully...');
+        
+        // Pause new work
+        fileQueue.pause();
+        
+        // Wait for current processing to complete (max 5 seconds)
+        const shutdownStart = Date.now();
+        while (fileQueue.getStats().processing > 0 && Date.now() - shutdownStart < 5000) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // Shutdown embedder
         await shutdownEmbedder();
+        
+        // Close database
         if (db) {
           await db.close();
         }

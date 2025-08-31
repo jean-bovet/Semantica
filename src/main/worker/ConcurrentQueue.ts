@@ -101,6 +101,13 @@ export class ConcurrentQueue {
   }
 
   /**
+   * Get list of queued files (not yet processing)
+   */
+  getQueuedFiles(): string[] {
+    return [...this.queue];
+  }
+
+  /**
    * Main processing loop - processes files concurrently up to the limit
    * 
    * @param handler - Async function to process each file
