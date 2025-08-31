@@ -127,3 +127,4 @@ npm run test:e2e      # E2E tests only
 - [Troubleshooting](./specs/troubleshooting.md) - Common issues
 - [Documentation Standards](./specs/documentation-standards.md) - File naming conventions
 - [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
+- Never run `npm run dev` without asking me first
