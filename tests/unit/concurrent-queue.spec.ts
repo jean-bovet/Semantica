@@ -46,6 +46,60 @@ describe('ConcurrentQueue', () => {
       expect(queue.getStats().queued).toBe(0);
       expect(queue.getStats().processing).toBe(0);
     });
+
+    it('should get list of queued files', () => {
+      queue.add(['file1.txt', 'file2.txt', 'file3.txt']);
+      const queuedFiles = queue.getQueuedFiles();
+      
+      expect(queuedFiles).toHaveLength(3);
+      expect(queuedFiles).toContain('file1.txt');
+      expect(queuedFiles).toContain('file2.txt');
+      expect(queuedFiles).toContain('file3.txt');
+    });
+
+    it('should return empty array when no files queued', () => {
+      const queuedFiles = queue.getQueuedFiles();
+      expect(queuedFiles).toEqual([]);
+    });
+
+    it('should return copy of queue array', () => {
+      queue.add(['file1.txt', 'file2.txt']);
+      const queuedFiles1 = queue.getQueuedFiles();
+      const queuedFiles2 = queue.getQueuedFiles();
+      
+      // Should be different array instances
+      expect(queuedFiles1).not.toBe(queuedFiles2);
+      // But contain same values
+      expect(queuedFiles1).toEqual(queuedFiles2);
+      
+      // Modifying returned array shouldn't affect internal queue
+      queuedFiles1.push('file3.txt');
+      expect(queue.getQueuedFiles()).toHaveLength(2);
+    });
+
+    it('should differentiate between queued and processing files', async () => {
+      queue.add(['file1.txt', 'file2.txt', 'file3.txt', 'file4.txt']);
+      
+      let capturedQueued: string[] = [];
+      let capturedProcessing: string[] = [];
+      
+      const handler = async (file: string) => {
+        // Capture state while processing
+        if (file === 'file1.txt') {
+          capturedQueued = queue.getQueuedFiles();
+          capturedProcessing = queue.getProcessingFiles();
+        }
+        await new Promise(r => setTimeout(r, 10));
+      };
+
+      queue['maxConcurrent'] = 2; // Limit to 2 concurrent
+      await queue.process(handler);
+      
+      // When file1 was processing, some files should still be queued
+      expect(capturedQueued.length).toBeGreaterThan(0);
+      expect(capturedProcessing.length).toBeGreaterThan(0);
+      expect(capturedProcessing.length).toBeLessThanOrEqual(2);
+    });
   });
 
   describe('Concurrent Processing', () => {
