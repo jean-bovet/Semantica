@@ -8,7 +8,7 @@ import log from 'electron-log';
 // Enable crash reporter to capture native crashes
 crashReporter.start({
   productName: 'Semantica',
-  companyName: 'Arizona Software',
+  companyName: 'Jean Bovet',
   submitURL: '', // Leave empty to just save locally
   uploadToServer: false,
   ignoreSystemCrashHandler: false,
@@ -159,6 +159,16 @@ function sendToWorker(type: string, payload: any = {}): Promise<any> {
 
 if (gotTheLock) {
   app.whenReady().then(async () => {
+    // Set About panel options
+    app.setAboutPanelOptions({
+      applicationName: 'Semantica',
+      applicationVersion: app.getVersion(),
+      copyright: 'Copyright © 2025 Jean Bovet',
+      authors: ['Jean Bovet'],
+      website: 'https://github.com/bovet/FSS',
+      iconPath: path.join(__dirname, '../../build/icon.png')
+    });
+    
     win = new BrowserWindow({
     width: 1200,
     height: 800,
