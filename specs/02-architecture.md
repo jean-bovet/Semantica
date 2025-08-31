@@ -10,20 +10,98 @@ Semantica uses a multi-process architecture with memory isolation to ensure stab
 
 ## Architecture Diagram
 
+### Process Hierarchy (Simplified)
 ```
-Main Process (Electron)
-    ├── BrowserWindow
-    │   └── Renderer Process (React UI)
-    │       ├── Search Interface
-    │       ├── Settings Panel
-    │       └── Results Display
-    │
-    └── Worker Thread
-        ├── File Watching (Chokidar)
-        ├── Document Parsing
-        ├── LanceDB Operations
-        └── Embedder Child Process (Isolated)
-            └── Transformers.js (Memory-isolated)
+Main Process
+├── AppWorkerManager (800MB threshold)
+│   └── Worker Thread
+│       ├── Document Pipeline (parsing, chunking, LanceDB)
+│       └── EmbedderManager (300MB + 200 files threshold)
+│           └── Embedder Child Process (ML model)
+└── Renderer Process (React UI)
+```
+
+### Detailed Process Architecture
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                ELECTRON APP                                      │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────────┐    │
+│  │                         MAIN PROCESS (main.ts)                          │    │
+│  │                                                                          │    │
+│  │  ┌──────────────────────────────────────────────────────────────┐      │    │
+│  │  │                    AppWorkerManager                          │      │    │
+│  │  │              (extends WorkerManager)                         │      │    │
+│  │  │                                                              │      │    │
+│  │  │  • Memory threshold: 800MB RSS                               │      │    │
+│  │  │  • Auto-restart on crash                                    │      │    │
+│  │  │  • Message queuing while initializing                       │      │    │
+│  │  │  • State preservation across restarts                       │      │    │
+│  │  └──────────────────┬───────────────────────────────────────────┘      │    │
+│  │                      │ manages                                          │    │
+│  │                      ▼                                                  │    │
+│  │  ╔══════════════════════════════════════════════════════════════╗      │    │
+│  │  ║              WORKER THREAD (worker.cjs)                      ║      │    │
+│  │  ║                                                              ║      │    │
+│  │  ║  • Document processing pipeline                              ║      │    │
+│  │  ║  • File parsing (PDF, DOCX, etc)                            ║      │    │
+│  │  ║  • Text chunking                                            ║      │    │
+│  │  ║  • LanceDB operations                                       ║      │    │
+│  │  ║  • Queue management                                         ║      │    │
+│  │  ║                                                              ║      │    │
+│  │  ║  ┌────────────────────────────────────────────────────┐     ║      │    │
+│  │  ║  │               EmbedderManager                      │     ║      │    │
+│  │  ║  │          (extends RestartableProcess)              │     ║      │    │
+│  │  ║  │                                                    │     ║      │    │
+│  │  ║  │  • Memory threshold: 300MB external                │     ║      │    │
+│  │  ║  │  • File count threshold: 200 files                 │     ║      │    │
+│  │  ║  │  • In-flight request tracking                      │     ║      │    │
+│  │  ║  │  • 30-second timeout per request                   │     ║      │    │
+│  │  ║  └──────────────┬─────────────────────────────────────┘     ║      │    │
+│  │  ║                  │ manages                                   ║      │    │
+│  │  ║                  ▼                                           ║      │    │
+│  │  ║  ╔═══════════════════════════════════════════════════╗      ║      │    │
+│  │  ║  ║      CHILD PROCESS (isolated.js)                  ║      ║      │    │
+│  │  ║  ║                                                    ║      ║      │    │
+│  │  ║  ║  • Xenova/multilingual-e5-small model             ║      ║      │    │
+│  │  ║  ║  • Vector embedding generation                    ║      ║      │    │
+│  │  ║  ║  • Memory isolated from main/worker               ║      ║      │    │
+│  │  ║  ║  • --expose-gc for garbage collection             ║      ║      │    │
+│  │  ║  ╚═══════════════════════════════════════════════════╝      ║      │    │
+│  │  ╚══════════════════════════════════════════════════════════════╝      │    │
+│  └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────────┐    │
+│  │                      RENDERER PROCESS (React UI)                        │    │
+│  │                                                                          │    │
+│  │  • Search interface                                                     │    │
+│  │  • Settings modal                                                       │    │
+│  │  • File browser                                                         │    │
+│  │  • Results display                                                      │    │
+│  └─────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+LEGEND:
+═══ Double border = Separate OS process/thread
+─── Single border = Class/module
+
+COMMUNICATION:
+• Main ←→ Worker: postMessage/on('message') via WorkerManager
+• Worker ←→ Child: send/on('message') via EmbedderManager
+• Main ←→ Renderer: ipcMain/ipcRenderer via Electron IPC
+```
+
+### Memory Management Strategy
+```
+Main ──manages──> Worker ──manages──> Embedder
+     (800MB RSS)         (300MB/200 files)
+
+Auto-restart cascade:
+• Embedder restarts → Worker continues (queues requests)
+• Worker restarts → Embedder also restarts (child of worker)
+• Main crash → Everything restarts (Electron relaunch)
 ```
 
 ## Core Components
