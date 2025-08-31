@@ -41,7 +41,7 @@ export const PARSER_REGISTRY: Record<string, ParserDefinition> = {
     versionHistory: {
       1: "Initial pdf-parse implementation"
     },
-    enabledByDefault: false  // Can cause memory issues, disabled by default
+    enabledByDefault: true  // Memory issues solved with process isolation
   },
   
   docx: {
