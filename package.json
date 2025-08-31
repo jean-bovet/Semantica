@@ -2,6 +2,7 @@
     "name": "Semantica",
     "version": "1.0.0",
     "description": "Offline semantic search for macOS",
+    "author": "Semantica Contributors",
     "main": "dist/main.cjs",
     "private": true,
     "scripts": {
