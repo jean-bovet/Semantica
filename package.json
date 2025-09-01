@@ -102,7 +102,8 @@
             "entitlementsInherit": "build/entitlements.mac.plist",
             "icon": "build/icon.icns",
             "target": [
-                "dmg"
+                "dmg",
+                "zip"
             ],
             "gatekeeperAssess": false
         },

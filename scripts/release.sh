@@ -225,13 +225,22 @@ print_step "Step 6/6: Creating GitHub release"
 
 # Find the built files
 DMG_FILE=$(find dist-app -name "*.dmg" -type f | head -1)
-ZIP_FILE=$(find dist-app -name "*-mac.zip" -type f | head -1)
+ZIP_FILE=$(find dist-app -name "*.zip" -type f | head -1)
 BLOCKMAP_FILE=$(find dist-app -name "*.blockmap" -type f | head -1)
 YML_FILE=$(find dist-app -name "latest-mac.yml" -type f | head -1)
 
 if [ -z "$DMG_FILE" ]; then
     print_error "DMG file not found in dist-app/"
     echo "Build may have failed. Please check the output above."
+    exit 1
+fi
+
+# Check for required auto-update files
+if [ -z "$ZIP_FILE" ]; then
+    print_warning "ZIP file not found - auto-updates won't work!"
+    echo "Make sure package.json has both 'dmg' and 'zip' in mac.target"
+    echo "Current files in dist-app:"
+    ls -la dist-app/
     exit 1
 fi
 
