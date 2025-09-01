@@ -44,7 +44,6 @@ let worker: Worker | null = null;
 let win: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
 let workerReady = false;
-let isDownloadingModel = false;
 const pendingCallbacks = new Map<string, (data: any) => void>();
 
 function spawnWorker() {
@@ -75,7 +74,6 @@ function spawnWorker() {
     } else if (msg.type === 'model:download:progress') {
       win?.webContents.send('model:download:progress', msg.payload);
     } else if (msg.type === 'model:download:complete') {
-      isDownloadingModel = false;
       win?.webContents.send('model:download:complete');
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
@@ -217,7 +215,6 @@ if (gotTheLock) {
   });
   
   ipcMain.handle('model:download', async () => {
-    isDownloadingModel = true;
     return sendToWorker('downloadModel');
   });
   

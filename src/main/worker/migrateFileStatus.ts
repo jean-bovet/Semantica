@@ -122,7 +122,7 @@ export async function cleanupOrphanedStatuses(fileStatusTable: any): Promise<num
         try {
           await fileStatusTable.delete(`path = "${status.path}"`);
           deletedCount++;
-        } catch (e) {
+        } catch (_e) {
           // Ignore deletion errors
         }
       }

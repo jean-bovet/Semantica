@@ -36,8 +36,7 @@ async function initTransformers() {
 process.on('message', async (msg: any) => {
   if (msg?.type === 'check-model') {
     try {
-      const tf = await initTransformers();
-      const modelName = msg.model || 'Xenova/multilingual-e5-small';
+      await initTransformers();
       
       // Check if model exists locally
       const modelPath = path.join(transformers.env.localModelPath, 'Xenova', 'multilingual-e5-small');
@@ -91,7 +90,7 @@ process.on('message', async (msg: any) => {
     let out: any;
     try {
       // Add E5 prefixes based on type
-      const prefixedTexts = msg.texts.map((text: string, i: number) => {
+      const prefixedTexts = msg.texts.map((text: string) => {
         // Use passage: for documents, query: for search queries
         const prefix = msg.isQuery ? 'query: ' : 'passage: ';
         return prefix + text;

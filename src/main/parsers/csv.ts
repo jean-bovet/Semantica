@@ -24,7 +24,7 @@ export async function parseCSV(filePath: string): Promise<string> {
     }
     
     // Parse CSV content
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const output: string[] = [];
       
       // Create parser with options
@@ -96,7 +96,7 @@ export async function parseTSV(filePath: string): Promise<string> {
     }
     
     // Parse TSV content (tab delimiter)
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const output: string[] = [];
       
       const parser = parse({

@@ -90,17 +90,6 @@ function SettingsView() {
     }
   };
   
-  const toggleFileType = async (type: keyof typeof fileTypes) => {
-    const newFileTypes = { ...fileTypes, [type]: !fileTypes[type] };
-    setFileTypes(newFileTypes);
-    
-    try {
-      await window.api.settings.update({ fileTypes: newFileTypes });
-    } catch (e) {
-      console.error('Failed to update file type settings:', e);
-    }
-  };
-  
   const loadStats = async () => {
     const dbStats = await window.api.db.stats();
     setStats(dbStats);

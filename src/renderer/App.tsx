@@ -65,7 +65,7 @@ function App() {
           // Start download
           try {
             await window.api.model.download();
-          } catch (downloadErr: any) {
+          } catch (_downloadErr: any) {
             setModelError('Failed to download model. Please check your internet connection.');
             setDownloadingModel(false);
           }
@@ -76,7 +76,7 @@ function App() {
             window.api.off('model:download:complete', handleComplete);
           };
         }
-      } catch (err) {
+      } catch (_err) {
         // Retry once
         setTimeout(async () => {
           try {
@@ -86,7 +86,7 @@ function App() {
             } else {
               setModelError('Failed to initialize. Please restart the app.');
             }
-          } catch (retryErr) {
+          } catch (_retryErr) {
             setModelError('Failed to initialize AI model.');
           }
           setCheckingModel(false);

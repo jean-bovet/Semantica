@@ -32,7 +32,7 @@ export class IsolatedEmbedder implements IEmbedder {
         rss: rss / 1024, // Convert KB to MB
         vsz: vsz / 1024  // Convert KB to MB
       };
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -333,7 +333,7 @@ export class IsolatedEmbedder implements IEmbedder {
           this.child.send({ type: 'shutdown' });
           await new Promise(r => setTimeout(r, 200));
         }
-      } catch (e) {
+      } catch (_e) {
         // Child may already be dead or disconnected
       }
       
@@ -348,7 +348,7 @@ export class IsolatedEmbedder implements IEmbedder {
         if (this.child && !this.child.killed) {
           this.child.kill('SIGKILL');
         }
-      } catch (e) {
+      } catch (_e) {
         // Process might already be dead
       }
       

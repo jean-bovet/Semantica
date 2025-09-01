@@ -6,16 +6,19 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 import unusedImports from 'eslint-plugin-unused-imports';
 
 export default [
+  // Global ignores should be in a separate config object
+  {
+    ignores: [
+      'dist/**',
+      'dist-app/**',
+      'node_modules/**',
+      'build/**',
+      'resources/models/**',
+      'tests/fixtures/**'
+    ]
+  },
   {
     files: ['**/*.{ts,tsx}'],
-    ignores: [
-      'dist',
-      'dist-app',
-      'node_modules',
-      'build',
-      'resources/models',
-      'tests/fixtures'
-    ],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2022,

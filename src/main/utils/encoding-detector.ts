@@ -118,7 +118,7 @@ export function decodeBuffer(buffer: Buffer, encoding?: string | null, filename?
           return decoded;
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Continue to next fallback
     }
   }

@@ -9,7 +9,7 @@ import { PARSER_REGISTRY } from '../parsers/registry';
 export const PARSER_VERSIONS: Record<string, number> = (() => {
   const versions: Record<string, number> = {};
   
-  for (const [key, definition] of Object.entries(PARSER_REGISTRY)) {
+  for (const [_key, definition] of Object.entries(PARSER_REGISTRY)) {
     // Map each extension to its parser version
     for (const ext of definition.extensions) {
       versions[ext] = definition.version;
@@ -23,7 +23,7 @@ export const PARSER_VERSIONS: Record<string, number> = (() => {
 export const VERSION_HISTORY: Record<string, Record<number, string>> = (() => {
   const history: Record<string, Record<number, string>> = {};
   
-  for (const [key, definition] of Object.entries(PARSER_REGISTRY)) {
+  for (const [_key, definition] of Object.entries(PARSER_REGISTRY)) {
     // Map each extension to its version history
     for (const ext of definition.extensions) {
       history[ext] = definition.versionHistory;

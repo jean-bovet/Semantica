@@ -26,9 +26,9 @@ export interface IEmbedder {
 
   /**
    * Check if the embedder should restart (e.g., due to memory usage)
-   * @returns Boolean indicating if restart is needed
+   * @returns Promise resolving to boolean indicating if restart is needed
    */
-  shouldRestart(): boolean;
+  shouldRestart(): Promise<boolean>;
 
   /**
    * Restart the embedder (cleanup and reinitialize)

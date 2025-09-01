@@ -1,24 +1,18 @@
 import { parentPort } from 'node:worker_threads';
 import * as lancedb from '@lancedb/lancedb';
-import { PARSER_VERSIONS, getParserVersion } from './parserVersions';
+import { getParserVersion } from './parserVersions';
 import { ReindexService } from '../services/ReindexService';
 import { ConcurrentQueue } from './ConcurrentQueue';
 import { 
-  initializeFileStatusTable, 
-  loadFileStatusCache, 
-  scanForChanges, 
-  updateFileStatus as updateFileStatusInTable,
-  getFileHash as getFileHashFromManager,
-  isFileSupported,
-  getFileExtension
+  initializeFileStatusTable
 } from './fileStatusManager';
-import { migrateIndexedFilesToStatus, cleanupOrphanedStatuses } from './migrateFileStatus';
+import { migrateIndexedFilesToStatus } from './migrateFileStatus';
 import { ReindexOrchestrator } from './ReindexOrchestrator';
 import { FileScanner } from './fileScanner';
-import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
+import type { ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
-import { setupProfiling, profileHandleFile, timeOperation, recordEvent, profiler } from './profiling-integration';
+import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
@@ -88,7 +82,7 @@ import { chunkText } from '../pipeline/chunker';
 let parsePdf: any = null;
 try {
   parsePdf = require('../parsers/pdf').parsePdf;
-} catch (e) {
+} catch (_e) {
   console.log('PDF parsing not available');
 }
 // Use isolated embedder for better memory management
@@ -106,7 +100,6 @@ let tbl: any = null;
 let fileStatusTable: any = null; // Table to track file status
 let modelReady: boolean | null = null; // Track if model is ready (null = not yet checked)
 let paused = false;
-const fileChunkCounts = new Map<string, number>(); // Track chunk counts per file
 let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
@@ -146,11 +139,6 @@ interface FolderStats {
 }
 const folderStats = new Map<string, FolderStats>();
 
-interface QueuedFile {
-  path: string;
-  priority: number;
-}
-
 // Helper function to check if model exists (use new implementation)
 function checkModelExists(userDataPath: string): boolean {
   return checkModelExistsNew(userDataPath);
@@ -182,7 +170,7 @@ async function downloadModel(userDataPath: string): Promise<void> {
   }
 }
 
-async function initDB(dir: string, userDataPath: string) {
+async function initDB(dir: string, _userDataPath: string) {
   try {
     // Initialize config manager
     configManager = new ConfigManager(dir);
@@ -249,13 +237,13 @@ async function initDB(dir: string, userDataPath: string) {
             const hash = getFileHash(filePath);
             fileHashes.set(filePath, hash);
           }
-        } catch (e) {
+        } catch (_e) {
           // File might have been deleted
         }
       });
       
       console.log(`Loaded ${fileHashes.size} existing indexed files`);
-    } catch (e) {
+    } catch (_e) {
       console.log('No existing files in index');
     }
     
@@ -508,7 +496,7 @@ async function updateFileStatus(filePath: string, status: string, error?: string
     let stats: any = { mtime: new Date() };
     try {
       stats = fs.statSync(filePath);
-    } catch (e) {
+    } catch (_e) {
       // File might not exist (e.g., deleted status)
     }
     
@@ -527,7 +515,7 @@ async function updateFileStatus(filePath: string, status: string, error?: string
     // Try to delete existing record (ignore errors)
     try {
       await fileStatusTable.delete(`path = "${filePath}"`);
-    } catch (e) {
+    } catch (_e) {
       // Ignore delete errors
     }
     
@@ -594,7 +582,7 @@ async function handleFileOriginal(filePath: string) {
           needsReindex = true;
           console.log(`[INDEXING] 🔄 Parser version changed for ${path.basename(filePath)}: v${fileStatus[0].parser_version} -> v${parserVersion}`);
         }
-      } catch (e) {
+      } catch (_e) {
         // Ignore errors in checking file status
       }
     }
@@ -875,7 +863,7 @@ async function reindexAll() {
     fileHashes.clear();
     
     // Reset folder stats
-    for (const [folder, stats] of folderStats) {
+    for (const [_folder, stats] of folderStats) {
       stats.indexed = 0;
     }
     
@@ -914,7 +902,7 @@ async function getStats() {
         indexedFiles: stats.indexed
       }))
     };
-  } catch (error) {
+  } catch (_error) {
     return {
       totalChunks: 0,
       indexedFiles: 0,
@@ -949,7 +937,7 @@ async function cleanupRemovedFolders(removedFolders: string[]) {
       for (const path of pathsToDelete) {
         try {
           await fileStatusTable.delete(`path = "${path}"`);
-        } catch (e) {
+        } catch (_e) {
           // Ignore individual deletion errors
         }
       }

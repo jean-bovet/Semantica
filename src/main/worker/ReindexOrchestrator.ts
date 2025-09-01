@@ -156,7 +156,7 @@ export class ReindexOrchestrator {
 
     // Find files that are in the cache but not in the file list (deleted files)
     const filesToRemove: string[] = [];
-    for (const [path, status] of fileStatusCache.entries()) {
+    for (const [path, _status] of fileStatusCache.entries()) {
       // Check if file is in a watched folder
       const inWatchedFolder = watchedFolders.some(folder => path.startsWith(folder));
       if (inWatchedFolder && !allFiles.includes(path)) {

@@ -20,7 +20,7 @@ function getFileHash(filePath: string): string {
     const stats = fs.statSync(filePath);
     const content = `${filePath}:${stats.size}:${stats.mtimeMs}`;
     return crypto.createHash('md5').update(content).digest('hex');
-  } catch (e) {
+  } catch (_e) {
     return '';
   }
 }

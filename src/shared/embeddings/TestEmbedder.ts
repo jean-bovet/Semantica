@@ -1,4 +1,4 @@
-import { IEmbedder, EmbedderConfig } from './IEmbedder';
+import { IEmbedder } from './IEmbedder';
 
 /**
  * Test implementation of IEmbedder for unit testing
@@ -118,7 +118,7 @@ export class TestEmbedder implements IEmbedder {
     throw lastError || new Error('All retries failed');
   }
   
-  shouldRestart(): boolean {
+  async shouldRestart(): Promise<boolean> {
     return this._shouldRestartFlag || this._filesSinceSpawn > 100;
   }
   

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PARSER_REGISTRY, ParserKey, getDefaultFileTypes } from '../parsers/registry';
+import { ParserKey, getDefaultFileTypes } from '../parsers/registry';
 
 // Auto-generate file types from parser registry
 export type FileTypes = Record<ParserKey, boolean>;

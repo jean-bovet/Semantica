@@ -106,7 +106,7 @@ export class EmbedderPool {
               if (!stats.isReady && !this.restartingEmbedders.has(i)) {
                 await this.restart(i);  // Use mutex-protected restart
               }
-            } catch (error) {
+            } catch (_error) {
               // Embedder might be in a bad state, try to restart it
               if (!this.restartingEmbedders.has(i)) {
                 await this.restart(i);

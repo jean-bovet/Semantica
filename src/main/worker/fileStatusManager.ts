@@ -62,7 +62,7 @@ export async function initializeFileStatusTable(db: any): Promise<any> {
   // Try to clean up the dummy record (may fail but that's OK)
   try {
     await table.delete('path = "__init__"');
-  } catch (e) {
+  } catch (_e) {
     // Ignore - some versions of LanceDB don't support delete
   }
   
@@ -96,7 +96,7 @@ export function getFileHash(filePath: string): string {
     const stats = fs.statSync(filePath);
     const content = `${filePath}:${stats.size}:${stats.mtimeMs}`;
     return crypto.createHash('md5').update(content).digest('hex');
-  } catch (e) {
+  } catch (_e) {
     return '';
   }
 }
@@ -190,7 +190,7 @@ export async function scanForChanges(
           continue;
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // File might have been deleted or is inaccessible
       result.skippedFiles.push(filePath);
       continue;
@@ -235,7 +235,7 @@ export async function updateFileStatus(
     // Try to delete existing record first
     try {
       await fileStatusTable.delete(`path = "${filePath}"`);
-    } catch (e) {
+    } catch (_e) {
       // Ignore - record might not exist
     }
     
