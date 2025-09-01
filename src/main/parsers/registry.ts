@@ -124,11 +124,12 @@ export const PARSER_REGISTRY: Record<string, ParserDefinition> = {
     label: 'Text',
     category: 'text' as const,
     parser: () => import('./text').then(m => m.parseText),
-    version: 3,
+    version: 4,
     versionHistory: {
       1: "Basic text parsing (UTF-8 only)",
       2: "Initial multi-encoding attempt",
-      3: "Multi-encoding support with chardet and iconv-lite"
+      3: "Multi-encoding support with chardet and iconv-lite",
+      4: "Enhanced ISO-8859-1 and legacy encoding support with better error handling"
     },
     enabledByDefault: true
   },
@@ -138,11 +139,12 @@ export const PARSER_REGISTRY: Record<string, ParserDefinition> = {
     label: 'Markdown',
     category: 'text' as const,
     parser: () => import('./text').then(m => m.parseText),  // Uses same parser as text
-    version: 3,
+    version: 4,
     versionHistory: {
       1: "Markdown as text (UTF-8 only)",
       2: "Initial multi-encoding attempt",
-      3: "Multi-encoding support with chardet and iconv-lite"
+      3: "Multi-encoding support with chardet and iconv-lite",
+      4: "Enhanced ISO-8859-1 and legacy encoding support with better error handling"
     },
     enabledByDefault: true
   }
