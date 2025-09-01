@@ -85,10 +85,10 @@ describe('Embeddings Orchestration', () => {
   });
   
   describe('Memory Management', () => {
-    it('should detect when restart is needed', () => {
+    it('should detect when restart is needed', async () => {
       embedder.setShouldRestart(true);
       
-      expect(embedder.shouldRestart()).toBe(true);
+      expect(await embedder.shouldRestart()).toBe(true);
     });
     
     it('should restart when needed', async () => {
