@@ -1,287 +1,139 @@
-# Finder Semantic Search (FSS) - Claude Context
+# CLAUDE.md - AI Assistant Context
+
+This file provides important context and guidelines for AI assistants working on the Semantica project.
 
 ## Project Overview
-A macOS application with semantic document search capabilities using AI-powered embeddings. The project combines:
-1. **Python Backend** (COMPLETED): Document processing and search engine with FAISS
-2. **SwiftUI Frontend** (COMPLETED): Native macOS app with clean interface
-3. **CLI Integration** (COMPLETED): JSON-based communication between Swift and Python
 
-## Repository Structure
+Semantica is an Electron-based application that provides offline semantic search capabilities for Mac users. It indexes local documents and enables natural language search using vector embeddings.
 
-```
-/Users/bovet/GitHub/FSS/
-├── CLAUDE.md                    # This file - project context for Claude
-├── README.md                    # Main project documentation
-│
-├── FinderSemanticSearch/        # 🖥️ SWIFTUI MACOS APP
-│   ├── FinderSemanticSearch.xcodeproj
-│   ├── FinderSemanticSearch/
-│   │   ├── Services/
-│   │   │   └── PythonCLIBridge.swift  # Python process management
-│   │   ├── Views/
-│   │   │   ├── ContentView.swift      # Main app view
-│   │   │   ├── SearchView.swift       # Search interface
-│   │   │   └── IndexingView.swift     # Folder indexing UI
-│   │   ├── ViewModels/
-│   │   │   └── SearchViewModel.swift  # Business logic
-│   │   └── Models/
-│   └── integration-plan.md     # Completed integration documentation
-│
-├── specs/                       # 📋 SPECIFICATIONS & PLANNING
-│   ├── local-document-search-plan.md   # Original implementation plan (completed)
-│   ├── swiftui-python-guide.md        # Main integration guide with async CLI
-│   ├── incremental-indexing-plan.md   # Incremental indexing implementation
-│   ├── ml-download-strategy.md        # Model bundling strategies
-│   └── unit-test-plan.md             # Comprehensive test strategy
-│
-└── local-doc-search/           # 🐍 PYTHON SEARCH ENGINE
-    ├── cli.py                  # Async CLI with concurrent search/indexing
-    ├── cli_standalone.py       # Bootstrap script for auto-dependencies
-    ├── config.yaml             # Configuration file
-    ├── requirements.txt        # Python dependencies
-    │
-    ├── src/                   # Core search engine
-    │   ├── document_processor.py  # Document parsing (PDF, Word, Text)
-    │   ├── embeddings.py          # Embedding generation
-    │   ├── indexer.py             # FAISS index management
-    │   ├── metadata_store.py     # Incremental indexing support
-    │   └── search.py              # Search engine logic
-    │
-    ├── tests/                 # Test suite
-    │   ├── test_document_processor.py
-    │   ├── test_embeddings.py
-    │   └── test_metadata_store.py
-    │
-    └── data/                  # Runtime data (git-ignored)
-        ├── index/            # FAISS index files
-        └── embeddings_cache/ # Cached embeddings
-```
+## Key Technical Context
 
-## Current Status
+### Architecture
+- **Multi-process design**: Main process, Worker thread, and Embedder child process
+- **Memory isolation**: Embedder process auto-restarts to prevent memory leaks
+- **Search-first UI**: Full-screen search with modal settings overlay
+- See [architecture.md](./specs/architecture.md) for complete details
 
-### ✅ Completed Features
-- **Python Search Engine**: Full document processing and semantic search
-- **SwiftUI macOS App**: Native interface with modern design
-- **CLI Integration**: JSON-based communication protocol
-- **Auto-Dependencies**: Bootstrap script installs packages automatically
-- **JSON Streaming**: Real-time progress updates during indexing
-- **Document Support**: PDF, DOCX, TXT, MD + 84 text file types
-- **Semantic Search**: FAISS + Sentence Transformers
-- **App Sandbox**: Disabled to allow subprocess execution
-- **Hidden Directory Filtering**: Skips directories starting with "." during indexing
-- **Deterministic Progress Bar**: Shows actual file count and progress during indexing
-- **Two-Phase Progress Reporting**: Tracks both file processing and embedding generation
-- **Dynamic UI**: Drop zone hides during indexing to prevent concurrent operations
-- **Async CLI**: Concurrent search and indexing operations (search while indexing!)
-- **Incremental Indexing**: Only processes changed files for faster updates
-- **Comprehensive Test Suite**: 55+ passing tests with pytest
+### Technology Stack
+- **Frontend**: React, TypeScript, Tailwind CSS
+- **Backend**: Electron, Node.js Worker Threads
+- **Database**: LanceDB for vector storage
+- **ML Model**: Xenova/multilingual-e5-small for embeddings
+- **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
 
-### 🔧 Implementation Details
-- **Python Bridge**: `PythonCLIBridge.swift` manages subprocess
-- **Bootstrap**: `cli_standalone.py` creates venv at `~/Library/Application Support/`
-- **JSON Protocol**: Commands (index, search, stats, exit) and streaming responses
-- **Build Script**: Copies Python files to app bundle during build
-- **No User Setup**: Works out-of-box with system Python 3.9+
+## Important Guidelines
 
-## Key Files to Know
+### Documentation Standards
+**IMPORTANT**: Follow the documentation naming conventions defined in [documentation-standards.md](./specs/documentation-standards.md):
+- Use ALL CAPS for standard files: `README.md`, `CLAUDE.md`, `LICENSE.md`
+- Use lowercase-with-hyphens for all other docs: `architecture.md`, `testing-strategy.md`
+- Organize docs into `/specs/`, `/docs/`, and `/planning/` folders
 
-### Implementation Files
-- `local-doc-search/cli.py` - Entry point, all CLI commands
-- `local-doc-search/src/search.py` - Main search engine class
-- `local-doc-search/src/document_processor.py` - Handles all document parsing
-- `local-doc-search/src/embeddings.py` - ML model integration
+### Code Conventions
+1. **TypeScript**: Use strict typing, avoid `any`
+2. **React**: Functional components with hooks
+3. **File naming**: Components in PascalCase, utilities in camelCase
+4. **Imports**: Absolute imports from `@/` for app code
 
-### Documentation Files
-- `specs/local-document-search-plan.md` - Original implementation plan (completed)
-- `specs/swiftui-python-guide.md` - Main integration guide with async CLI
-- `specs/incremental-indexing-plan.md` - Incremental indexing implementation
-- `specs/ml-download-strategy.md` - Model distribution analysis
-- `specs/unit-test-plan.md` - Comprehensive test strategy
-- `local-doc-search/SECURITY_ANALYSIS.md` - Security/privacy guarantees
+### Testing Requirements
+- Run tests with `npm test` before committing
+- Maintain test coverage above 85%
+- Test file parsers with real document samples
+- See [testing strategy](./planning/testing-strategy.md) for details
 
-### Configuration
-- `local-doc-search/config.yaml` - User configuration
-- `local-doc-search/requirements.txt` - Python dependencies
-- `local-doc-search/.gitignore` - Excludes data/, venv/, caches
+### Memory Management
+- Worker process limited to 1500MB RSS
+- Embedder process limited to 300MB external
+- Auto-restart after 200-500 files or memory threshold
+- See [memory-solution.md](./specs/memory-solution.md) for implementation
 
-## Quick Commands
+### Database Operations
+- LanceDB requires initialization with dummy data
+- File status tracked in separate table
+- Avoid complex WHERE clauses (not yet implemented)
+- See [troubleshooting.md](./specs/troubleshooting.md) for common issues
 
-### Setup & Installation
+## Common Tasks
+
+### Re-indexing Documents
+- Re-indexing uses the existing progress bar (not a separate one)
+- Clears all indexes for selected folders
+- Automatically starts indexing with current settings
+
+### Adding File Parser Support
+1. Create parser in `/app/electron/parsers/`
+2. Export async function returning text string
+3. Register in `processFile()` function
+4. Add file extension to UI settings
+5. Update documentation
+
+### Debugging Tips
+- Check `~/Library/Logs/Semantica/` for logs
+- Use `window.api.db.stats()` for database metrics
+- Monitor memory with `window.api.indexer.progress()`
+- File search available via status bar icon
+
+## Known Limitations
+- Scanned PDFs require OCR (not supported)
+- Password-protected files cannot be indexed
+- Large files (>50MB) may cause timeouts
+- Binary formats need specific parsers
+
+## Development Workflow
+
+### Starting Development
 ```bash
-cd local-doc-search
-./setup.sh                           # One-click setup
-source venv/bin/activate            # Activate environment
+npm install
+npm run dev
 ```
 
-### Using the CLI
+### Building for Production
 ```bash
-python cli.py index --folder ~/Documents    # Index documents
-python cli.py search "machine learning"     # Search
-python cli.py interactive                   # Interactive mode
-python cli.py stats                        # View statistics
-python cli.py --help                       # All commands
+npm run build
+npm run package
 ```
 
-### Development & Testing
-
-#### SwiftUI App
+### Running Tests
 ```bash
-# Build and run in Xcode
-open FinderSemanticSearch/FinderSemanticSearch.xcodeproj
-# Press ⌘R to run
+npm test              # All tests
+npm run test:unit     # Unit tests only
+npm run test:e2e      # E2E tests only
 ```
 
-#### Python CLI Testing
-```bash
-cd local-doc-search
+## Recent Updates
 
-# Test with standalone script (auto-installs deps)
-/usr/bin/python3 cli_standalone.py interactive --json-mode
+### 2025-08-31 - Performance Optimizations & Profiling
+- **4x Performance Improvement**: Increased embedding batch size from 8 to 32, added parallel processing
+- **Parallel Batch Processing**: Now processes 2 embedding batches concurrently for 2x speedup
+- **Configurable Performance**: Added embeddingBatchSize and parallelBatches settings
+- **Performance Profiling System**: Added comprehensive profiling to identify bottlenecks
+- **ISO-8859-1 Fix**: Enhanced detection and handling of ISO-8859-1 encoded files (common in legacy code)
+- **Better Error Handling**: Added detailed logging and fallback encoding strategies
+- **Parser version 4**: Text/markdown parsers updated with robust legacy encoding support
+- **Identified Bottleneck**: Embeddings take 94.5% of processing time
 
-# Send JSON commands
-{"action": "index", "folder": "/path/to/docs"}
-{"action": "search", "query": "test query", "limit": 10}
-{"action": "stats"}
-{"action": "exit"}
-```
+### 2025-08-30 - Text Encoding Detection
+- **Fixed garbled text issue**: Text files with non-UTF-8 encodings (ISO-8859-1, Windows-1252, etc.) now display correctly
+- **Multi-encoding support**: Added automatic encoding detection using `chardet` library
+- **Encoding conversion**: Proper conversion to UTF-8 using `iconv-lite`
+- **UTF-16 detection**: Special handling for UTF-16LE/BE files with and without BOM
+- **Mac Roman support**: Added detection for Mac Roman encoded files (common in legacy Mac files)
+- **Encoding utility**: Created `src/main/utils/encoding-detector.ts` for reusable encoding detection
+- **Parser versioning**: Centralized parser versions with single source of truth in each parser file
+- **Comprehensive tests**: Added 30+ unit tests for encoding detection and conversion
 
-## Technical Stack
+### 2025-08-24
+- Implemented search-first UI with modal settings
+- Added file search feature in status bar
+- Fixed .doc file parsing with word-extractor
+- Created file status tracking in database
+- Normalized documentation file naming
+- Reorganized docs into specs/planning folders
 
-### Current (CLI)
-- **Language**: Python 3.9+
-- **ML Models**: Sentence Transformers, Ollama
-- **Vector DB**: FAISS
-- **Document Processing**: PyPDF2, python-docx
-- **CLI**: Click + Rich
-- **Dependencies**: ~20 packages, 300MB installed
-
-### Current (macOS App)
-- **UI**: SwiftUI (native macOS) ✅
-- **Bridge**: Process/NSTask with JSON protocol ✅
-- **Python**: Uses system Python 3.9+ ✅
-- **Dependencies**: Auto-installed to `~/Library/Application Support/` ✅
-- **App Size**: ~50MB (without Python packages)
-- **Runtime Size**: ~500MB (with all dependencies)
-
-## Important Decisions Made
-
-1. **CLI Integration over PyObjC** - Simpler, more maintainable
-2. **JSON Protocol** - Clean separation between Swift and Python
-3. **Virtual Environment** - Isolated dependencies in Application Support
-4. **Disabled App Sandbox** - Required for subprocess execution
-5. **System Python** - No bundled Python, uses macOS built-in
-6. **FAISS over ChromaDB** - Lighter, faster, sufficient
-7. **Read-only design** - Never modifies user documents
-
-## Known Issues & Limitations
-
-1. **PDF Warnings** - Some complex PDFs show warnings (handled gracefully)
-2. **Text Encoding** - Some files with special characters may fail (skipped)
-3. **Bundle Size** - Full app will be 400-500MB with models
-4. **Python 3.13** - Had compatibility issues, fixed with flexible requirements
-
-## Known Issues & Solutions
-
-1. **App Sandbox** - Disabled for subprocess (limits App Store distribution)
-2. **First Run** - Takes 2-3 minutes to install dependencies
-3. **JSON Mixing** - Fixed by redirecting status to stderr
-4. **Tuple Unpacking** - Fixed in search results formatting
-
-## Future Enhancements
-
-### Priority 1 (Performance)
-- [ ] Incremental indexing
-- [ ] Background processing
-- [ ] Multi-threaded indexing
-
-### Priority 2 (Features)
-- [ ] File watching for auto-update
-- [ ] Search history
-- [ ] Export results
-- [ ] Document preview with Quick Look
-
-### Priority 3 (Distribution)
-- [ ] XPC services for App Store compliance
-- [ ] Code signing and notarization
-- [ ] Auto-update mechanism (Sparkle)
-
-## Environment Details
-- **Working Directory**: `/Users/bovet/GitHub/FSS/local-doc-search`
-- **Platform**: macOS (Darwin)
-- **Python**: 3.13 (with compatibility fixes)
-- **Git Branch**: main
-
-## Notes for Claude
-
-### Working with the Project
-- **App Testing**: Build and run in Xcode
-- **CLI Testing**: Use `cli_standalone.py` for auto-dependencies
-- **JSON Protocol**: All communication via stdin/stdout
-- **Status Messages**: Sent to stderr to avoid JSON conflicts
-- **Virtual Environment**: Created at `~/Library/Application Support/FinderSemanticSearch/venv/`
-
-### Key Files to Modify
-- **Swift Side**: `PythonCLIBridge.swift` for process management
-- **Python Side**: `cli.py` for command handling
-- **Bootstrap**: `cli_standalone.py` for dependency management
-
-### Testing Commands
-```bash
-# Test CLI directly
-cd /path/to/app.app/Contents/Resources/python_cli
-/usr/bin/python3 cli_standalone.py interactive --json-mode
-
-# Lint/typecheck commands to run
-npm run lint      # If available
-npm run typecheck # If available
-ruff .            # Python linting
-
-# IMPORTANT: Never use virtual environment!
-# Always use system Python:
-python3 cli.py           # NOT: venv/bin/python cli.py
-python3 -m pytest tests/  # NOT: venv/bin/python -m pytest
-
-# Clean up artifacts:
-./clean.sh        # Remove __pycache__, venv, data, etc.
-./dev_setup.sh    # Check environment setup
-./run_tests.sh    # Run test suite
-
-# Prevent __pycache__ creation:
-export PYTHONDONTWRITEBYTECODE=1
-```
-
-## Technical Details
-
-### JSON Communication Protocol
-**Commands (stdin):**
-```json
-{"action": "index", "folder": "/path"}
-{"action": "search", "query": "text", "limit": 10}
-{"action": "stats"}
-{"action": "clear"}
-{"action": "exit"}
-```
-
-**Responses (stdout):**
-```json
-{"success": true, "action": "index", "total_documents": 50}
-{"success": true, "action": "search", "results": [...]}
-```
-
-**Status Messages (stdout - streamed during processing):**
-```json
-{"status": "installing", "message": "Installing dependencies..."}
-{"status": "loading_index"}
-{"status": "documents_found", "count": 10}
-{"status": "processing_file", "current": 1, "total": 10, "file": "doc1.pdf"}
-{"status": "generating_embeddings", "current": 1, "total": 5, "file": "Batch 1/5"}
-```
-
-### Performance Metrics
-- **Indexing**: ~250 documents/minute (with 4 parallel workers)
-- **Search**: <500ms response time
-- **Memory**: ~200MB idle, ~500MB during indexing
-- **App Size**: 50MB (+ 500MB dependencies on first run)
-- **Speedup**: ~3-4x faster with multi-threading enabled
-- Don't copy the Python code to the app bundle, let the xcodebuild process or the user do that via Xcode
-- Don't use ALL CAPS for spec, use file-name-xyx.md format.
+## Resources
+- [Architecture](./specs/architecture.md) - System design
+- [Memory Solution](./specs/memory-solution.md) - Memory management
+- [Troubleshooting](./specs/troubleshooting.md) - Common issues
+- [Documentation Standards](./specs/documentation-standards.md) - File naming conventions
+- [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
+- Never run `npm run dev` without asking me first

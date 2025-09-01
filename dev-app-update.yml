@@ -1,0 +1,4 @@
+owner: bovet
+repo: FSS
+provider: github
+updaterCacheDirName: semantica-updater

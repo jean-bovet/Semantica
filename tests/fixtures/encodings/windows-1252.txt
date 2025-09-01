@@ -1,0 +1,1 @@
+This is Windows-1252 text: "smart quotes", €uro, café

@@ -1,0 +1,15 @@
+(*********************************************************************************)
+(*                                                                               *)
+(*  (c) copyright 1983, 1984  Apple Computer Inc.                                *)
+(*                                                                               *)
+(*********************************************************************************)
+
+procedure TestProcedure;
+var
+  résultat: integer;  { French variable name }
+  größe: real;        { German variable name }
+begin
+  writeln('Testing special chars: café, naïve');
+  résultat := 42;
+  größe := 3.14;
+end;

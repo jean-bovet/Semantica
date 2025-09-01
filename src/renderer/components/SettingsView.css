@@ -1,0 +1,265 @@
+.settings-view {
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.settings-view h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 10px;
+}
+
+.settings-group {
+  margin-bottom: 24px;
+}
+
+.settings-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 8px;
+}
+
+.folder-list.compact {
+  margin-bottom: 12px;
+}
+
+.folder-item.compact {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 15px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.folder-item.compact:last-child {
+  border-bottom: none;
+}
+
+.folder-path {
+  color: #e0e0e0;
+  font-size: 13px;
+  font-family: 'SF Mono', Monaco, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-stats {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.remove-button.compact {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  border: none;
+  border-radius: 4px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remove-button.compact:hover {
+  background: rgba(255, 59, 48, 0.2);
+  color: #ff3b30;
+}
+
+.empty-state {
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+}
+
+.add-folder-button.compact {
+  padding: 8px 16px;
+  background: transparent;
+  color: #007AFF;
+  border: 1px solid #007AFF;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-folder-button.compact:hover {
+  background: #007AFF;
+  color: white;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+
+.config-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  min-width: 80px;
+}
+
+.throttle-select.compact {
+  flex: 1;
+  max-width: 300px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.throttle-select.compact:focus {
+  outline: none;
+  border-color: #007AFF;
+}
+
+.stats-container {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.stats-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 8px;
+}
+
+.stats-separator {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.stats-path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stats-path {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reveal-button {
+  padding: 4px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reveal-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  margin: 24px 0;
+}
+
+.action-button {
+  flex: 1;
+  padding: 10px 16px;
+  background: #007AFF;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-button:hover:not(:disabled) {
+  background: #0051D5;
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-button.paused {
+  background: #FF9500;
+  border-color: #FF9500;
+}
+
+.action-button.paused:hover:not(:disabled) {
+  background: #E68600;
+}
+
+.privacy-footer {
+  text-align: center;
+  padding: 20px 0 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 20px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Keep existing styles for other components */
+.setting-item {
+  margin-bottom: 16px;
+}
+
+.setting-item label {
+  display: block;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.file-type-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.file-type-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
