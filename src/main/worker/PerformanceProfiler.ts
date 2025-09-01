@@ -110,7 +110,7 @@ interface AggregateMetrics {
 
 export class PerformanceProfiler {
   private enabled: boolean = false;
-  private fileMetrics: Map<string, FileMetrics> = new Map();
+  public fileMetrics: Map<string, FileMetrics> = new Map();  // Made public for direct access
   private timings: Map<string, TimingEntry> = new Map();
   private memorySnapshots: MemorySnapshot[] = [];
   private concurrentOps: Set<string> = new Set();

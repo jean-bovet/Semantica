@@ -18,7 +18,7 @@ import { FileScanner } from './fileScanner';
 import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
-import { setupProfiling, profileHandleFile, timeOperation, recordEvent } from './profiling-integration';
+import { setupProfiling, profileHandleFile, timeOperation, recordEvent, profiler } from './profiling-integration';
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
@@ -565,10 +565,27 @@ async function handleFileOriginal(filePath: string) {
     // Special handling for PDF (backward compatibility)
     if (ext === 'pdf' && parsePdf) {
       try {
+        // Time PDF parsing
+        const startParse = Date.now();
         const pages = await parsePdf(filePath);
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.parsing = Date.now() - startParse;
+          }
+        }
+        
+        // Time chunking
+        const startChunk = Date.now();
         for (const pg of pages) {
           const pageChunks = chunkText(pg.text, 500, 60);
           chunks.push(...pageChunks.map(c => ({ ...c, page: pg.page })));
+        }
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.chunking = Date.now() - startChunk;
+          }
         }
       } catch (pdfError: any) {
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
@@ -580,12 +597,28 @@ async function handleFileOriginal(filePath: string) {
       // Dynamic parser loading for all other file types
       try {
         const parserModule = await parserDef.parser();
-        const text = await parserModule(filePath);
         
-        // Use parser-specific chunk settings or defaults
+        // Time text parsing
+        const startParse = Date.now();
+        const text = await parserModule(filePath);
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.parsing = Date.now() - startParse;
+          }
+        }
+        
+        // Time chunking
+        const startChunk = Date.now();
         const chunkSize = parserDef.chunkSize || 500;
         const chunkOverlap = parserDef.chunkOverlap || 60;
         chunks = chunkText(text, chunkSize, chunkOverlap);
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.chunking = Date.now() - startChunk;
+          }
+        }
       } catch (parseError: any) {
         const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
         await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
@@ -601,11 +634,29 @@ async function handleFileOriginal(filePath: string) {
       return;
     }
     
+    // Record chunks for profiling
+    if (profiler.isEnabled()) {
+      const avgChunkSize = chunks.reduce((sum, c) => sum + c.text.length, 0) / chunks.length;
+      profiler.recordChunks(filePath, chunks.length, avgChunkSize);
+    }
+    
     const batchSize = 8; // Small batches to minimize memory usage
+    let totalEmbedTime = 0;
+    let totalDbTime = 0;
+    
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
+      
+      // Record embedding batch for profiling
+      if (profiler.isEnabled()) {
+        profiler.recordEmbeddingBatch(filePath);
+      }
+      
+      // Time embedding
+      const startEmbed = Date.now();
       const vectors = await embed(texts, false); // false = document chunks (use passage: prefix)
+      totalEmbedTime += Date.now() - startEmbed;
       
       const rows = batch.map((c, idx) => {
         const id = crypto.createHash('sha1')
@@ -625,7 +676,10 @@ async function handleFileOriginal(filePath: string) {
         };
       });
       
+      // Time database write
+      const startDb = Date.now();
       await mergeRows(rows);
+      totalDbTime += Date.now() - startDb;
       
       // Clear batch data immediately and yield
       batch.length = 0;
@@ -636,6 +690,15 @@ async function handleFileOriginal(filePath: string) {
       // Yield to event loop
       await new Promise(r => setImmediate(r));
       if (global.gc) global.gc();
+    }
+    
+    // Record operation timings for profiling
+    if (profiler.isEnabled()) {
+      const metrics = profiler.fileMetrics.get(filePath);
+      if (metrics) {
+        metrics.timings.embedding = totalEmbedTime;
+        metrics.timings.dbWrite = totalDbTime;
+      }
     }
     
     fileHashes.set(filePath, currentHash);
