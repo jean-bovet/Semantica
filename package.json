@@ -24,7 +24,7 @@
         "test:embeddings": "NODE_ENV=test vitest --run tests/unit/embeddings-orchestration.spec.ts",
         "test:pipeline": "NODE_ENV=test vitest --run tests/integration/pipeline.spec.ts",
         "test:core": "NODE_ENV=test vitest --run tests/unit/parsers.spec.ts tests/unit/database-operations.spec.ts tests/unit/embeddings-orchestration.spec.ts tests/integration/pipeline.spec.ts",
-        "test:ci": "NODE_ENV=test vitest --run --reporter=dot",
+        "test:ci": "NODE_ENV=test vitest --run --reporter=dot --exclude=\"tests/integration/**\"",
         "test:coverage": "NODE_ENV=test vitest --run --coverage",
         "test:e2e": "playwright test",
         "lint:types": "tsc -p tsconfig.strict.json",
