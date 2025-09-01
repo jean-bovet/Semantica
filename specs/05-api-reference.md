@@ -14,11 +14,32 @@ The preload script exposes a secure API to the renderer process via `window.api`
 
 ```typescript
 interface WindowAPI {
+  dialog: DialogAPI;
   indexer: IndexerAPI;
   search: SearchAPI;
   db: DatabaseAPI;
-  config: ConfigAPI;
+  settings: SettingsAPI;
+  model: ModelAPI;
   system: SystemAPI;
+  on: (channel: string, callback: Function) => void;
+  off: (channel: string, callback: Function) => void;
+}
+```
+
+### Dialog API
+
+User interaction dialogs:
+
+```typescript
+interface DialogAPI {
+  // Select folders for indexing
+  selectFolders(): Promise<string[]>;
+  
+  // Show confirmation dialog
+  confirm(title: string, message: string): Promise<boolean>;
+  
+  // Show error dialog
+  error(title: string, message: string): Promise<void>;
 }
 ```
 
@@ -28,8 +49,11 @@ Controls the indexing process:
 
 ```typescript
 interface IndexerAPI {
-  // Start indexing selected folders
-  start(folders: string[]): Promise<void>;
+  // Start watching and indexing folders
+  watchStart(roots: string[], options?: IndexOptions): Promise<void>;
+  
+  // Queue specific files for indexing
+  enqueue(paths: string[]): Promise<void>;
   
   // Pause indexing
   pause(): Promise<void>;
@@ -41,113 +65,122 @@ interface IndexerAPI {
   progress(): Promise<{
     queued: number;
     processing: number;
-    completed: number;
-    failed: number;
-    totalFiles: number;
+    done: number;
+    errors: number;
+    paused: boolean;
+    initialized: boolean;
   }>;
   
-  // Re-index specific folders
-  reindex(folders: string[]): Promise<void>;
+  // Subscribe to progress updates
+  onProgress(callback: (progress: Progress) => void): () => void;
   
-  // Get file status
-  getFileStatus(path: string): Promise<FileStatus>;
+  // Get currently watched folders
+  getWatchedFolders(): Promise<string[]>;
+  
+  // Re-index all documents
+  reindexAll(): Promise<void>;
+  
+  // Search for files by name/path
+  searchFiles(query: string): Promise<FileSearchResult[]>;
+}
+
+interface FileSearchResult {
+  path: string;
+  name: string;
+  type: string;
+  size: number;
+  modified: string;
+  indexed: boolean;
 }
 ```
 
 ### Search API
 
-Handles search queries:
+Handles semantic search queries:
 
 ```typescript
 interface SearchAPI {
-  // Semantic search
-  query(text: string, options?: SearchOptions): Promise<SearchResult[]>;
-  
-  // File name/path search
-  searchFiles(query: string): Promise<FileSearchResult[]>;
-  
-  // Clear search cache
-  clearCache(): Promise<void>;
-}
-
-interface SearchOptions {
-  limit?: number;        // Max results (default: 100)
-  threshold?: number;    // Similarity threshold (0-1)
-  fileTypes?: string[];  // Filter by file types
+  // Semantic search with vector embeddings
+  query(q: string, k?: number): Promise<SearchResult[]>;
 }
 
 interface SearchResult {
   path: string;
+  text: string;
   score: number;
-  snippet: string;
-  metadata: {
-    fileType: string;
-    modifiedAt: string;
-    chunkIndex: number;
-  };
+  page?: number;
+  title?: string;
+  type: string;
 }
 ```
 
 ### Database API
 
-Database management operations:
+Database statistics and management:
 
 ```typescript
 interface DatabaseAPI {
   // Get database statistics
   stats(): Promise<{
-    chunks: number;
-    files: number;
-    size: string;
-    lastIndexed: string;
+    totalChunks: number;
+    indexedFiles: number;
+    folderStats: Array<{
+      folder: string;
+      totalFiles: number;
+      indexedFiles: number;
+    }>;
   }>;
-  
-  // Clear entire database
-  clear(): Promise<void>;
-  
-  // Export database
-  export(path: string): Promise<void>;
-  
-  // Import database
-  import(path: string): Promise<void>;
-  
-  // Optimize indexes
-  optimize(): Promise<void>;
 }
 ```
 
-### Config API
+### Settings API
 
-Application configuration:
+Application settings management:
 
 ```typescript
-interface ConfigAPI {
-  // Get current configuration
-  get(): Promise<AppConfig>;
+interface SettingsAPI {
+  // Get current settings
+  get(): Promise<AppSettings>;
   
-  // Update configuration
-  set(config: Partial<AppConfig>): Promise<void>;
-  
-  // Reset to defaults
-  reset(): Promise<void>;
+  // Update settings
+  update(settings: Partial<AppSettings>): Promise<void>;
 }
 
-interface AppConfig {
-  version: string;
-  watchedFolders: string[];
-  settings: {
-    fileTypes: {
-      pdf: boolean;
-      txt: boolean;
-      md: boolean;
-      docx: boolean;
-      doc: boolean;
-      rtf: boolean;
-    };
-    excludePatterns: string[];
-    indexHiddenFiles: boolean;
-    maxFileSize: number; // MB
+interface AppSettings {
+  fileTypes: {
+    pdf: boolean;
+    txt: boolean;
+    md: boolean;
+    docx: boolean;
+    doc: boolean;
+    rtf: boolean;
+    csv: boolean;
+    tsv: boolean;
+    xlsx: boolean;
+    xls: boolean;
+    xlsm: boolean;
   };
+  excludePatterns?: string[];
+  maxFileSize?: number; // MB
+  embeddingConfig?: {
+    poolSize?: number;
+    maxMemoryMB?: number;
+    maxFilesBeforeRestart?: number;
+  };
+}
+```
+
+### Model API
+
+ML model management:
+
+```typescript
+interface ModelAPI {
+  // Check if model exists
+  check(): Promise<{ exists: boolean }>;
+  
+  // Download model files
+  download(): Promise<void>;
 }
 ```
 
@@ -157,24 +190,14 @@ System-level operations:
 
 ```typescript
 interface SystemAPI {
-  // Open file in Finder
-  showInFinder(path: string): Promise<void>;
+  // Open path in Finder/Explorer
+  openPath(path: string): Promise<void>;
   
-  // Open file with default app
-  openFile(path: string): Promise<void>;
+  // Open file preview
+  openPreview(path: string, page?: number): Promise<void>;
   
-  // Get app version
-  version(): Promise<string>;
-  
-  // Get memory usage
-  memoryUsage(): Promise<{
-    rss: number;
-    heap: number;
-    external: number;
-  }>;
-  
-  // Restart worker
-  restartWorker(): Promise<void>;
+  // Get application data path
+  getDataPath(): Promise<string>;
 }
 ```
 
@@ -186,33 +209,41 @@ Communication protocol between main process and worker thread:
 
 ```typescript
 type WorkerMessage = 
-  | { type: 'init', payload: { dbPath: string } }
-  | { type: 'index', payload: { folders: string[] } }
-  | { type: 'search', payload: { query: string, id: string } }
+  | { type: 'init', dbDir: string, userDataPath: string }
+  | { type: 'watchStart', payload: { roots: string[], options?: any } }
+  | { type: 'search', payload: { q: string, k: number } }
   | { type: 'pause' }
   | { type: 'resume' }
+  | { type: 'progress' }
   | { type: 'stats' }
-  | { type: 'clear' };
+  | { type: 'checkModel' }
+  | { type: 'downloadModel' }
+  | { type: 'reindexAll' }
+  | { type: 'searchFiles', payload: { query: string } };
 
 type WorkerResponse =
   | { type: 'ready' }
   | { type: 'progress', payload: ProgressData }
-  | { type: 'search-result', payload: { id: string, results: any[] } }
+  | { type: 'model:ready', payload: { ready: boolean } }
+  | { type: 'model:download:progress', payload: { progress: number, file: string } }
+  | { type: 'model:download:complete' }
   | { type: 'error', payload: { message: string } }
-  | { type: 'stats', payload: StatsData };
+  | { type: 'parser-upgrade', payload: Record<string, string> };
 ```
 
 ### Progress Updates
 
 ```typescript
 interface ProgressData {
-  phase: 'scanning' | 'indexing' | 'complete';
-  current: number;
-  total: number;
-  file?: string;
-  memoryUsage: {
+  queued: number;
+  processing: number;
+  done: number;
+  errors: number;
+  paused: boolean;
+  initialized: boolean;
+  memoryUsage?: {
     rss: number;
-    heap: number;
+    heapUsed: number;
     external: number;
   };
 }
@@ -228,17 +259,15 @@ Stores document chunks with embeddings:
 
 ```typescript
 interface ChunkRecord {
-  id: string;              // Unique chunk ID
-  file_path: string;       // Absolute file path
-  chunk_index: number;     // Position in document
+  id: string;              // Unique chunk ID (hash-based)
+  path: string;            // Absolute file path
+  mtime: number;           // File modification timestamp
+  page: number;            // Page number (0-based)
+  offset: number;          // Character offset in file
   text: string;            // Chunk content
-  embedding: number[];     // 384-dimensional vector
-  metadata: {
-    file_type: string;     // Extension
-    modified_at: string;   // ISO timestamp
-    file_size: number;     // Bytes
-    parser_version: number;
-  };
+  vector: number[];        // 384-dimensional embedding
+  type: string;            // File type/extension
+  title: string;           // Document title or filename
 }
 ```
 
@@ -255,8 +284,8 @@ interface FileStatus {
   error_message: string;   // Error details if failed
   last_modified: string;   // File modification time
   indexed_at: string;      // When indexed
-  file_hash: string;       // SHA-256 hash
-  last_retry: string;      // Last retry attempt
+  file_hash: string;       // MD5 hash (path:size:mtime)
+  last_retry: string;      // Last retry attempt (empty string if none)
 }
 ```
 
@@ -280,7 +309,12 @@ Location: `~/Library/Application Support/Semantica/data/config.json`
       "md": true,
       "docx": true,
       "doc": true,
-      "rtf": true
+      "rtf": true,
+      "csv": true,
+      "tsv": true,
+      "xlsx": true,
+      "xls": true,
+      "xlsm": true
     },
     "excludePatterns": [
       "node_modules",
@@ -288,59 +322,159 @@ Location: `~/Library/Application Support/Semantica/data/config.json`
       "*.app",
       "dist",
       "build",
-      ".DS_Store"
-    ],
-    "indexHiddenFiles": false,
-    "maxFileSize": 50,
-    "chunkSize": 500,
-    "chunkOverlap": 60,
-    "embeddingBatchSize": 8
-  },
-  "ui": {
-    "theme": "light",
-    "searchDebounce": 300,
-    "maxResults": 100
+      ".DS_Store",
+      "*.photoslibrary",
+      "*.dmg",
+      "*.pkg"
+    ]
   }
 }
 ```
 
-### Parser Versions
+### Parser Registry
 
-Location: `src/main/worker/parserVersions.ts`
+Location: `src/main/parsers/registry.ts`
+
+The parser registry centralizes all parser definitions with versions:
 
 ```typescript
-export const PARSER_VERSIONS: Record<string, number> = {
-  pdf: 1,    // pdf-parse
-  doc: 2,    // word-extractor (v2)
-  docx: 1,   // mammoth
-  txt: 1,    // fs.readFile
-  md: 1,     // fs.readFile
-  rtf: 1     // custom stripper
+interface ParserDefinition {
+  extensions: string[];
+  parser: (filePath: string) => Promise<string>;
+  version: number;
+  versionHistory: Record<number, string>;
+}
+
+// Current parser versions
+const PARSER_VERSIONS = {
+  pdf: 1,     // pdf-parse
+  doc: 2,     // word-extractor v2
+  docx: 1,    // mammoth
+  txt: 4,     // Multi-encoding support
+  md: 4,      // Multi-encoding support
+  rtf: 1,     // Custom RTF stripper
+  csv: 1,     // csv-parse with encoding detection
+  tsv: 1,     // csv-parse with tab delimiter
+  xlsx: 1,    // ExcelJS
+  xls: 1,     // ExcelJS
+  xlsm: 1     // ExcelJS
 };
+```
+
+## Embedder Architecture
+
+### EmbedderPool
+
+The application uses a pool of embedder processes for parallel embedding generation:
+
+```typescript
+interface EmbedderPoolConfig {
+  modelName?: string;              // Default: 'Xenova/multilingual-e5-small'
+  poolSize?: number;               // Default: 2
+  maxFilesBeforeRestart?: number;  // Default: 5000
+  maxMemoryMB?: number;            // Default: 300
+}
+
+class EmbedderPool {
+  // Initialize pool of embedder processes
+  async initialize(): Promise<void>;
+  
+  // Generate embeddings with round-robin distribution
+  async embed(texts: string[], isQuery?: boolean): Promise<number[][]>;
+  
+  // Get pool statistics
+  getStats(): Array<{
+    index: number;
+    filesProcessed: number;
+    memoryUsage: number;
+    needsRestart: boolean;
+  }>;
+  
+  // Health check and auto-recovery
+  async checkHealth(): Promise<void>;
+  
+  // Restart specific or all embedders
+  async restart(index?: number): Promise<void>;
+  
+  // Clean shutdown
+  async dispose(): Promise<void>;
+}
+```
+
+### Memory Management
+
+Each embedder process has automatic memory management:
+
+- RSS memory limit: 300MB per process
+- Files before restart: 5000
+- Memory check frequency: Every 10 files after 50
+- Restart threshold: 95% of memory limit
+- Mutex-protected restarts prevent race conditions
+
+## Performance Profiling
+
+### PerformanceProfiler
+
+Built-in profiling for identifying bottlenecks:
+
+```typescript
+class PerformanceProfiler {
+  // Enable/disable profiling
+  setEnabled(enabled: boolean): void;
+  
+  // Start timing an operation
+  startOperation(fileId: string, operation: string): void;
+  
+  // End timing an operation
+  endOperation(fileId: string, operation: string): void;
+  
+  // Get profiling report
+  generateReport(): {
+    summary: {
+      totalFiles: number;
+      totalTime: number;
+      avgTimePerFile: number;
+      throughput: number;
+    };
+    bottlenecks: Array<{
+      operation: string;
+      avgTime: number;
+      percentage: number;
+    }>;
+    memoryPressure: {
+      embedderRestarts: number;
+      throttleEvents: number;
+    };
+  };
+}
 ```
 
 ## Environment Variables
 
-Development environment variables:
+Development and production environment variables:
 
 ```bash
-# Enable debug logging
-DEBUG=fss:*
+# Enable profiling
+PROFILING=true
 
-# Force garbage collection (requires --expose-gc)
-FORCE_GC=true
-
-# Custom database path
-DB_PATH=/custom/path/to/db
+# Custom paths
+USER_DATA_PATH=/custom/path
+TRANSFORMERS_CACHE=/path/to/models
+DB_PATH=/custom/db/path
 
 # Memory limits (MB)
-WORKER_RSS_LIMIT=1500
-EMBEDDER_RSS_LIMIT=900
-EMBEDDER_EXTERNAL_LIMIT=300
+WORKER_MAX_RSS=1500
+EMBEDDER_MAX_RSS=300
 
-# Processing limits
-MAX_CONCURRENT_FILES=5
-EMBEDDING_BATCH_SIZE=8
+# Concurrency
+CPU_CONCURRENCY_OVERRIDE=8
+
+# Model configuration
+MODEL_NAME=Xenova/multilingual-e5-small
+EMBEDDER_POOL_SIZE=2
+
+# Debug logging
+DEBUG=fss:*
 ```
 
 ## Event System
@@ -356,8 +490,10 @@ app.on('second-instance', focusWindow);
 
 // Window events
 win.on('closed', cleanup);
-win.on('focus', updateTray);
-win.on('blur', updateTray);
+
+// IPC events for model download
+win.webContents.on('model:download:progress', handleProgress);
+win.webContents.on('model:download:complete', handleComplete);
 ```
 
 ### Worker Events
@@ -367,85 +503,58 @@ win.on('blur', updateTray);
 watcher.on('add', handleFileAdd);
 watcher.on('change', handleFileChange);
 watcher.on('unlink', handleFileRemove);
+watcher.on('ready', handleWatcherReady);
 watcher.on('error', handleWatchError);
 
-// Process events
-embedder.on('message', handleEmbedderMessage);
-embedder.on('error', handleEmbedderError);
-embedder.on('exit', handleEmbedderExit);
+// Embedder pool events
+embedderPool.on('restart', handleEmbedderRestart);
+embedderPool.on('error', handleEmbedderError);
 ```
 
-## Error Codes
+## Error Handling
 
-Standard error codes used throughout the application:
+### Error Categories
 
 ```typescript
-enum ErrorCode {
+enum ErrorCategory {
   // File errors
-  FILE_NOT_FOUND = 'E001',
-  FILE_TOO_LARGE = 'E002',
-  FILE_CORRUPTED = 'E003',
-  FILE_ENCRYPTED = 'E004',
+  FILE_NOT_FOUND = 'File not found',
+  FILE_TOO_LARGE = 'File exceeds size limit',
+  FILE_CORRUPTED = 'File is corrupted',
+  FILE_ENCRYPTED = 'File is encrypted',
   
   // Parser errors
-  PARSER_FAILED = 'E101',
-  NO_TEXT_CONTENT = 'E102',
-  UNSUPPORTED_FORMAT = 'E103',
+  PARSER_FAILED = 'Parser failed to extract text',
+  NO_TEXT_CONTENT = 'No text content found',
+  UNSUPPORTED_FORMAT = 'Unsupported file format',
+  ENCODING_ERROR = 'Unable to detect file encoding',
   
   // Database errors
-  DB_CONNECTION_FAILED = 'E201',
-  DB_WRITE_FAILED = 'E202',
-  DB_READ_FAILED = 'E203',
+  DB_CONNECTION_FAILED = 'Database connection failed',
+  DB_WRITE_FAILED = 'Database write failed',
   
   // Memory errors
-  MEMORY_LIMIT_EXCEEDED = 'E301',
-  WORKER_CRASHED = 'E302',
+  MEMORY_LIMIT_EXCEEDED = 'Memory limit exceeded',
+  EMBEDDER_CRASHED = 'Embedder process crashed',
   
   // System errors
-  PERMISSION_DENIED = 'E401',
-  DISK_FULL = 'E402'
+  PERMISSION_DENIED = 'Permission denied',
+  DISK_FULL = 'Insufficient disk space'
 }
-```
-
-## Testing Utilities
-
-### Mock Data Generators
-
-```typescript
-// Generate test documents
-function generateTestDoc(size: number): string;
-
-// Generate test embeddings
-function generateTestEmbedding(): number[];
-
-// Generate file status
-function generateFileStatus(status: string): FileStatus;
-```
-
-### Test Helpers
-
-```typescript
-// Wait for indexing to complete
-async function waitForIndexing(timeout?: number): Promise<void>;
-
-// Clear test database
-async function clearTestDb(): Promise<void>;
-
-// Create test files
-async function createTestFiles(count: number): Promise<string[]>;
 ```
 
 ## Performance Benchmarks
 
-### Target Metrics
+### Current Performance Metrics
 
 | Operation | Target | Actual |
 |-----------|--------|--------|
 | File parsing (PDF) | <500ms | ~300ms |
-| Embedding generation (8 chunks) | <200ms | ~150ms |
-| Vector search (1000 docs) | <100ms | ~50ms |
-| Memory per file | <10MB | ~5MB |
+| Embedding generation (32 chunks batch) | <400ms | ~350ms |
+| Vector search (100k docs) | <100ms | ~50ms |
+| Memory per embedder process | <300MB | ~250MB |
 | Startup time | <3s | ~2s |
+| Throughput (files/minute) | >60 | ~120 |
 
 ### Scalability Limits
 
@@ -453,8 +562,8 @@ async function createTestFiles(count: number): Promise<string[]>;
 |----------|-----------|------------|
 | Indexed files | 100,000 | 1,000,000 |
 | Database size | 10GB | 100GB |
-| Concurrent searches | 10 | 100 |
-| Memory usage | 1GB | 2GB |
+| Concurrent embedders | 2 | CPU cores |
+| Memory usage (worker) | 1.5GB | 2GB |
 | File size | 50MB | 500MB |
 
 ---

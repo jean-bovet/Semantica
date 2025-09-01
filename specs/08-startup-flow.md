@@ -77,10 +77,11 @@ graph TD
     ParseFile --> ChunkText[Chunk Text]
     ChunkText --> EmbedText[Embed Chunks]
     
-    EmbedText --> EmbedderSingleton{Embedder Ready?}
-    EmbedderSingleton -->|No| InitEmbedder[Initialize Embedder]
-    InitEmbedder --> EmbedderSingleton
-    EmbedderSingleton -->|Yes| SendToChild[Send to Child Process]
+    EmbedText --> EmbedderPool{Pool Ready?}
+    EmbedderPool -->|No| InitPool[Initialize Pool]
+    InitPool --> EmbedderPool
+    EmbedderPool -->|Yes| RoundRobin[Select Next Embedder]
+    RoundRobin --> SendToChild[Send to Child Process]
     
     SendToChild --> RunModel[Run ML Model]
     RunModel --> ReturnVectors[Return Vectors]
@@ -117,18 +118,25 @@ graph TD
 ### 3. **Worker Thread** (`src/main/worker/index.ts`)
 - Manages database (LanceDB)
 - Handles file processing queue
-- Coordinates model checking/downloading
+- Downloads model files using sequential downloader
 - **KEY**: Won't process files until model exists
+- Initializes EmbedderPool after model ready
 
-### 4. **Isolated Embedder** (`src/shared/embeddings/isolated.ts`)
-- Singleton pattern (only ONE instance)
+### 4. **EmbedderPool** (`src/shared/embeddings/embedder-pool.ts`)
+- Manages pool of embedder processes (default: 2)
+- Round-robin distribution of work
+- Automatic health checks and recovery
+- Mutex-protected restart operations
+
+### 5. **Isolated Embedder** (`src/shared/embeddings/isolated.ts`)
+- Individual embedder process manager
 - Spawns child process for embeddings
-- Manages memory by restarting child periodically
-- Forwards download progress to UI
+- Memory monitoring (300MB RSS limit)
+- Auto-restart after 5000 files or memory threshold
 
-### 5. **Embedder Child Process** (`src/main/worker/embedder.child.ts`)
+### 6. **Embedder Child Process** (`src/main/worker/embedder.child.ts`)
 - Runs Transformers.js
-- Downloads model files if missing
+- Loads model from cache (downloaded by worker)
 - Performs actual embeddings
 - Isolated to prevent memory leaks
 

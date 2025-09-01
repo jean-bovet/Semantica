@@ -126,16 +126,24 @@ The worker implements sequential model downloads for better UX and reliability:
 
 ## Memory Management Strategy
 
-### Process Isolation
-The embedding model runs in a completely separate child process to prevent memory leaks from affecting the main application:
+### EmbedderPool Architecture
+The application uses a pool of embedder processes for parallel embedding generation:
 
 ```typescript
-class IsolatedEmbedder {
-  // Thresholds for automatic restart
-  shouldRestart = 
-    rssMB > 900 ||        // RSS memory limit
-    extMB > 150 ||        // External memory limit
-    filesSinceSpawn > 200; // File count limit
+class EmbedderPool {
+  // Pool configuration
+  poolSize: 2;              // Number of parallel processes
+  maxMemoryMB: 300;         // Per-process memory limit
+  maxFilesBeforeRestart: 5000; // Files processed before restart
+  
+  // Round-robin distribution
+  currentIndex = (currentIndex + 1) % poolSize;
+  
+  // Automatic recovery
+  async checkHealth() {
+    // Restart unhealthy processes
+    // Mutex-protected to prevent races
+  }
 }
 ```
 
@@ -176,11 +184,13 @@ Files are processed with **controlled parallelism** for optimal performance:
 5. **Status Updates**: Real-time progress (queued/processing/done)
 
 #### Memory Management
-- Child process auto-restarts after:
-  - 500 files processed
-  - RSS memory > 1500MB (1.5GB)
-  - External memory > 300MB
-- Restart is transparent - queue continues processing
+- **Worker Process**: Limited to 1500MB RSS
+- **Embedder Pool**: Each process limited to 300MB RSS
+  - Auto-restart at 95% memory threshold
+  - Restart after 5000 files processed
+  - Memory checks every 10 files after initial 50
+- **CPU-Aware Throttling**: Reduces concurrency at 800MB worker RSS
+- Restarts are transparent - processing continues uninterrupted
 
 ### Search Pipeline
 1. **Query Input**: User types in search box

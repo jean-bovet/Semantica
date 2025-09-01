@@ -26,17 +26,19 @@ Semantica is an Electron-based desktop application that provides offline semanti
 - **Search-First UI**: Full-screen search interface for maximum visibility
 
 ### Document Support
-- **File Formats**: PDF, DOCX, DOC (v2), RTF, TXT, MD
+- **File Formats**: PDF, DOCX, DOC (v2), RTF, TXT (v4), MD (v4), CSV, TSV, XLSX, XLS, XLSM
+- **Encoding Support**: Auto-detection for UTF-8, UTF-16, ISO-8859-1, Windows-1252, Mac Roman
 - **Folder Selection**: Choose multiple folders to index
 - **File Watching**: Automatic indexing of new/modified files
-- **Exclusion Patterns**: Skip node_modules, .git, etc.
+- **Exclusion Patterns**: Skip node_modules, .git, *.app, *.photoslibrary, etc.
 
 ### Indexing Features
 - **Incremental Indexing**: Only process new/changed files
 - **Parser Versioning**: Auto re-index when parsers improve
 - **Progress Tracking**: Real-time status in UI
 - **Pause/Resume**: Control indexing process
-- **Memory Safe**: Stable ~270MB memory usage
+- **CPU-Aware Concurrency**: Adapts to system resources (cores-1, min 4)
+- **Memory Safe**: Worker ~1.5GB, Embedder pool ~600MB total
 
 ### User Experience
 - **Modal Settings**: Clean overlay for configuration
@@ -81,9 +83,10 @@ Semantica is an Electron-based desktop application that provides offline semanti
 ## Technical Specifications
 
 ### Performance Targets
-- **Indexing Speed**: 5 files concurrently
-- **Search Latency**: <100ms for vector search
-- **Memory Usage**: ~270MB typical, 1.5GB max
+- **Indexing Speed**: CPU-aware (4-16 files concurrently)
+- **Throughput**: ~120 files/minute with embedder pool
+- **Search Latency**: <50ms for 100k docs
+- **Memory Usage**: Worker 1.5GB, Embedders 300MB each
 - **Database Size**: ~1KB per document chunk
 
 ### Privacy & Security
@@ -103,9 +106,11 @@ Semantica is an Electron-based desktop application that provides offline semanti
 
 ```
 Semantica/
-├── app/
-│   ├── electron/        # Main process, workers
-│   └── renderer/        # React UI
+├── src/
+│   ├── main/           # Main process, parsers, services
+│   ├── renderer/       # React UI components
+│   ├── shared/         # Shared utilities, embeddings
+│   └── main/worker/    # Worker thread, indexing logic
 ├── specs/              # Documentation
 │   ├── 01-overview.md          # This file
 │   ├── 02-architecture.md      # System design
@@ -113,7 +118,8 @@ Semantica/
 │   ├── 04-operations.md        # Operations guide
 │   └── 05-api-reference.md     # API documentation
 ├── tests/              # Test suites
-└── planning/           # Future features
+├── planning/           # Planning docs and completed work
+└── dist/               # Build output
 ```
 
 ## Success Metrics
