@@ -44,8 +44,6 @@ export class EmbedderPool {
   
   private async _initialize(): Promise<void> {
     const poolSize = this.config.poolSize!;
-    console.log(`[EmbedderPool] Initializing pool with ${poolSize} embedder processes`);
-    
     // Create embedder instances
     for (let i = 0; i < poolSize; i++) {
       const embedder = new IsolatedEmbedder(this.modelName, {
@@ -56,13 +54,12 @@ export class EmbedderPool {
     }
     
     // Initialize all embedders in parallel
-    const initPromises = this.embedders.map((embedder, index) => {
-      console.log(`[EmbedderPool] Initializing embedder ${index + 1}/${poolSize}`);
+    const initPromises = this.embedders.map((embedder) => {
       return embedder.initialize();
     });
     
     await Promise.all(initPromises);
-    console.log(`[EmbedderPool] All ${poolSize} embedders initialized successfully`);
+    console.log(`[EmbedderPool] Initialized ${poolSize} embedder processes`);
   }
   
   /**
@@ -106,11 +103,7 @@ export class EmbedderPool {
           for (let i = 0; i < this.embedders.length; i++) {
             try {
               const stats = this.embedders[i].getStats();
-              // Check if embedder is stuck spawning or not ready
-              if (stats.isSpawning && stats.spawnDuration > 20000) {
-                console.log(`[EmbedderPool] Embedder ${i} stuck spawning for ${stats.spawnDuration}ms, force restarting...`);
-                await (this.embedders[i] as any).forceRestart();
-              } else if (!stats.isReady && !this.restartingEmbedders.has(i)) {
+              if (!stats.isReady && !this.restartingEmbedders.has(i)) {
                 await this.restart(i);  // Use mutex-protected restart
               }
             } catch (error) {
@@ -179,7 +172,6 @@ export class EmbedderPool {
       
       // Check if already restarting
       if (this.restartMutex.has(index)) {
-        console.log(`[EmbedderPool] Embedder ${index} is already restarting, waiting...`);
         return this.restartMutex.get(index);
       }
       
@@ -187,9 +179,7 @@ export class EmbedderPool {
       const restartPromise = (async () => {
         try {
           this.restartingEmbedders.add(index);
-          console.log(`[EmbedderPool] Restarting embedder ${index}`);
           await this.embedders[index].restart();
-          console.log(`[EmbedderPool] Embedder ${index} restarted successfully`);
         } catch (error) {
           console.error(`[EmbedderPool] Failed to restart embedder ${index}:`, error);
           throw error;
@@ -202,7 +192,6 @@ export class EmbedderPool {
       this.restartMutex.set(index, restartPromise);
       return restartPromise;
     } else {
-      console.log(`[EmbedderPool] Restarting all embedders`);
       await Promise.all(this.embedders.map((_, i) => this.restart(i)));
     }
   }
@@ -211,7 +200,6 @@ export class EmbedderPool {
    * Dispose of all embedder processes
    */
   async dispose(): Promise<void> {
-    console.log(`[EmbedderPool] Disposing ${this.embedders.length} embedder processes`);
     await Promise.all(this.embedders.map(e => e.shutdown()));
     this.embedders = [];
     this.currentIndex = 0;
@@ -239,24 +227,7 @@ export class EmbedderPool {
     for (let i = 0; i < this.embedders.length; i++) {
       try {
         const stats = this.embedders[i].getStats();
-        
-        // Check for stuck spawning state
-        if (stats.isSpawning && stats.spawnDuration > 20000) {
-          console.log(`[EmbedderPool] Embedder ${i} stuck spawning for ${stats.spawnDuration}ms, force restarting...`);
-          try {
-            await (this.embedders[i] as any).forceRestart();
-          } catch (error) {
-            console.error(`[EmbedderPool] Failed to force restart embedder ${i}:`, error);
-            // Create a new embedder instance as last resort
-            console.log(`[EmbedderPool] Creating new embedder instance for index ${i}`);
-            const newEmbedder = new IsolatedEmbedder(this.modelName, {
-              maxFilesBeforeRestart: this.config.maxFilesBeforeRestart!,
-              maxMemoryMB: this.config.maxMemoryMB!
-            });
-            this.embedders[i] = newEmbedder;
-            await newEmbedder.initialize();
-          }
-        } else if (!stats.isReady && !this.restartingEmbedders.has(i)) {
+        if (!stats.isReady && !this.restartingEmbedders.has(i)) {
           console.log(`[EmbedderPool] Embedder ${i} is not ready, restarting...`);
           await this.restart(i);
         }

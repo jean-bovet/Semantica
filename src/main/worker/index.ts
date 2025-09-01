@@ -326,57 +326,24 @@ async function initDB(dir: string, userDataPath: string) {
 
 // Health check for embedder pool
 let healthCheckInterval: NodeJS.Timeout | null = null;
-let lastHealthCheckError = 0;
 
 function startEmbedderHealthCheck() {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
   
-  // Check health every 5 seconds initially
-  let checkIntervalMs = 5000;
-  
   const performHealthCheck = async () => {
     if (!embedderPool) return;
     
-    // Check system memory pressure (disabled - too aggressive on macOS)
-    // The OS will handle memory pressure better than we can
-    // const memPressure = getSystemMemoryPressure();
-    // if (memPressure.pressure === 'high') {
-    //   console.log(`[WORKER] High memory pressure detected (${Math.round(memPressure.free)}MB free) - triggering restart`);
-    //   // Force restart one embedder to free memory
-    //   try {
-    //     await embedderPool.restart(0);
-    //   } catch (e) {
-    //     console.error('[WORKER] Failed to restart embedder under memory pressure:', e);
-    //   }
-    // }
-    
     try {
       await embedderPool.checkHealth();
-      // Reset error counter on successful check
-      lastHealthCheckError = 0;
-      // Return to normal interval
-      if (checkIntervalMs !== 5000) {
-        checkIntervalMs = 5000;
-        clearInterval(healthCheckInterval!);
-        healthCheckInterval = setInterval(performHealthCheck, checkIntervalMs);
-      }
     } catch (error) {
       console.error('[WORKER] Health check failed:', error);
-      lastHealthCheckError++;
-      
-      // If multiple failures, check more frequently
-      if (lastHealthCheckError > 2 && checkIntervalMs !== 1000) {
-        checkIntervalMs = 1000; // Check every second when having issues
-        clearInterval(healthCheckInterval!);
-        healthCheckInterval = setInterval(performHealthCheck, checkIntervalMs);
-        console.log('[WORKER] Increased health check frequency due to errors');
-      }
     }
   };
   
-  healthCheckInterval = setInterval(performHealthCheck, checkIntervalMs);
+  // Check health every 5 seconds
+  healthCheckInterval = setInterval(performHealthCheck, 5000);
   console.log('[WORKER] Started embedder health check monitoring');
 }
 
