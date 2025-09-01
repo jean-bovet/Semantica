@@ -135,14 +135,14 @@ export class PerformanceProfiler {
   private setupGCMonitoring(): void {
     if (global.gc) {
       const originalGC = global.gc;
-      global.gc = () => {
+      global.gc = (async () => {
         const start = performance.now();
-        originalGC();
+        await originalGC();
         const duration = performance.now() - start;
         if (duration > 10) { // Only count significant GC pauses
           this.gcPauses++;
         }
-      };
+      }) as any;
     }
   }
   
@@ -242,7 +242,7 @@ export class PerformanceProfiler {
       
       const metrics = this.fileMetrics.get(filePath);
       if (metrics) {
-        metrics.timings[operation] = duration;
+        (metrics.timings as any)[operation] = duration;
       }
       
       return result;
@@ -269,7 +269,7 @@ export class PerformanceProfiler {
       
       const metrics = this.fileMetrics.get(filePath);
       if (metrics) {
-        metrics.timings[operation] = duration;
+        (metrics.timings as any)[operation] = duration;
       }
       
       return result;

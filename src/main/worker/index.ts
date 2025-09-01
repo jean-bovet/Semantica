@@ -60,11 +60,20 @@ setInterval(async () => {
     console.log(`[QUEUE STATUS] 📊 Queued: ${stats.queued}, Processing: ${stats.processing}/${maxConcurrent}${processingFiles ? ` (${processingFiles})` : ''}`);
   }
   
-  // Check if embedder needs restart
-  const restarted = await checkEmbedderMemory();
-  if (restarted) {
-    recordEvent('embedderRestart'); // Track for profiling
-    console.log('[MEMORY] ♾️ Embedder process restarted due to memory limits');
+  // Check if any embedder in the pool needs restart
+  if (embedderPool) {
+    try {
+      const stats = embedderPool.getStats();
+      for (const stat of stats) {
+        if (stat.needsRestart) {
+          await embedderPool.restart(stat.index);
+          recordEvent('embedderRestart'); // Track for profiling
+          console.log(`[MEMORY] ♾️ Embedder process ${stat.index} restarted due to memory limits`);
+        }
+      }
+    } catch (error) {
+      // Ignore errors in memory check
+    }
   }
 }, 2000);
 
@@ -79,7 +88,7 @@ try {
   console.log('PDF parsing not available');
 }
 // Use isolated embedder for better memory management
-import { embed, checkEmbedderMemory, shutdownEmbedder } from '../../shared/embeddings/isolated';
+import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
@@ -97,6 +106,7 @@ const fileChunkCounts = new Map<string, number>(); // Track chunk counts per fil
 let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
+let embedderPool: EmbedderPool | null = null;
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
@@ -341,6 +351,28 @@ async function initializeModel(userDataPath: string) {
       type: 'model:ready',
       payload: { ready: modelReady }
     });
+  }
+  
+  // Initialize embedder pool (it will handle model download internally if needed)
+  if (!embedderPool) {
+    const settings = configManager?.getSettings();
+    const poolSize = settings?.embedderPoolSize ?? 2;
+    console.log(`[WORKER] Initializing embedder pool with ${poolSize} processes`);
+    
+    embedderPool = new EmbedderPool({
+      poolSize,
+      maxFilesBeforeRestart: 5000,
+      maxMemoryMB: 300
+    });
+    
+    try {
+      await embedderPool.initialize();
+      console.log('[WORKER] Embedder pool initialized successfully');
+    } catch (error) {
+      console.error('[WORKER] Failed to initialize embedder pool:', error);
+      // Critical error - we need the embedder pool to function
+      throw new Error(`Failed to initialize embedder pool: ${error}`);
+    }
   }
 }
 
@@ -640,12 +672,15 @@ async function handleFileOriginal(filePath: string) {
       profiler.recordChunks(filePath, chunks.length, avgChunkSize);
     }
     
-    const batchSize = 8; // Small batches to minimize memory usage
+    // Get batch configuration from settings
+    const settings = configManager?.getSettings();
+    const batchSize = settings?.embeddingBatchSize ?? 32;
     let totalEmbedTime = 0;
     let totalDbTime = 0;
     
+    // Process chunks in batches (embedder pool handles parallelism across files)
     for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
+      const batch = chunks.slice(i, Math.min(i + batchSize, chunks.length));
       const texts = batch.map(c => c.text);
       
       // Record embedding batch for profiling
@@ -655,8 +690,10 @@ async function handleFileOriginal(filePath: string) {
       
       // Time embedding
       const startEmbed = Date.now();
-      const vectors = await embed(texts, false); // false = document chunks (use passage: prefix)
-      totalEmbedTime += Date.now() - startEmbed;
+      // Use embedder pool for parallel processing
+      const vectors = await embedderPool!.embed(texts, false);
+      const embedTime = Date.now() - startEmbed;
+      totalEmbedTime += embedTime;
       
       const rows = batch.map((c, idx) => {
         const id = crypto.createHash('sha1')
@@ -679,15 +716,16 @@ async function handleFileOriginal(filePath: string) {
       // Time database write
       const startDb = Date.now();
       await mergeRows(rows);
-      totalDbTime += Date.now() - startDb;
+      const dbTime = Date.now() - startDb;
+      totalDbTime += dbTime;
       
-      // Clear batch data immediately and yield
+      // Clear batch data immediately to help GC
       batch.length = 0;
       texts.length = 0;
       vectors.length = 0;
       rows.length = 0;
       
-      // Yield to event loop
+      // Yield to event loop after each batch
       await new Promise(r => setImmediate(r));
       if (global.gc) global.gc();
     }
@@ -744,7 +782,9 @@ const handleFile = profileHandleFile(handleFileOriginal);
 
 async function search(query: string, k = 10) {
   try {
-    const [qvec] = await embed([query], true); // true = search query (use query: prefix)
+    // Use embedder pool for query embedding
+    const vectors = await embedderPool!.embed([query], true);
+    const qvec = vectors[0];
     const results = await tbl.search(qvec)
       .limit(k)
       .toArray();
@@ -1391,7 +1431,10 @@ parentPort!.on('message', async (msg: any) => {
           }
         }
         
-        await shutdownEmbedder();
+        // Shutdown embedder pool
+        if (embedderPool) {
+          await embedderPool.dispose();
+        }
         if (db) {
           await db.close();
         }
@@ -1417,7 +1460,9 @@ process.on('uncaughtException', (error) => {
 
 // Cleanup on exit
 process.on('exit', async () => {
-  await shutdownEmbedder();
+  if (embedderPool) {
+    await embedderPool.dispose();
+  }
 });
 
 process.on('SIGTERM', async () => {
@@ -1430,6 +1475,8 @@ process.on('SIGTERM', async () => {
     }
   }
   
-  await shutdownEmbedder();
+  if (embedderPool) {
+    await embedderPool.dispose();
+  }
   process.exit(0);
 });

@@ -310,7 +310,7 @@ export async function embed(texts: string[], isQuery = false): Promise<number[][
     embedderInitializing = true;
     // Increase the restart threshold to reduce frequency of restarts
     embedder = new IsolatedEmbedder('Xenova/multilingual-e5-small', {
-      maxFilesBeforeRestart: 1000,  // Increased from 500 to reduce restart frequency
+      maxFilesBeforeRestart: 5000,  // Increased from 1000 to reduce restart frequency
       maxMemoryMB: 1500
     });
     embedderInitPromise = embedder.initialize().then(() => {
@@ -332,7 +332,7 @@ export async function embed(texts: string[], isQuery = false): Promise<number[][
   // If still no embedder after waiting, try once more
   if (!embedder) {
     embedder = new IsolatedEmbedder('Xenova/multilingual-e5-small', {
-      maxFilesBeforeRestart: 1000,
+      maxFilesBeforeRestart: 5000,
       maxMemoryMB: 1500
     });
     await embedder.initialize();

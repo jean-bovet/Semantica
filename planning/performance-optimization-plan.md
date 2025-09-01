@@ -61,33 +61,69 @@ const batchSize = 32; // Increase from 8 to 32
 - Higher memory usage (32 vectors in memory)
 - Potential timeout on very large batches
 
-### 2. Parallel Batch Processing (High Priority)
-**Current**: Sequential batch processing
-**Proposed**: Process 2-3 batches concurrently
+### 2. Embedder Process Pool for Parallel Processing (High Priority)
+**Current**: Single embedder process (sequential bottleneck)
+**Proposed**: Pool of 2-3 embedder processes for true parallelism
 
-**Implementation**:
+**Problem with Initial Approach**:
+- Single embedder process cannot handle concurrent requests
+- Sending parallel batches causes memory corruption and crashes
+- Sequential processing limits performance gains
+
+**New Implementation - Embedder Pool**:
 ```typescript
-const PARALLEL_BATCHES = 3;
-const batchPromises = [];
+class EmbedderPool {
+  private embedders: IsolatedEmbedder[] = [];
+  private currentIndex = 0;
+  
+  constructor(poolSize: number = 2) {
+    for (let i = 0; i < poolSize; i++) {
+      this.embedders.push(new IsolatedEmbedder());
+    }
+  }
+  
+  // Round-robin distribution of work
+  async getEmbedding(texts: string[]): Promise<number[][]> {
+    const embedder = this.embedders[this.currentIndex];
+    this.currentIndex = (this.currentIndex + 1) % this.embedders.length;
+    return embedder.embed(texts);
+  }
+  
+  async dispose() {
+    await Promise.all(this.embedders.map(e => e.dispose()));
+  }
+}
+
+// Usage with parallel batches
+const embedderPool = new EmbedderPool(2); // 2 processes
+const PARALLEL_BATCHES = 2; // Match pool size
 
 for (let i = 0; i < chunks.length; i += batchSize * PARALLEL_BATCHES) {
+  const batchPromises = [];
   for (let j = 0; j < PARALLEL_BATCHES && (i + j * batchSize) < chunks.length; j++) {
     const batch = chunks.slice(i + j * batchSize, i + (j + 1) * batchSize);
-    batchPromises.push(processEmbeddingBatch(batch));
+    // Each batch goes to a different embedder process
+    batchPromises.push(embedderPool.getEmbedding(batch.map(c => c.text)));
   }
   await Promise.all(batchPromises);
-  batchPromises.length = 0;
 }
 ```
 
 **Benefits**:
-- 2-3x faster embedding processing
-- Better CPU core utilization
-- Overlapped I/O and computation
+- **True parallel processing**: 2-3x faster embedding
+- **Process isolation**: Crashes don't affect other embedders
+- **Better resource utilization**: Uses multiple CPU cores
+- **Scalable**: Can adjust pool size based on system resources
+
+**Memory Usage**:
+- 2 embedders: 600MB (2 × 300MB)
+- 3 embedders: 900MB (3 × 300MB)
+- Total app: 2100-2400MB (acceptable for desktop ML app)
 
 **Risks**:
-- Higher memory usage
-- Potential embedder process overload
+- Higher memory usage (600-900MB for embedder pool)
+- Complexity in managing multiple processes
+- Need to balance pool size with system resources
 
 ### 3. Embedding Cache (Medium Priority)
 **Current**: No caching
@@ -169,15 +205,16 @@ if (queue.length === 0 && embedder.fileCount > 3000) {
 
 ## Implementation Plan
 
-### Phase 1: Quick Wins (1 day)
-1. ✅ Increase batch size to 32
-2. ✅ Increase embedder restart threshold to 5000
-3. ✅ Add batch size configuration to settings
+### Phase 1: Quick Wins (Completed ✅)
+1. ✅ Increased batch size to 32
+2. ✅ Increased embedder restart threshold to 5000
+3. ✅ Added batch size configuration to settings
 
-### Phase 2: Parallel Processing (2-3 days)
-1. Implement parallel batch processing
-2. Add concurrency controls
-3. Test memory impact
+### Phase 2: Embedder Pool Implementation (Completed ✅)
+1. ✅ Implemented embedder process pool
+2. ✅ Added round-robin work distribution
+3. ✅ Simplified batch processing (pool handles parallelism)
+4. ✅ Tested memory impact and stability - No crashes!
 
 ### Phase 3: Caching (1 week)
 1. Implement embedding cache
@@ -196,10 +233,11 @@ if (queue.length === 0 && embedder.fileCount > 3000) {
 - 2.8 files/second
 - 0.35s per file average
 
-### After Phase 2
-- **2-3x faster** overall
+### After Phase 2 (with Embedder Pool)
+- **2-3x faster** overall with true parallelism
 - 4-6 files/second
 - 0.2s per file average
+- Stable parallel processing without crashes
 
 ### After Phase 3
 - **Additional 20-30% faster** on typical codebases
