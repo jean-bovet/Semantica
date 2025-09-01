@@ -5,7 +5,7 @@
     "author": "Jean Bovet",
     "main": "dist/main.cjs",
     "private": true,
-    "scripts": {
+  "scripts": {
         "dev": "node scripts/setup-dev.js && concurrently -k -n VITE,BUILD,ELEC -c blue,magenta,green \"vite\" \"node esbuild.watch.mjs\" \"wait-on tcp:5173 && electronmon .\"",
         "build": "tsc -b && node esbuild.build.mjs && vite build",
         "dist": "npm run build && dotenv -e .env.local -- electron-builder",
@@ -27,9 +27,14 @@
         "test:ci": "NODE_ENV=test vitest --run --reporter=dot",
         "test:coverage": "NODE_ENV=test vitest --run --coverage",
         "test:e2e": "playwright test",
+        "lint:types": "tsc -p tsconfig.strict.json",
+        "lint": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
+        "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+        "deadcode": "ts-prune -g",
+        "depcheck": "depcheck",
         "postinstall": "electron-builder install-app-deps"
-    },
-    "devDependencies": {
+  },
+  "devDependencies": {
         "@electron/notarize": "^3.0.2",
         "@playwright/test": "^1.48.0",
         "@types/chardet": "^0.8.3",
@@ -37,20 +42,26 @@
         "@types/react": "^18.3.0",
         "@types/react-dom": "^18.3.0",
         "@vitejs/plugin-react": "^4.3.0",
+        "@typescript-eslint/eslint-plugin": "^8.0.0",
+        "@typescript-eslint/parser": "^8.0.0",
         "concurrently": "^9.0.0",
+        "depcheck": "^1.4.7",
         "dotenv-cli": "^10.0.0",
         "electron": "^33.0.0",
         "electron-builder": "^25.0.0",
         "electron-log": "^5.4.3",
         "electronmon": "^2.0.0",
+        "eslint": "^9.10.0",
+        "eslint-plugin-unused-imports": "^4.0.0",
         "esbuild": "^0.25.9",
         "playwright": "^1.48.0",
+        "ts-prune": "^0.10.3",
         "ts-node": "^10.9.2",
         "typescript": "^5.9.2",
         "vite": "^7.1.3",
         "vitest": "^3.2.4",
         "wait-on": "^8.0.0"
-    },
+  },
     "dependencies": {
         "@lancedb/lancedb": "^0.7.0",
         "@xenova/transformers": "^2.17.0",

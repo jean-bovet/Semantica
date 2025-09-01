@@ -1,0 +1,7 @@
+dist
+dist-app
+node_modules
+build
+resources/models
+tests/fixtures
+
