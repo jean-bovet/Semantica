@@ -9,12 +9,34 @@ export class IsolatedEmbedder implements IEmbedder {
   private ready = false;
   private initPromise: Promise<void> | null = null;
   private spawning = false; // Prevent multiple spawns
+  private spawnStartTime: number | null = null; // Track when spawn started
   private readonly maxFilesBeforeRestart: number;
   private readonly maxMemoryMB: number;
+  private readonly SPAWN_TIMEOUT_MS = 30000; // 30 seconds max for spawning
   constructor(private modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
     if (config?.modelName) this.modelName = config.modelName;
     this.maxFilesBeforeRestart = config?.maxFilesBeforeRestart || 500;
-    this.maxMemoryMB = config?.maxMemoryMB || 1500;
+    this.maxMemoryMB = config?.maxMemoryMB || 1500;  // This is the actual limit for child process
+  }
+  
+  /**
+   * Get memory usage of the child process
+   */
+  private async getChildMemoryUsage(): Promise<{ rss: number; vsz: number } | null> {
+    if (!this.child || !this.child.pid) return null;
+    
+    try {
+      // Use ps to get memory info for the child process
+      const { execSync } = require('child_process');
+      const result = execSync(`ps -o rss=,vsz= -p ${this.child.pid}`).toString().trim();
+      const [rss, vsz] = result.split(/\s+/).map(Number);
+      return { 
+        rss: rss / 1024, // Convert KB to MB
+        vsz: vsz / 1024  // Convert KB to MB
+      };
+    } catch (e) {
+      return null;
+    }
   }
   
   public async initialize(): Promise<boolean> {
@@ -25,13 +47,46 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   private async spawnChild(): Promise<void> {
-    // Prevent multiple simultaneous spawns
+    // Check if we're stuck in a spawn attempt
     if (this.spawning) {
-      console.log('[ISOLATED] Already spawning, skipping...');
-      return;
+      const now = Date.now();
+      if (this.spawnStartTime && (now - this.spawnStartTime) > this.SPAWN_TIMEOUT_MS) {
+        console.log('[ISOLATED] Spawn timeout detected, forcing restart...');
+        // Force reset spawning state
+        this.spawning = false;
+        this.spawnStartTime = null;
+        // Kill any existing child
+        if (this.child) {
+          try {
+            this.child.kill('SIGKILL');
+          } catch (e) {
+            // Ignore errors
+          }
+          this.child = null;
+        }
+      } else {
+        console.log('[ISOLATED] Already spawning, waiting...');
+        // Wait for existing spawn to complete or timeout
+        let waitTime = 0;
+        while (this.spawning && waitTime < this.SPAWN_TIMEOUT_MS) {
+          await new Promise(r => setTimeout(r, 100));
+          waitTime += 100;
+        }
+        // If still spawning after wait, force reset
+        if (this.spawning) {
+          console.log('[ISOLATED] Force resetting stuck spawn');
+          this.spawning = false;
+          this.spawnStartTime = null;
+        }
+        // Check if ready after waiting
+        if (this.ready) {
+          return;
+        }
+      }
     }
     
     this.spawning = true;
+    this.spawnStartTime = Date.now();
     
     console.log('[ISOLATED] Spawning embedder child process...');
     if (this.child) {
@@ -140,6 +195,7 @@ export class IsolatedEmbedder implements IEmbedder {
     } finally {
       // Always mark spawning as complete, even on error
       this.spawning = false;
+      this.spawnStartTime = null;
     }
   }
 
@@ -153,6 +209,7 @@ export class IsolatedEmbedder implements IEmbedder {
             this.ready = false;
             this.child = null;
             this.spawning = false;
+            this.spawnStartTime = null;
             throw err;
           })
           .finally(() => {
@@ -169,6 +226,17 @@ export class IsolatedEmbedder implements IEmbedder {
     // Double-check child process is available
     if (!this.child || !this.child.connected) {
       throw new Error('Embedder child process is not connected');
+    }
+    
+    // Check memory only after processing many files
+    // Only restart if we've processed enough files AND memory is very high
+    if (this.filesSinceSpawn > 50 && this.filesSinceSpawn % 10 === 0) {  // Check every 10 files after 50
+      const childMem = await this.getChildMemoryUsage();
+      if (childMem && childMem.rss > this.maxMemoryMB * 0.95) {  // Only restart at 95% of limit
+        console.log(`[ISOLATED] Proactive restart - memory at ${Math.round(childMem.rss)}MB (limit: ${this.maxMemoryMB}MB)`);
+        await this.restart();
+        await this.ensureReady();
+      }
     }
     
     return new Promise((resolve, reject) => {
@@ -195,11 +263,20 @@ export class IsolatedEmbedder implements IEmbedder {
         if (!this.child) {
           throw new Error('Child process is not available');
         }
+        // Check if child is still connected before sending
+        if (!this.child.connected) {
+          throw new Error('Child process disconnected');
+        }
         this.child.send({ type: 'embed', id, texts, isQuery });
-      } catch (err) {
+      } catch (err: any) {
         this.inflight.delete(id);
         clearTimeout(timeout);
-        reject(new Error(`Failed to send message to embedder: ${err}`));
+        // If EPIPE error, the child died - mark as not ready
+        if (err.code === 'EPIPE' || err.message?.includes('disconnected')) {
+          this.ready = false;
+          this.child = null;
+        }
+        reject(new Error(`Failed to send message to embedder: ${err.message || err}`));
       }
     });
   }
@@ -234,16 +311,24 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   /**
-   * Check if the embedder should restart
+   * Check if the embedder should restart based on memory usage
    */
-  shouldRestart(): boolean {
-    const { rss, external } = process.memoryUsage();
-    const rssMB = Math.round(rss / 1024 / 1024);
-    const extMB = Math.round(external / 1024 / 1024);
+  async shouldRestart(): Promise<boolean> {
+    // Check child process memory if available
+    const childMem = await this.getChildMemoryUsage();
+    if (childMem) {
+      const shouldRestart = childMem.rss > this.maxMemoryMB || 
+                           this.filesSinceSpawn > this.maxFilesBeforeRestart;
+      
+      if (childMem.rss > this.maxMemoryMB * 0.8) {
+        console.log(`[ISOLATED] Child memory warning: ${Math.round(childMem.rss)}MB (limit: ${this.maxMemoryMB}MB)`);
+      }
+      
+      return shouldRestart;
+    }
     
-    return rssMB > this.maxMemoryMB || 
-           extMB > 300 || 
-           this.filesSinceSpawn > this.maxFilesBeforeRestart;
+    // If no child process, don't restart
+    return false;
   }
 
   /**
@@ -263,6 +348,8 @@ export class IsolatedEmbedder implements IEmbedder {
     return {
       filesSinceSpawn: this.filesSinceSpawn,
       isReady: this.ready,
+      isSpawning: this.spawning,
+      spawnDuration: this.spawnStartTime ? Date.now() - this.spawnStartTime : 0,
       memoryUsage: {
         rss: Math.round(memoryUsage.rss / 1024 / 1024),
         heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
@@ -271,8 +358,44 @@ export class IsolatedEmbedder implements IEmbedder {
     };
   }
 
+  /**
+   * Force restart the embedder, even if spawning
+   */
+  async forceRestart(): Promise<void> {
+    console.log('[ISOLATED] Force restarting embedder...');
+    // Reset all state
+    this.spawning = false;
+    this.spawnStartTime = null;
+    this.ready = false;
+    this.initPromise = null;
+    
+    // Kill child if exists
+    if (this.child) {
+      try {
+        this.child.kill('SIGKILL');
+      } catch (e) {
+        // Ignore errors
+      }
+      this.child = null;
+    }
+    
+    // Clear inflight requests
+    for (const handler of this.inflight.values()) {
+      handler.reject(new Error('Force restart'));
+    }
+    this.inflight.clear();
+    
+    // Spawn new child
+    await this.spawnChild();
+  }
+
   async checkMemoryAndRestart(): Promise<boolean> {
-    if (this.shouldRestart() && this.inflight.size === 0) {
+    const shouldRestart = await this.shouldRestart();
+    if (shouldRestart && this.inflight.size === 0) {
+      const childMem = await this.getChildMemoryUsage();
+      if (childMem) {
+        console.log(`[ISOLATED] Restarting - memory: ${Math.round(childMem.rss)}MB, files: ${this.filesSinceSpawn}`);
+      }
       await this.restart();
       return true;
     }
@@ -282,16 +405,32 @@ export class IsolatedEmbedder implements IEmbedder {
   async shutdown(): Promise<void> {
     if (this.child) {
       try {
-        this.child.send({ type: 'shutdown' });
-        await new Promise(r => setTimeout(r, 200));
+        // Check if child is still connected before sending message
+        if (this.child.connected) {
+          this.child.send({ type: 'shutdown' });
+          await new Promise(r => setTimeout(r, 200));
+        }
       } catch (e) {
-        // Child may already be dead
+        // Child may already be dead or disconnected
+        console.log('[ISOLATED] Child already disconnected during shutdown');
       }
-      this.child.kill('SIGTERM');
-      await new Promise(r => setTimeout(r, 100));
-      if (this.child.killed === false) {
-        this.child.kill('SIGKILL');
+      
+      try {
+        // Try graceful termination first
+        if (!this.child.killed) {
+          this.child.kill('SIGTERM');
+          await new Promise(r => setTimeout(r, 100));
+        }
+        
+        // Force kill if still alive
+        if (this.child && !this.child.killed) {
+          this.child.kill('SIGKILL');
+        }
+      } catch (e) {
+        // Process might already be dead
+        console.log('[ISOLATED] Process already terminated');
       }
+      
       this.child = null;
     }
     this.ready = false;

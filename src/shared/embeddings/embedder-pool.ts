@@ -17,6 +17,8 @@ export class EmbedderPool {
   private modelName: string;
   private config: EmbedderPoolConfig;
   private initPromise: Promise<void> | null = null;
+  private restartingEmbedders = new Set<number>();  // Track which embedders are restarting
+  private restartMutex = new Map<number, Promise<void>>();  // Prevent concurrent restarts
   
   constructor(config: EmbedderPoolConfig = {}) {
     this.modelName = config.modelName || 'Xenova/multilingual-e5-small';
@@ -78,14 +80,54 @@ export class EmbedderPool {
   
   /**
    * Generate embeddings for texts, automatically distributing to next available embedder
+   * Includes retry logic with automatic recovery on embedder failure
    */
   async embed(texts: string[], isQuery: boolean = false): Promise<number[][]> {
     if (!this.initPromise) {
       await this.initialize();
     }
     
-    const embedder = this.getNextEmbedder();
-    return embedder.embed(texts, isQuery);
+    let lastError: Error | null = null;
+    const maxRetries = 3;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const embedder = this.getNextEmbedder();
+        return await embedder.embed(texts, isQuery);
+      } catch (error: any) {
+        lastError = error;
+        console.error(`[EmbedderPool] Embedding attempt ${attempt + 1} failed:`, error.message);
+        
+        // If embedder process died, try to recover
+        if (error.message?.includes('Embedder process exited') || 
+            error.message?.includes('Child process is not ready')) {
+          
+          // Find and restart the failed embedder
+          for (let i = 0; i < this.embedders.length; i++) {
+            try {
+              const stats = this.embedders[i].getStats();
+              // Check if embedder is stuck spawning or not ready
+              if (stats.isSpawning && stats.spawnDuration > 20000) {
+                console.log(`[EmbedderPool] Embedder ${i} stuck spawning for ${stats.spawnDuration}ms, force restarting...`);
+                await (this.embedders[i] as any).forceRestart();
+              } else if (!stats.isReady && !this.restartingEmbedders.has(i)) {
+                await this.restart(i);  // Use mutex-protected restart
+              }
+            } catch (error) {
+              // Embedder might be in a bad state, try to restart it
+              if (!this.restartingEmbedders.has(i)) {
+                await this.restart(i);
+              }
+            }
+          }
+          
+          // Wait a bit before retry
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+    }
+    
+    throw new Error(`Failed to generate embeddings after ${maxRetries} attempts: ${lastError?.message}`);
   }
   
   /**
@@ -127,18 +169,41 @@ export class EmbedderPool {
   }
   
   /**
-   * Restart a specific embedder or all embedders
+   * Restart a specific embedder or all embedders with mutex protection
    */
   async restart(index?: number): Promise<void> {
     if (index !== undefined) {
       if (index < 0 || index >= this.embedders.length) {
         throw new Error(`Invalid embedder index: ${index}`);
       }
-      console.log(`[EmbedderPool] Restarting embedder ${index}`);
-      await this.embedders[index].restart();
+      
+      // Check if already restarting
+      if (this.restartMutex.has(index)) {
+        console.log(`[EmbedderPool] Embedder ${index} is already restarting, waiting...`);
+        return this.restartMutex.get(index);
+      }
+      
+      // Create restart promise with mutex
+      const restartPromise = (async () => {
+        try {
+          this.restartingEmbedders.add(index);
+          console.log(`[EmbedderPool] Restarting embedder ${index}`);
+          await this.embedders[index].restart();
+          console.log(`[EmbedderPool] Embedder ${index} restarted successfully`);
+        } catch (error) {
+          console.error(`[EmbedderPool] Failed to restart embedder ${index}:`, error);
+          throw error;
+        } finally {
+          this.restartingEmbedders.delete(index);
+          this.restartMutex.delete(index);
+        }
+      })();
+      
+      this.restartMutex.set(index, restartPromise);
+      return restartPromise;
     } else {
       console.log(`[EmbedderPool] Restarting all embedders`);
-      await Promise.all(this.embedders.map(e => e.restart()));
+      await Promise.all(this.embedders.map((_, i) => this.restart(i)));
     }
   }
   
@@ -165,6 +230,56 @@ export class EmbedderPool {
    */
   isInitialized(): boolean {
     return this.embedders.length > 0 && this.initPromise !== null;
+  }
+  
+  /**
+   * Check health of all embedders and restart unhealthy ones
+   */
+  async checkHealth(): Promise<void> {
+    for (let i = 0; i < this.embedders.length; i++) {
+      try {
+        const stats = this.embedders[i].getStats();
+        
+        // Check for stuck spawning state
+        if (stats.isSpawning && stats.spawnDuration > 20000) {
+          console.log(`[EmbedderPool] Embedder ${i} stuck spawning for ${stats.spawnDuration}ms, force restarting...`);
+          try {
+            await (this.embedders[i] as any).forceRestart();
+          } catch (error) {
+            console.error(`[EmbedderPool] Failed to force restart embedder ${i}:`, error);
+            // Create a new embedder instance as last resort
+            console.log(`[EmbedderPool] Creating new embedder instance for index ${i}`);
+            const newEmbedder = new IsolatedEmbedder(this.modelName, {
+              maxFilesBeforeRestart: this.config.maxFilesBeforeRestart!,
+              maxMemoryMB: this.config.maxMemoryMB!
+            });
+            this.embedders[i] = newEmbedder;
+            await newEmbedder.initialize();
+          }
+        } else if (!stats.isReady && !this.restartingEmbedders.has(i)) {
+          console.log(`[EmbedderPool] Embedder ${i} is not ready, restarting...`);
+          await this.restart(i);
+        }
+      } catch (error) {
+        console.error(`[EmbedderPool] Error checking health of embedder ${i}:`, error);
+        try {
+          await this.restart(i);
+        } catch (restartError) {
+          console.error(`[EmbedderPool] Failed to restart embedder ${i}:`, restartError);
+          // Replace with new instance as last resort
+          const newEmbedder = new IsolatedEmbedder(this.modelName, {
+            maxFilesBeforeRestart: this.config.maxFilesBeforeRestart!,
+            maxMemoryMB: this.config.maxMemoryMB!
+          });
+          this.embedders[i] = newEmbedder;
+          try {
+            await newEmbedder.initialize();
+          } catch (initError) {
+            console.error(`[EmbedderPool] Failed to initialize replacement embedder ${i}:`, initError);
+          }
+        }
+      }
+    }
   }
 }
 

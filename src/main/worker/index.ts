@@ -60,19 +60,23 @@ setInterval(async () => {
     console.log(`[QUEUE STATUS] 📊 Queued: ${stats.queued}, Processing: ${stats.processing}/${maxConcurrent}${processingFiles ? ` (${processingFiles})` : ''}`);
   }
   
-  // Check if any embedder in the pool needs restart
+  // Check embedder pool health and restart if needed
   if (embedderPool) {
     try {
       const stats = embedderPool.getStats();
       for (const stat of stats) {
-        if (stat.needsRestart) {
+        // Proactive restart if processed too many files or using too much memory
+        const shouldRestart = stat.filesProcessed > 100 || 
+                            stat.memoryUsage > 400 * 1024 * 1024; // 400MB
+        
+        if (shouldRestart) {
+          console.log(`[MEMORY] ♾️ Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
           await embedderPool.restart(stat.index);
           recordEvent('embedderRestart'); // Track for profiling
-          console.log(`[MEMORY] ♾️ Embedder process ${stat.index} restarted due to memory limits`);
         }
       }
     } catch (error) {
-      // Ignore errors in memory check
+      console.error('[MEMORY] Failed to check embedder health:', error);
     }
   }
 }, 2000);
@@ -320,6 +324,62 @@ async function initDB(dir: string, userDataPath: string) {
   }
 }
 
+// Health check for embedder pool
+let healthCheckInterval: NodeJS.Timeout | null = null;
+let lastHealthCheckError = 0;
+
+function startEmbedderHealthCheck() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
+  
+  // Check health every 5 seconds initially
+  let checkIntervalMs = 5000;
+  
+  const performHealthCheck = async () => {
+    if (!embedderPool) return;
+    
+    // Check system memory pressure (disabled - too aggressive on macOS)
+    // The OS will handle memory pressure better than we can
+    // const memPressure = getSystemMemoryPressure();
+    // if (memPressure.pressure === 'high') {
+    //   console.log(`[WORKER] High memory pressure detected (${Math.round(memPressure.free)}MB free) - triggering restart`);
+    //   // Force restart one embedder to free memory
+    //   try {
+    //     await embedderPool.restart(0);
+    //   } catch (e) {
+    //     console.error('[WORKER] Failed to restart embedder under memory pressure:', e);
+    //   }
+    // }
+    
+    try {
+      await embedderPool.checkHealth();
+      // Reset error counter on successful check
+      lastHealthCheckError = 0;
+      // Return to normal interval
+      if (checkIntervalMs !== 5000) {
+        checkIntervalMs = 5000;
+        clearInterval(healthCheckInterval!);
+        healthCheckInterval = setInterval(performHealthCheck, checkIntervalMs);
+      }
+    } catch (error) {
+      console.error('[WORKER] Health check failed:', error);
+      lastHealthCheckError++;
+      
+      // If multiple failures, check more frequently
+      if (lastHealthCheckError > 2 && checkIntervalMs !== 1000) {
+        checkIntervalMs = 1000; // Check every second when having issues
+        clearInterval(healthCheckInterval!);
+        healthCheckInterval = setInterval(performHealthCheck, checkIntervalMs);
+        console.log('[WORKER] Increased health check frequency due to errors');
+      }
+    }
+  };
+  
+  healthCheckInterval = setInterval(performHealthCheck, checkIntervalMs);
+  console.log('[WORKER] Started embedder health check monitoring');
+}
+
 // Separate function to check and download model after worker is ready
 async function initializeModel(userDataPath: string) {
   // Check and download model if needed (ONCE at startup)
@@ -361,13 +421,16 @@ async function initializeModel(userDataPath: string) {
     
     embedderPool = new EmbedderPool({
       poolSize,
-      maxFilesBeforeRestart: 5000,
-      maxMemoryMB: 300
+      maxFilesBeforeRestart: 200,  // Restart every 200 files (was too low)
+      maxMemoryMB: 1000             // Restart when child process hits 1GB RSS
     });
     
     try {
       await embedderPool.initialize();
       console.log('[WORKER] Embedder pool initialized successfully');
+      
+      // Start health check monitoring
+      startEmbedderHealthCheck();
     } catch (error) {
       console.error('[WORKER] Failed to initialize embedder pool:', error);
       // Critical error - we need the embedder pool to function
@@ -1431,6 +1494,11 @@ parentPort!.on('message', async (msg: any) => {
           }
         }
         
+        // Stop health check
+        if (healthCheckInterval) {
+          clearInterval(healthCheckInterval);
+          healthCheckInterval = null;
+        }
         // Shutdown embedder pool
         if (embedderPool) {
           await embedderPool.dispose();
@@ -1460,6 +1528,9 @@ process.on('uncaughtException', (error) => {
 
 // Cleanup on exit
 process.on('exit', async () => {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
   if (embedderPool) {
     await embedderPool.dispose();
   }
@@ -1475,6 +1546,9 @@ process.on('SIGTERM', async () => {
     }
   }
   
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
   if (embedderPool) {
     await embedderPool.dispose();
   }
