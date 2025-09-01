@@ -14,6 +14,8 @@ export interface AppConfig {
     excludeBundles: boolean;
     bundlePatterns: string[];
     fileTypes: FileTypes;
+    embeddingBatchSize: number;  // Number of chunks to send to model at once
+    embedderPoolSize: number;     // Number of embedder processes in the pool
   };
   lastUpdated: string;
 }
@@ -51,7 +53,9 @@ export class ConfigManager {
           '**/*.photosLibrary/**',
           '**/*.tvlibrary/**'
         ],
-        fileTypes: getDefaultFileTypes()
+        fileTypes: getDefaultFileTypes(),
+        embeddingBatchSize: 32,  // Optimized batch size for embedding model
+        embedderPoolSize: 2       // Use 2 embedder processes for true parallelism
       },
       lastUpdated: new Date().toISOString()
     };
@@ -103,6 +107,21 @@ export class ConfigManager {
         }
         if (!config.settings.bundlePatterns) {
           config.settings.bundlePatterns = this.getDefaultConfig().settings.bundlePatterns;
+          needsSave = true;
+        }
+        
+        // Add performance optimization settings if missing
+        if (config.settings.embeddingBatchSize === undefined) {
+          config.settings.embeddingBatchSize = 32;
+          needsSave = true;
+        }
+        // Remove obsolete parallelBatches setting if it exists
+        if ('parallelBatches' in config.settings) {
+          delete (config.settings as any).parallelBatches;
+          needsSave = true;
+        }
+        if (config.settings.embedderPoolSize === undefined) {
+          config.settings.embedderPoolSize = 2;
           needsSave = true;
         }
         

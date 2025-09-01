@@ -47,15 +47,31 @@ export function detectEncoding(buffer: Buffer, filename?: string): string | null
   if (!encoding) {
     encoding = detect(buffer);
     
-    // Strategy 4: Mac Roman special handling
-    // Chardet sometimes misdetects Mac Roman as Windows-1252 or ISO-8859-1
-    if (encoding === 'windows-1252' || encoding === 'ISO-8859-1') {
-      for (let i = 0; i < Math.min(buffer.length, 1000); i++) {
-        // Mac Roman uses specific bytes in the 0x80-0x9F range differently
-        // 0x8E is é in Mac Roman (common in "café")
-        if (buffer[i] === 0x8E) {
-          encoding = 'macintosh';
-          break;
+    // Strategy 4: Handle chardet's encoding names and special cases
+    if (encoding) {
+      // Normalize encoding names for iconv-lite compatibility
+      encoding = encoding.replace(/^ISO-8859-/i, 'ISO-8859-');
+      encoding = encoding.replace(/^windows-/i, 'windows-');
+      
+      // Mac Roman special handling
+      // Chardet sometimes misdetects Mac Roman as Windows-1252 or ISO-8859-1
+      if (encoding === 'windows-1252' || encoding === 'ISO-8859-1') {
+        // Check for Mac Roman specific byte patterns
+        for (let i = 0; i < Math.min(buffer.length, 1000); i++) {
+          // Mac Roman uses specific bytes in the 0x80-0x9F range differently
+          // 0x8E is é in Mac Roman (common in "café")
+          // 0xD0 is — (em dash) in Mac Roman but Ð in ISO-8859-1
+          if (buffer[i] === 0x8E || buffer[i] === 0xD0) {
+            // Check context to confirm Mac Roman
+            const prevChar = i > 0 ? buffer[i-1] : 0;
+            const nextChar = i < buffer.length - 1 ? buffer[i+1] : 0;
+            // Mac Roman is more likely if surrounded by ASCII chars
+            if ((prevChar >= 0x20 && prevChar <= 0x7E) || 
+                (nextChar >= 0x20 && nextChar <= 0x7E)) {
+              encoding = 'macintosh';
+              break;
+            }
+          }
         }
       }
     }
@@ -80,9 +96,33 @@ export function decodeBuffer(buffer: Buffer, encoding?: string | null, filename?
   const finalEncoding = encoding || detectEncoding(buffer, filename);
   
   if (finalEncoding && iconv.encodingExists(finalEncoding)) {
-    return iconv.decode(buffer, finalEncoding);
+    try {
+      const decoded = iconv.decode(buffer, finalEncoding);
+      // Verify the decode worked (should have reasonable content)
+      if (decoded && decoded.length > 0) {
+        return decoded;
+      }
+    } catch (error) {
+      console.warn(`[ENCODING] Failed to decode with ${finalEncoding}, trying fallbacks`, error);
+    }
   }
   
-  // Fallback to UTF-8
+  // Try common fallback encodings
+  const fallbackEncodings = ['ISO-8859-1', 'windows-1252', 'utf8'];
+  for (const fallback of fallbackEncodings) {
+    try {
+      if (iconv.encodingExists(fallback)) {
+        const decoded = iconv.decode(buffer, fallback);
+        if (decoded && decoded.length > 0) {
+          console.log(`[ENCODING] Used fallback encoding: ${fallback}`);
+          return decoded;
+        }
+      }
+    } catch (error) {
+      // Continue to next fallback
+    }
+  }
+  
+  // Last resort: UTF-8 with replacement chars
   return buffer.toString('utf8');
 }

@@ -18,6 +18,7 @@ import { FileScanner } from './fileScanner';
 import type { FileInfo, FileStats, ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
+import { setupProfiling, profileHandleFile, timeOperation, recordEvent, profiler } from './profiling-integration';
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
@@ -59,10 +60,24 @@ setInterval(async () => {
     console.log(`[QUEUE STATUS] 📊 Queued: ${stats.queued}, Processing: ${stats.processing}/${maxConcurrent}${processingFiles ? ` (${processingFiles})` : ''}`);
   }
   
-  // Check if embedder needs restart
-  const restarted = await checkEmbedderMemory();
-  if (restarted) {
-    console.log('[MEMORY] ♾️ Embedder process restarted due to memory limits');
+  // Check embedder pool health and restart if needed
+  if (embedderPool) {
+    try {
+      const stats = embedderPool.getStats();
+      for (const stat of stats) {
+        // Proactive restart if processed too many files or using too much memory
+        const shouldRestart = stat.filesProcessed > 100 || 
+                            stat.memoryUsage > 400 * 1024 * 1024; // 400MB
+        
+        if (shouldRestart) {
+          console.log(`[MEMORY] ♾️ Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
+          await embedderPool.restart(stat.index);
+          recordEvent('embedderRestart'); // Track for profiling
+        }
+      }
+    } catch (error) {
+      console.error('[MEMORY] Failed to check embedder health:', error);
+    }
   }
 }, 2000);
 
@@ -77,7 +92,7 @@ try {
   console.log('PDF parsing not available');
 }
 // Use isolated embedder for better memory management
-import { embed, checkEmbedderMemory, shutdownEmbedder } from '../../shared/embeddings/isolated';
+import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
@@ -95,6 +110,7 @@ const fileChunkCounts = new Map<string, number>(); // Track chunk counts per fil
 let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
+let embedderPool: EmbedderPool | null = null;
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
@@ -117,6 +133,7 @@ const fileQueue = new ConcurrentQueue({
     });
   },
   onMemoryThrottle: (newLimit, memoryMB) => {
+    recordEvent(newLimit < concurrencySettings.optimal ? 'throttleStart' : 'throttleEnd'); // Track throttling
     console.log(`[MEMORY] ⚠️ Adjusting concurrency: ${newLimit} (RSS: ${Math.round(memoryMB)}MB)`);
   }
 });
@@ -297,11 +314,37 @@ async function initDB(dir: string, userDataPath: string) {
       }
     }
     
+    // Setup profiling if enabled
+    setupProfiling();
+    
     console.log('Worker ready');
   } catch (error) {
     console.error('Failed to initialize database:', error);
     throw error;
   }
+}
+
+// Health check for embedder pool
+let healthCheckInterval: NodeJS.Timeout | null = null;
+
+function startEmbedderHealthCheck() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
+  
+  const performHealthCheck = async () => {
+    if (!embedderPool) return;
+    
+    try {
+      await embedderPool.checkHealth();
+    } catch (error) {
+      console.error('[WORKER] Health check failed:', error);
+    }
+  };
+  
+  // Check health every 5 seconds
+  healthCheckInterval = setInterval(performHealthCheck, 5000);
+  console.log('[WORKER] Started embedder health check monitoring');
 }
 
 // Separate function to check and download model after worker is ready
@@ -335,6 +378,31 @@ async function initializeModel(userDataPath: string) {
       type: 'model:ready',
       payload: { ready: modelReady }
     });
+  }
+  
+  // Initialize embedder pool (it will handle model download internally if needed)
+  if (!embedderPool) {
+    const settings = configManager?.getSettings();
+    const poolSize = settings?.embedderPoolSize ?? 2;
+    console.log(`[WORKER] Initializing embedder pool with ${poolSize} processes`);
+    
+    embedderPool = new EmbedderPool({
+      poolSize,
+      maxFilesBeforeRestart: 200,  // Restart every 200 files (was too low)
+      maxMemoryMB: 1000             // Restart when child process hits 1GB RSS
+    });
+    
+    try {
+      await embedderPool.initialize();
+      console.log('[WORKER] Embedder pool initialized successfully');
+      
+      // Start health check monitoring
+      startEmbedderHealthCheck();
+    } catch (error) {
+      console.error('[WORKER] Failed to initialize embedder pool:', error);
+      // Critical error - we need the embedder pool to function
+      throw new Error(`Failed to initialize embedder pool: ${error}`);
+    }
   }
 }
 
@@ -471,7 +539,8 @@ async function updateFileStatus(filePath: string, status: string, error?: string
   }
 }
 
-async function handleFile(filePath: string) {
+// Original handleFile function (renamed for profiling wrapper)
+async function handleFileOriginal(filePath: string) {
   try {
     fileCount++; // Track files processed
     console.log(`[INDEXING] Starting: ${filePath}`);
@@ -558,10 +627,27 @@ async function handleFile(filePath: string) {
     // Special handling for PDF (backward compatibility)
     if (ext === 'pdf' && parsePdf) {
       try {
+        // Time PDF parsing
+        const startParse = Date.now();
         const pages = await parsePdf(filePath);
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.parsing = Date.now() - startParse;
+          }
+        }
+        
+        // Time chunking
+        const startChunk = Date.now();
         for (const pg of pages) {
           const pageChunks = chunkText(pg.text, 500, 60);
           chunks.push(...pageChunks.map(c => ({ ...c, page: pg.page })));
+        }
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.chunking = Date.now() - startChunk;
+          }
         }
       } catch (pdfError: any) {
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
@@ -573,12 +659,28 @@ async function handleFile(filePath: string) {
       // Dynamic parser loading for all other file types
       try {
         const parserModule = await parserDef.parser();
-        const text = await parserModule(filePath);
         
-        // Use parser-specific chunk settings or defaults
+        // Time text parsing
+        const startParse = Date.now();
+        const text = await parserModule(filePath);
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.parsing = Date.now() - startParse;
+          }
+        }
+        
+        // Time chunking
+        const startChunk = Date.now();
         const chunkSize = parserDef.chunkSize || 500;
         const chunkOverlap = parserDef.chunkOverlap || 60;
         chunks = chunkText(text, chunkSize, chunkOverlap);
+        if (profiler.isEnabled()) {
+          const metrics = profiler.fileMetrics.get(filePath);
+          if (metrics) {
+            metrics.timings.chunking = Date.now() - startChunk;
+          }
+        }
       } catch (parseError: any) {
         const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
         await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
@@ -594,11 +696,34 @@ async function handleFile(filePath: string) {
       return;
     }
     
-    const batchSize = 8; // Small batches to minimize memory usage
+    // Record chunks for profiling
+    if (profiler.isEnabled()) {
+      const avgChunkSize = chunks.reduce((sum, c) => sum + c.text.length, 0) / chunks.length;
+      profiler.recordChunks(filePath, chunks.length, avgChunkSize);
+    }
+    
+    // Get batch configuration from settings
+    const settings = configManager?.getSettings();
+    const batchSize = settings?.embeddingBatchSize ?? 32;
+    let totalEmbedTime = 0;
+    let totalDbTime = 0;
+    
+    // Process chunks in batches (embedder pool handles parallelism across files)
     for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
+      const batch = chunks.slice(i, Math.min(i + batchSize, chunks.length));
       const texts = batch.map(c => c.text);
-      const vectors = await embed(texts, false); // false = document chunks (use passage: prefix)
+      
+      // Record embedding batch for profiling
+      if (profiler.isEnabled()) {
+        profiler.recordEmbeddingBatch(filePath);
+      }
+      
+      // Time embedding
+      const startEmbed = Date.now();
+      // Use embedder pool for parallel processing
+      const vectors = await embedderPool!.embed(texts, false);
+      const embedTime = Date.now() - startEmbed;
+      totalEmbedTime += embedTime;
       
       const rows = batch.map((c, idx) => {
         const id = crypto.createHash('sha1')
@@ -618,17 +743,30 @@ async function handleFile(filePath: string) {
         };
       });
       
+      // Time database write
+      const startDb = Date.now();
       await mergeRows(rows);
+      const dbTime = Date.now() - startDb;
+      totalDbTime += dbTime;
       
-      // Clear batch data immediately and yield
+      // Clear batch data immediately to help GC
       batch.length = 0;
       texts.length = 0;
       vectors.length = 0;
       rows.length = 0;
       
-      // Yield to event loop
+      // Yield to event loop after each batch
       await new Promise(r => setImmediate(r));
       if (global.gc) global.gc();
+    }
+    
+    // Record operation timings for profiling
+    if (profiler.isEnabled()) {
+      const metrics = profiler.fileMetrics.get(filePath);
+      if (metrics) {
+        metrics.timings.embedding = totalEmbedTime;
+        metrics.timings.dbWrite = totalDbTime;
+      }
     }
     
     fileHashes.set(filePath, currentHash);
@@ -669,9 +807,14 @@ async function handleFile(filePath: string) {
   }
 }
 
+// Wrap handleFile with profiling
+const handleFile = profileHandleFile(handleFileOriginal);
+
 async function search(query: string, k = 10) {
   try {
-    const [qvec] = await embed([query], true); // true = search query (use query: prefix)
+    // Use embedder pool for query embedding
+    const vectors = await embedderPool!.embed([query], true);
+    const qvec = vectors[0];
     const results = await tbl.search(qvec)
       .limit(k)
       .toArray();
@@ -1308,7 +1451,25 @@ parentPort!.on('message', async (msg: any) => {
       case 'shutdown':
         // Clean shutdown requested
         console.log('Worker shutting down...');
-        await shutdownEmbedder();
+        
+        // Generate profiling report if enabled
+        if (process.env.PROFILE === 'true') {
+          const { profiler } = require('./profiling-integration');
+          if (profiler.isEnabled()) {
+            console.log('🔬 [PROFILING] Generating performance report...');
+            await profiler.saveReport();
+          }
+        }
+        
+        // Stop health check
+        if (healthCheckInterval) {
+          clearInterval(healthCheckInterval);
+          healthCheckInterval = null;
+        }
+        // Shutdown embedder pool
+        if (embedderPool) {
+          await embedderPool.dispose();
+        }
         if (db) {
           await db.close();
         }
@@ -1334,10 +1495,29 @@ process.on('uncaughtException', (error) => {
 
 // Cleanup on exit
 process.on('exit', async () => {
-  await shutdownEmbedder();
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
+  if (embedderPool) {
+    await embedderPool.dispose();
+  }
 });
 
 process.on('SIGTERM', async () => {
-  await shutdownEmbedder();
+  // Generate profiling report if enabled
+  if (process.env.PROFILE === 'true') {
+    const { profiler } = require('./profiling-integration');
+    if (profiler.isEnabled()) {
+      console.log('🔬 [PROFILING] Generating performance report...');
+      await profiler.saveReport();
+    }
+  }
+  
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
+  if (embedderPool) {
+    await embedderPool.dispose();
+  }
   process.exit(0);
 });
