@@ -1,4 +1,4 @@
-import { fork, ChildProcess } from 'node:child_process';
+import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { IEmbedder, EmbedderConfig } from './IEmbedder';
 
@@ -11,6 +11,8 @@ export class IsolatedEmbedder implements IEmbedder {
   private spawning = false; // Prevent multiple spawns
   private readonly maxFilesBeforeRestart: number;
   private readonly maxMemoryMB: number;
+  private buffer = '';
+  
   constructor(private modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
     if (config?.modelName) this.modelName = config.modelName;
     this.maxFilesBeforeRestart = config?.maxFilesBeforeRestart || 500;
@@ -67,9 +69,11 @@ export class IsolatedEmbedder implements IEmbedder {
       }
     }
     
+    console.log('[ISOLATED] Starting embedder spawn with spawn() to bypass Electron GPU process...');
     this.spawning = true;
     
     if (this.child) {
+      console.log('[ISOLATED] Killing existing child process');
       this.child.kill('SIGKILL');
       this.child = null;
     }
@@ -77,6 +81,7 @@ export class IsolatedEmbedder implements IEmbedder {
     this.ready = false;
     this.filesSinceSpawn = 0;
     this.inflight.clear();
+    this.buffer = '';
 
     // In production with ASAR, the embedder.child.cjs is in the dist folder
     // For testing, process.resourcesPath might be undefined
@@ -89,19 +94,41 @@ export class IsolatedEmbedder implements IEmbedder {
     const userDataPath = process.env.USER_DATA_PATH || path.join(require('os').homedir(), '.offline-search');
     const modelCachePath = path.join(userDataPath, 'models');
     
-    this.child = fork(childPath, [], { 
-      execArgv: ['--expose-gc'],
-      silent: false,
+    // Use spawn with node directly, bypassing Electron entirely
+    // This avoids SIGTRAP issues on macOS caused by Electron's GPU process management
+    const nodePath = process.execPath.includes('Electron') ? 'node' : process.execPath;
+    
+    this.child = spawn(nodePath, [childPath], { 
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       env: {
         ...process.env,
         TRANSFORMERS_CACHE: modelCachePath,
         XDG_CACHE_HOME: modelCachePath,
-        ELECTRON_RUN_AS_NODE: '1'
+        // Force pure Node.js mode
+        ELECTRON_RUN_AS_NODE: '1',
+        // Disable ONNX optimizations that might cause issues
+        ORT_DISABLE_ALL_OPTIONAL_OPTIMIZERS: '1'
       }
+    });
+
+    // Handle stdout for debugging
+    this.child.stdout?.on('data', (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) {
+          console.log(`[EMBEDDER-OUT] ${line}`);
+        }
+      }
+    });
+
+    // Handle stderr
+    this.child.stderr?.on('data', (data) => {
+      console.error(`[EMBEDDER-ERR] ${data.toString()}`);
     });
 
     this.child.on('message', (msg: any) => {
       if (msg.type === 'ready') {
+        console.log('[ISOLATED] Embedder ready');
         this.ready = true;
       } else if (msg.type === 'init:err') {
         console.error('[ISOLATED] Embedder init failed:', msg.error);
@@ -120,17 +147,21 @@ export class IsolatedEmbedder implements IEmbedder {
     });
 
     this.child.on('error', (err) => {
-      console.error('Embedder child error:', err);
+      console.error('[ISOLATED] Embedder child error:', err);
+      console.error('[ISOLATED] Error details:', {
+        code: (err as any).code,
+        syscall: (err as any).syscall,
+        path: (err as any).path
+      });
       for (const handler of this.inflight.values()) {
         handler.reject(err);
       }
       this.inflight.clear();
     });
 
-    this.child.on('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        console.error(`Embedder child exited with code ${code}`);
-      }
+    this.child.on('exit', (code, signal) => {
+      console.error(`[ISOLATED] Embedder child exited with code ${code}, signal ${signal}`);
+      console.error('[ISOLATED] Child PID was:', this.child?.pid);
       this.ready = false;
       for (const handler of this.inflight.values()) {
         handler.reject(new Error('Embedder process exited'));
@@ -193,7 +224,7 @@ export class IsolatedEmbedder implements IEmbedder {
     await this.ensureReady();
     
     // Double-check child process is available
-    if (!this.child || !this.child.connected) {
+    if (!this.child || !(this.child as any).connected) {
       throw new Error('Embedder child process is not connected');
     }
     
@@ -231,7 +262,7 @@ export class IsolatedEmbedder implements IEmbedder {
           throw new Error('Child process is not available');
         }
         // Check if child is still connected before sending
-        if (!this.child.connected) {
+        if (!(this.child as any).connected) {
           throw new Error('Child process disconnected');
         }
         this.child.send({ type: 'embed', id, texts, isQuery });
@@ -267,7 +298,7 @@ export class IsolatedEmbedder implements IEmbedder {
           await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
           
           // If child process died, restart it
-          if (!this.child || !this.child.connected) {
+          if (!this.child || !(this.child as any).connected) {
             await this.restart();
           }
         }
@@ -330,7 +361,7 @@ export class IsolatedEmbedder implements IEmbedder {
     if (this.child) {
       try {
         // Check if child is still connected before sending message
-        if (this.child.connected) {
+        if ((this.child as any).connected) {
           this.child.send({ type: 'shutdown' });
           await new Promise(r => setTimeout(r, 200));
         }
@@ -415,4 +446,3 @@ export async function shutdownEmbedder(): Promise<void> {
     embedder = null;
   }
 }
-
