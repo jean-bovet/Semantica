@@ -188,7 +188,7 @@ if (gotTheLock) {
   
   if (isDev) {
     win.loadURL('http://localhost:5173');
-    win.webContents.openDevTools();
+    // Developer tools disabled by default, can be opened with Cmd+Opt+I
   } else {
     win.loadFile(path.join(__dirname, 'index.html'));
   }
