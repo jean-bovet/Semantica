@@ -183,6 +183,16 @@ if (gotTheLock) {
   
   mainWindow = win;
   
+  // Load window content immediately so UI shows up right away
+  const isDev = process.env.NODE_ENV !== 'production';
+  
+  if (isDev) {
+    win.loadURL('http://localhost:5173');
+    win.webContents.openDevTools();
+  } else {
+    win.loadFile(path.join(__dirname, 'index.html'));
+  }
+  
   // Configure auto-updater logging
   autoUpdater.logger = log;
   (autoUpdater.logger as any).transports.file.level = 'info';
@@ -220,17 +230,10 @@ if (gotTheLock) {
     log.error('Update error:', error);
   });
   
-  // Spawn worker and wait for it to be ready before setting up IPC handlers
+  // Spawn worker asynchronously (don't block on it)
   spawnWorker();
-  try {
-    await waitForWorker();
-    console.log('Worker initialized successfully');
-  } catch (err) {
-    console.error('Failed to initialize worker:', err);
-    dialog.showErrorBox('Initialization Error', 'Failed to initialize the worker thread. The app may not function correctly.');
-  }
   
-  // Register all IPC handlers BEFORE loading the window content
+  // Register all IPC handlers
   ipcMain.handle('model:check', async () => {
     return sendToWorker('checkModel');
   });
@@ -355,16 +358,6 @@ if (gotTheLock) {
   ipcMain.handle('dialog:error', async (_, title: string, message: string) => {
     dialog.showErrorBox(title, message);
   });
-  
-  // NOW load the window content after all handlers are registered
-  const isDev = process.env.NODE_ENV !== 'production';
-  
-  if (isDev) {
-    win.loadURL('http://localhost:5173');
-    win.webContents.openDevTools();
-  } else {
-    win.loadFile(path.join(__dirname, 'index.html'));
-  }
   });
 }
 
