@@ -95,7 +95,8 @@ export class IsolatedEmbedder implements IEmbedder {
       env: {
         ...process.env,
         TRANSFORMERS_CACHE: modelCachePath,
-        XDG_CACHE_HOME: modelCachePath
+        XDG_CACHE_HOME: modelCachePath,
+        ELECTRON_RUN_AS_NODE: '1'
       }
     });
 
