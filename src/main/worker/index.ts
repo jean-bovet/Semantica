@@ -60,8 +60,10 @@ setInterval(async () => {
       const stats = embedderPool.getStats();
       for (const stat of stats) {
         // Proactive restart if processed too many files or using too much memory
-        const shouldRestart = stat.filesProcessed > 100 || 
-                            stat.memoryUsage > 400 * 1024 * 1024; // 400MB
+        // Only restart if we've actually processed some files (avoid restart loop at startup)
+        const shouldRestart = stat.filesProcessed > 0 && (
+                            stat.filesProcessed > 200 || 
+                            stat.memoryUsage > 800 * 1024 * 1024); // 800MB
         
         if (shouldRestart) {
           console.log(`[MEMORY] ♾️ Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
