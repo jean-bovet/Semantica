@@ -1,0 +1,27 @@
+version: 1.0.2
+files:
+  - url: Semantica-1.0.2-arm64-mac.zip
+    sha512: Xi+Vnza2bfBYCpTzhMX8HO7sSyo5JfBi17aPIXWLhlgawq3P3ec6FxooSW51jvGyPKSVHAVFXNrpNXzDtaWCXw==
+    size: 22
+  - url: Semantica-1.0.2-arm64.dmg
+    sha512: ABC123FAKE_HASH_FOR_TESTING
+    size: 100000000
+  - url: Semantica-1.0.2.dmg
+    sha512: DEF456FAKE_HASH_FOR_TESTING
+    size: 100000000
+path: Semantica-1.0.2-arm64-mac.zip
+sha512: Xi+Vnza2bfBYCpTzhMX8HO7sSyo5JfBi17aPIXWLhlgawq3P3ec6FxooSW51jvGyPKSVHAVFXNrpNXzDtaWCXw==
+releaseDate: '2025-09-02T10:00:00.000Z'
+releaseName: 'Version 1.0.2'
+releaseNotes: |
+  ## What's New in 1.0.2
+  
+  ### Bug Fixes
+  - Fixed memory leak in embedder process
+  - Improved text encoding detection
+  
+  ### Performance Improvements
+  - 4x faster embedding generation
+  - Reduced memory usage by 30%
+  
+  This is a test update for local development.
