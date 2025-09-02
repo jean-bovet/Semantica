@@ -95,6 +95,7 @@ function SearchView() {
             }}
             placeholder="Search your documents..."
             className="search-input"
+            data-testid="search-input"
           />
           <button type="submit" className="search-button" disabled={loading}>
             {loading ? 'Searching...' : 'Search'}

@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+import { StartupCoordinator } from './startup/StartupCoordinator';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -25,19 +26,22 @@ const crashDumpDir = app.getPath('crashDumps');
 console.log('Crash dumps will be saved to:', crashDumpDir);
 fs.mkdirSync(crashDumpDir, { recursive: true });
 
-// Ensure single instance
-const gotTheLock = app.requestSingleInstanceLock();
-
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    // Someone tried to run a second instance, focus our window instead
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
+// Ensure single instance (unless disabled for testing)
+let gotTheLock = true;
+if (!process.env.ELECTRON_DISABLE_SINGLETON) {
+  gotTheLock = app.requestSingleInstanceLock();
+  
+  if (!gotTheLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      // Someone tried to run a second instance, focus our window instead
+      if (win) {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+      }
+    });
+  }
 }
 
 let worker: Worker | null = null;
@@ -186,14 +190,7 @@ if (gotTheLock) {
   
   mainWindow = win;
   
-  // Load window content immediately so UI shows up right away
   const isDev = process.env.NODE_ENV !== 'production';
-  
-  if (isDev) {
-    win.loadURL('http://localhost:5173');
-  } else {
-    win.loadFile(path.join(__dirname, 'index.html'));
-  }
   
   // Configure auto-updater logging
   autoUpdater.logger = log;
@@ -234,6 +231,48 @@ if (gotTheLock) {
   
   // Spawn worker asynchronously (don't block on it)
   spawnWorker();
+  
+  // Use StartupCoordinator to manage the startup sequence
+  const coordinator = new StartupCoordinator(
+    {
+      waitForWorker: () => waitForWorker(),
+      waitForModel: () => sendToWorker('checkModel'),
+      waitForFiles: () => new Promise<void>(resolve => {
+        const handler = () => {
+          win?.webContents.off('ipc-message', checkFilesLoaded);
+          resolve();
+        };
+        const checkFilesLoaded = (_: any, channel: string) => {
+          if (channel === 'files:loaded') handler();
+        };
+        win?.webContents.on('ipc-message', checkFilesLoaded);
+        // Also check if files:loaded was already sent
+        if (worker && workerReady) {
+          sendToWorker('progress').then((progress: any) => {
+            if (progress.initialized) handler();
+          });
+        }
+      }),
+      waitForStats: () => sendToWorker('stats')
+    },
+    {
+      showWindow: () => {
+        if (isDev) {
+          win?.loadURL('http://localhost:5173');
+        } else {
+          win?.loadFile(path.join(__dirname, 'index.html'));
+        }
+      },
+      notifyFilesLoaded: () => win?.webContents.send('files:loaded'),
+      notifyReady: () => win?.webContents.send('app:ready'),
+      notifyError: (err) => win?.webContents.send('startup:error', err)
+    }
+  );
+  
+  // Start the coordinated startup
+  coordinator.coordinate().catch(err => {
+    console.error('Startup coordination failed:', err);
+  });
   
   // Register all IPC handlers
   ipcMain.handle('model:check', async () => {

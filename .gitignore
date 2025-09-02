@@ -31,3 +31,8 @@ resources/models/*/
 data/
 logs/
 .claude/settings.local.json
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+playwright/.cache/

@@ -130,7 +130,7 @@ function App() {
   
   return (
     <SearchProvider>
-      <div className="app">
+      <div className="app" data-testid="app-ready">
         <div className="main-content">
           <SearchView />
         </div>
@@ -156,7 +156,7 @@ function App() {
         
         {/* Simple loading overlay */}
         {(checkingModel || downloadingModel || !modelReady || !filesLoaded) && (
-          <div style={{
+          <div data-testid="loading-indicator" style={{
             position: 'fixed',
             top: 0,
             left: 0,
@@ -227,7 +227,7 @@ function App() {
                   </p>
                 </div>
               ) : modelError ? (
-                <div style={{ 
+                <div data-testid="startup-error" style={{ 
                   backgroundColor: '#1F2937',
                   padding: 24,
                   borderRadius: 12,

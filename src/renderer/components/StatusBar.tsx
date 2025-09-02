@@ -48,7 +48,7 @@ function StatusBar({ progress, onSettingsClick, onFileSearchClick }: StatusBarPr
   const folderCount = stats.folderStats?.length || 0;
   
   return (
-    <div className={`status-bar ${isActive ? 'active' : ''}`}>
+    <div className={`status-bar ${isActive ? 'active' : ''}`} data-testid="status-bar">
       <div className="status-content">
         <div className="status-left">
           <span className="status-stat">📁 {folderCount} folder{folderCount !== 1 ? 's' : ''}</span>
