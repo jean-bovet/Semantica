@@ -62,6 +62,9 @@ const api = {
     openPath: (path: string) =>
       ipcRenderer.invoke('system:openPath', path),
     
+    openExternal: (url: string) =>
+      ipcRenderer.invoke('system:openExternal', url),
+    
     openPreview: (path: string, page?: number) =>
       ipcRenderer.invoke('system:openPreview', path, page),
     

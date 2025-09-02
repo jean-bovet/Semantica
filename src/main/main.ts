@@ -303,6 +303,10 @@ if (gotTheLock) {
     shell.showItemInFolder(filePath);
   });
   
+  ipcMain.handle('system:openExternal', async (_, url: string) => {
+    shell.openExternal(url);
+  });
+  
   ipcMain.handle('system:openPreview', async (_, filePath: string) => {
     shell.openPath(filePath);
   });

@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import MultiSelectDropdown from './MultiSelectDropdown';
-import { PARSER_INFO, getFileTypeOptions, ParserKey } from '../../shared/parserRegistry';
+import { PARSER_INFO, ParserKey } from '../../shared/parserRegistry';
+import SettingsSidebar, { SettingsSection } from './settings/SettingsSidebar';
+import FoldersSettings from './settings/FoldersSettings';
+import FileTypesSettings from './settings/FileTypesSettings';
+import IndexingSettings from './settings/IndexingSettings';
+import UpdatesSettings from './settings/UpdatesSettings';
+import AboutSettings from './settings/AboutSettings';
 import './SettingsView.css';
 
 function SettingsView() {
+  const [activeSection, setActiveSection] = useState<SettingsSection>('folders');
   const [folders, setFolders] = useState<string[]>([]);
   const [stats, setStats] = useState({ 
     totalChunks: 0, 
     indexedFiles: 0,
     folderStats: [] as Array<{ folder: string; totalFiles: number; indexedFiles: number }>
   });
-  // Initialize file types from registry
   const [fileTypes, setFileTypes] = useState<Record<ParserKey, boolean>>(
     Object.keys(PARSER_INFO).reduce((acc, key) => {
       acc[key as ParserKey] = PARSER_INFO[key as ParserKey].enabledByDefault;
@@ -107,29 +112,31 @@ function SettingsView() {
     if (selectedFolders.length > 0) {
       const newFolders = [...new Set([...folders, ...selectedFolders])];
       setFolders(newFolders);
-      // Config is persisted by the worker
+      
+      // Start watching the new folders
       await window.api.indexer.watchStart(newFolders);
-      setTimeout(loadStats, 2000);
+      
+      // Wait a bit for the worker to process the change
+      setTimeout(loadStats, 1000);
     }
   };
   
-  const handleRemoveFolder = async (folder: string) => {
-    // Get folder stats to show in confirmation
-    const folderStat = stats.folderStats?.find(s => s.folder === folder);
-    const fileCount = folderStat ? folderStat.indexedFiles : 0;
-    
+  const handleRemoveFolder = async (folderToRemove: string) => {
     const confirmed = await window.api.dialog.confirm(
       'Remove Folder',
-      `Are you sure you want to remove "${folder}" from indexing?\n\nThis will permanently delete ${fileCount.toLocaleString()} indexed file${fileCount !== 1 ? 's' : ''} from this folder. This action cannot be undone.`
+      `Are you sure you want to remove "${folderToRemove}" from indexing? This will delete all indexed data for this folder.`
     );
     
     if (!confirmed) return;
     
-    const newFolders = folders.filter(f => f !== folder);
+    const newFolders = folders.filter(f => f !== folderToRemove);
     setFolders(newFolders);
-    // Config is persisted by the worker  
+    
+    // Update the worker's watched folders
     await window.api.indexer.watchStart(newFolders);
-    setTimeout(loadStats, 2000);
+    
+    // Wait a bit for the worker to process the change
+    setTimeout(loadStats, 1000);
   };
   
   const handlePauseResume = async () => {
@@ -138,17 +145,12 @@ function SettingsView() {
     } else {
       await window.api.indexer.pause();
     }
-    // Update progress state immediately after action
-    const newProgress = await window.api.indexer.progress();
-    setProgress(newProgress);
   };
   
   const handleReindex = async () => {
-    if (reindexing) return;
-    
     const confirmed = await window.api.dialog.confirm(
       'Re-index All Documents',
-      'This will delete the current index and re-index all documents with the new multilingual model. This process may take some time depending on the number of files. Continue?'
+      'This will clear all existing indexes and re-process all documents. This may take some time depending on the number of files. Continue?'
     );
     
     if (!confirmed) return;
@@ -165,13 +167,6 @@ function SettingsView() {
       await window.api.dialog.error('Re-indexing Failed', 'An error occurred while re-indexing. Please try again.');
     }
   };
-  
-  // Generate file type options from registry
-  const fileTypeOptions = getFileTypeOptions();
-
-  const selectedFileTypes = Object.entries(fileTypes)
-    .filter(([_, enabled]) => enabled)
-    .map(([type]) => type);
 
   const handleFileTypesChange = async (selected: string[]) => {
     // Generate file types object from selected array
@@ -209,93 +204,63 @@ function SettingsView() {
     }
   };
 
-  return (
-    <div className="settings-view">
-      <div className="settings-group">
-        <h3 className="settings-subtitle">Indexed Folders</h3>
-        <div className="folder-list compact">
-          {folders.map(folder => {
-            const folderStat = stats.folderStats?.find(s => s.folder === folder);
-            return (
-              <div key={folder} className="folder-item compact">
-                <span className="folder-path">{folder}</span>
-                <span className="folder-stats">
-                  {folderStat ? `${folderStat.indexedFiles} / ${folderStat.totalFiles} files` : 'Loading...'}
-                </span>
-                <button 
-                  onClick={() => handleRemoveFolder(folder)}
-                  className="remove-button compact"
-                  title="Remove folder"
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
-          {folders.length === 0 && (
-            <p className="empty-state">No folders indexed yet</p>
-          )}
-        </div>
-        <button onClick={handleAddFolders} className="add-folder-button compact">
-          + Add Folders
-        </button>
-      </div>
-      
-      <div className="settings-group">
-        <h3 className="settings-subtitle">Configuration</h3>
-        <div className="config-row">
-          <label className="config-label">File Types:</label>
-          <MultiSelectDropdown
-            options={fileTypeOptions}
-            selected={selectedFileTypes}
-            onChange={handleFileTypesChange}
-            placeholder="Select file types"
+  const handleOpenDataPath = () => {
+    window.api.system.openPath(dataPath);
+  };
+
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'folders':
+        return (
+          <FoldersSettings
+            folders={folders}
+            folderStats={stats.folderStats}
+            onAddFolders={handleAddFolders}
+            onRemoveFolder={handleRemoveFolder}
           />
-        </div>
-      </div>
-      
-      <div className="settings-group">
-        <h3 className="settings-subtitle">Statistics</h3>
-        <div className="stats-container">
-          <div className="stats-line">
-            <span>{stats.indexedFiles.toLocaleString()} files indexed</span>
-            <span className="stats-separator">|</span>
-            <span>{stats.totalChunks.toLocaleString()} chunks</span>
-          </div>
-          <div className="stats-path-row">
-            <span className="stats-path">{dataPath}</span>
-            <button 
-              className="reveal-button"
-              onClick={() => window.api.system.openPath(dataPath)}
-              title="Reveal in Finder"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1 3.5C1 2.67 1.67 2 2.5 2h4.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 0010.621 4H13.5c.83 0 1.5.67 1.5 1.5v7c0 .83-.67 1.5-1.5 1.5h-11c-.83 0-1.5-.67-1.5-1.5v-9z"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      <div className="settings-actions">
-        <button 
-          onClick={handlePauseResume} 
-          className={`action-button ${progress?.paused ? 'paused' : ''}`}
-        >
-          {progress?.paused ? 'Resume Indexing' : 'Pause Indexing'}
-        </button>
-        <button onClick={handleReindex} className="action-button" disabled={reindexing}>
-          {reindexing ? 'Re-indexing...' : 'Re-index All Documents'}
-        </button>
-        <button onClick={handleCheckForUpdates} className="action-button" disabled={checkingUpdate}>
-          {checkingUpdate ? 'Checking...' : 'Check for Updates'}
-        </button>
-      </div>
-      
-      <div className="privacy-footer">
-        <span>🔒 All processing happens locally</span>
-        {appVersion && <span className="stats-separator">|</span>}
-        {appVersion && <span>Version {appVersion}</span>}
+        );
+      case 'filetypes':
+        return (
+          <FileTypesSettings
+            fileTypes={fileTypes}
+            onFileTypesChange={handleFileTypesChange}
+          />
+        );
+      case 'indexing':
+        return (
+          <IndexingSettings
+            stats={stats}
+            progress={progress}
+            reindexing={reindexing}
+            dataPath={dataPath}
+            onPauseResume={handlePauseResume}
+            onReindex={handleReindex}
+            onOpenDataPath={handleOpenDataPath}
+          />
+        );
+      case 'updates':
+        return (
+          <UpdatesSettings
+            appVersion={appVersion}
+            checkingUpdate={checkingUpdate}
+            onCheckForUpdates={handleCheckForUpdates}
+          />
+        );
+      case 'about':
+        return <AboutSettings appVersion={appVersion} />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="settings-container">
+      <SettingsSidebar 
+        activeSection={activeSection} 
+        onSectionChange={setActiveSection} 
+      />
+      <div className="settings-content">
+        {renderSection()}
       </div>
     </div>
   );
