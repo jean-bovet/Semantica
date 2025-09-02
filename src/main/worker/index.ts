@@ -141,6 +141,11 @@ interface FolderStats {
 }
 const folderStats = new Map<string, FolderStats>();
 
+// Track if we've sent the files:loaded message
+declare global {
+  var filesLoadedSent: boolean | undefined;
+}
+
 // Helper function to check if model exists (use new implementation)
 function checkModelExists(userDataPath: string): boolean {
   return checkModelExistsNew(userDataPath);
@@ -288,20 +293,8 @@ async function initDB(dir: string, _userDataPath: string) {
     if (savedFolders.length > 0) {
       console.log('Auto-starting watch on saved folders:', savedFolders);
       await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
-      
-      // Initialize indexed counts for each folder
-      for (const folder of savedFolders) {
-        const stats = folderStats.get(folder);
-        if (stats) {
-          let indexedInFolder = 0;
-          for (const [path] of fileHashes) {
-            if (path.startsWith(folder)) {
-              indexedInFolder++;
-            }
-          }
-          stats.indexed = indexedInFolder;
-        }
-      }
+    } else {
+      console.log('No saved folders to watch');
     }
     
     // Setup profiling if enabled
@@ -1109,6 +1102,24 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
       console.log('No new or modified files found');
     }
     console.log('Total queue size after scan:', fileQueue.getStats().queued);
+    
+    // Initialize indexed counts for each folder after scan
+    for (const [folder, stats] of folderStats) {
+      let indexedInFolder = 0;
+      for (const [path] of fileHashes) {
+        if (path.startsWith(folder)) {
+          indexedInFolder++;
+        }
+      }
+      stats.indexed = indexedInFolder;
+    }
+    
+    // Notify that database initialization and folder scanning is complete
+    // This is sent only once during initial startup, not on subsequent folder changes
+    if (!global.filesLoadedSent) {
+      parentPort!.postMessage({ type: 'files:loaded' });
+      global.filesLoadedSent = true;
+    }
   })(); // Execute immediately, not after delay
 
   watcher.on('add', async (p: string) => {

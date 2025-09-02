@@ -31,7 +31,16 @@ function StatusBar({ progress, onSettingsClick, onFileSearchClick }: StatusBarPr
     loadStats();
     const interval = setInterval(loadStats, 5000);
     
-    return () => clearInterval(interval);
+    // Also refresh when files are loaded
+    const handleFilesLoaded = () => {
+      loadStats();
+    };
+    window.api.on('files:loaded', handleFilesLoaded);
+    
+    return () => {
+      clearInterval(interval);
+      window.api.off('files:loaded', handleFilesLoaded);
+    };
   }, []);
 
   const statusText = getStatusText(progress);

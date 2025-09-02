@@ -67,6 +67,9 @@ function spawnWorker() {
       if (msg.payload.ready) {
         win?.webContents.send('model:download:complete');
       }
+    } else if (msg.type === 'files:loaded') {
+      // Existing files have been loaded from database
+      win?.webContents.send('files:loaded');
     } else if (msg.type === 'progress') {
       win?.webContents.send('indexer:progress', { ...msg.payload, initialized: true });
     } else if (msg.type === 'model:check:result') {
@@ -188,7 +191,6 @@ if (gotTheLock) {
   
   if (isDev) {
     win.loadURL('http://localhost:5173');
-    // Developer tools disabled by default, can be opened with Cmd+Opt+I
   } else {
     win.loadFile(path.join(__dirname, 'index.html'));
   }
@@ -315,6 +317,14 @@ if (gotTheLock) {
   });
   
   ipcMain.handle('db:stats', async () => {
+    // Return default stats if worker isn't ready yet
+    if (!workerReady) {
+      return {
+        totalChunks: 0,
+        indexedFiles: 0,
+        folderStats: []
+      };
+    }
     return sendToWorker('stats');
   });
   

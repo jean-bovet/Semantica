@@ -16,6 +16,7 @@ declare global {
 
 function App() {
   const [modelReady, setModelReady] = useState(false);
+  const [filesLoaded, setFilesLoaded] = useState(false);
   const [checkingModel, setCheckingModel] = useState(true);
   const [downloadingModel, setDownloadingModel] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -97,6 +98,20 @@ function App() {
     initModel();
   }, []);
   
+  // Listen for files loaded event
+  useEffect(() => {
+    const handleFilesLoaded = () => {
+      setFilesLoaded(true);
+    };
+    
+    window.api.on('files:loaded', handleFilesLoaded);
+    
+    return () => {
+      window.api.off('files:loaded', handleFilesLoaded);
+    };
+  }, []);
+  
+  
   useEffect(() => {
     const unsubscribe = window.api.indexer.onProgress((progress) => {
       setIndexProgress(normalizeProgress(progress));
@@ -140,7 +155,7 @@ function App() {
         />
         
         {/* Simple loading overlay */}
-        {(checkingModel || downloadingModel || !modelReady) && (
+        {(checkingModel || downloadingModel || !modelReady || !filesLoaded) && (
           <div style={{
             position: 'fixed',
             top: 0,
@@ -165,7 +180,9 @@ function App() {
                     animation: 'spin 1s linear infinite',
                     margin: '0 auto 16px'
                   }} />
-                  <p style={{ color: '#9CA3AF', fontSize: 14 }}>Loading...</p>
+                  <p style={{ color: '#9CA3AF', fontSize: 14 }}>
+                    {!modelReady ? 'Loading...' : 'Initializing database...'}
+                  </p>
                 </>
               ) : downloadingModel ? (
                 <div style={{ 
