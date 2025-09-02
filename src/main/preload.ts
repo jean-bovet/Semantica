@@ -83,6 +83,11 @@ const api = {
     download: () => ipcRenderer.invoke('model:download')
   },
   
+  updater: {
+    checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+    getVersion: () => ipcRenderer.invoke('updater:version')
+  },
+  
   on: (channel: string, callback: (event: any, ...args: any[]) => void) => {
     ipcRenderer.on(channel, callback);
   },

@@ -188,16 +188,37 @@ if (gotTheLock) {
   (autoUpdater.logger as any).transports.file.level = 'info';
   log.info('App starting...');
   
-  // Initialize auto-updater after a short delay
-  setTimeout(() => {
-    log.info('Checking for updates...');
-    autoUpdater.checkForUpdatesAndNotify();
-  }, 5000); // 5 second delay to let app fully load
+  // Force update checking in dev mode if UPDATE_URL is set
+  const updateUrl = process.env.UPDATE_URL || process.env.ELECTRON_UPDATER_URL;
+  if (updateUrl) {
+    log.info(`Using custom update URL: ${updateUrl}`);
+    autoUpdater.forceDevUpdateConfig = true; // Force update checking in dev mode
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: updateUrl
+    });
+  }
   
-  // Check for updates every 30 minutes
-  setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify();
-  }, 30 * 60 * 1000);
+  
+  // Handle update downloaded event - prompt for restart
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('Update downloaded:', info);
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Update Ready',
+      message: `Version ${info.version} has been downloaded. The application will restart to apply the update.`,
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+  
+  autoUpdater.on('error', (error) => {
+    log.error('Update error:', error);
+  });
   
   // Spawn worker and wait for it to be ready before setting up IPC handlers
   spawnWorker();
@@ -216,6 +237,24 @@ if (gotTheLock) {
   
   ipcMain.handle('model:download', async () => {
     return sendToWorker('downloadModel');
+  });
+  
+  ipcMain.handle('updater:check', async () => {
+    log.info('Manual update check triggered from settings');
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      if (result) {
+        return { available: true, version: result.updateInfo.version };
+      }
+      return { available: false };
+    } catch (error) {
+      log.error('Update check failed:', error);
+      throw error;
+    }
+  });
+  
+  ipcMain.handle('updater:version', async () => {
+    return app.getVersion();
   });
   
   ipcMain.handle('dialog:selectFolders', async () => {

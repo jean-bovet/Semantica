@@ -20,6 +20,8 @@ function SettingsView() {
   const [reindexing, setReindexing] = useState(false);
   const [progress, setProgress] = useState<any>(null);
   const [dataPath, setDataPath] = useState<string>('');
+  const [appVersion, setAppVersion] = useState<string>('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   
   useEffect(() => {
     // Set up periodic stats refresh
@@ -71,6 +73,11 @@ function SettingsView() {
     // Get data path
     window.api.system.getDataPath?.().then(path => {
       setDataPath(path || '~/Library/Application Support/Semantica/data/');
+    });
+    
+    // Get app version
+    window.api.updater?.getVersion?.().then(version => {
+      setAppVersion(version || '');
     });
     
     return () => {
@@ -182,6 +189,26 @@ function SettingsView() {
     }
   };
 
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    try {
+      const result = await window.api.updater?.checkForUpdates?.();
+      if (result?.available) {
+        await window.api.dialog.error('Update Available', 
+          `Version ${result.version} is available and will be downloaded in the background.`);
+      } else {
+        await window.api.dialog.error('No Updates', 
+          'You are running the latest version of Semantica.');
+      }
+    } catch (error) {
+      console.error('Update check failed:', error);
+      await window.api.dialog.error('Update Check Failed', 
+        'Failed to check for updates. Please check your internet connection and try again.');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
   return (
     <div className="settings-view">
       <div className="settings-group">
@@ -260,10 +287,15 @@ function SettingsView() {
         <button onClick={handleReindex} className="action-button" disabled={reindexing}>
           {reindexing ? 'Re-indexing...' : 'Re-index All Documents'}
         </button>
+        <button onClick={handleCheckForUpdates} className="action-button" disabled={checkingUpdate}>
+          {checkingUpdate ? 'Checking...' : 'Check for Updates'}
+        </button>
       </div>
       
       <div className="privacy-footer">
         <span>🔒 All processing happens locally</span>
+        {appVersion && <span className="stats-separator">|</span>}
+        {appVersion && <span>Version {appVersion}</span>}
       </div>
     </div>
   );
