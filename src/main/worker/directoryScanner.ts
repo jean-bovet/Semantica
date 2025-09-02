@@ -96,7 +96,7 @@ export function scanDirectory(rootDir: string, options: ScanOptions): ScanResult
           // Check if this directory is a bundle before recursing
           if (options.excludeBundles && isBundle(entry.name, bundleExtensions)) {
             result.skippedBundles.push(fullPath);
-            console.log(`[SCAN] 📦 Skipping bundle directory: ${fullPath}`);
+            // Skip bundle directory silently
             continue; // Skip this entire directory tree
           }
           
