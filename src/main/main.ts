@@ -163,7 +163,7 @@ if (gotTheLock) {
       applicationVersion: app.getVersion(),
       copyright: 'Copyright © 2025 Jean Bovet',
       authors: ['Jean Bovet'],
-      website: 'https://github.com/bovet/FSS',
+      website: 'https://github.com/jean-bovet/Semantica',
       iconPath: path.join(__dirname, '../../build/icon.png')
     });
     

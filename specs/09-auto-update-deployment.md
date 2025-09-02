@@ -138,7 +138,7 @@ git push origin v1.0.1
 ```
 
 2. Create GitHub release:
-- Go to https://github.com/bovet/FSS/releases
+- Go to https://github.com/jean-bovet/Semantica/releases
 - Click "Draft a new release"
 - Select your tag
 - Upload files from `dist-app/`:

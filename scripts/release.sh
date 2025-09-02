@@ -282,7 +282,7 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║${NC}          🎉 Release ${VERSION_TAG} Completed!            ${GREEN}║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
 echo
-echo "📦 Release URL: https://github.com/bovet/FSS/releases/tag/${VERSION_TAG}"
+echo "📦 Release URL: https://github.com/jean-bovet/Semantica/releases/tag/${VERSION_TAG}"
 echo "📱 Users will receive update notifications within 30 minutes"
 echo
 echo "Next steps:"

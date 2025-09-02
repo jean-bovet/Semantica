@@ -270,11 +270,11 @@ cask "finder-semantic-search" do
   version "1.0.0"
   sha256 "..."
   
-  url "https://github.com/yourcompany/FSS/releases/download/v#{version}/Finder-Semantic-Search-#{version}-arm64.dmg"
+  url "https://github.com/jean-bovet/Semantica/releases/download/v#{version}/Semantica-#{version}-arm64.dmg"
   
   name "Semantica"
   desc "Offline semantic search for Mac"
-  homepage "https://github.com/yourcompany/FSS"
+  homepage "https://github.com/jean-bovet/Semantica"
   
   app "Semantica.app"
 end

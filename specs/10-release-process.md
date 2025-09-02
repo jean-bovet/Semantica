@@ -122,7 +122,7 @@ npm run dist:mac
 ```
 
 Then manually:
-1. Go to https://github.com/bovet/FSS/releases
+1. Go to https://github.com/jean-bovet/Semantica/releases
 2. Click "Draft a new release"
 3. Choose tag: `v1.0.1`
 4. Release title: `v1.0.1`
@@ -136,7 +136,7 @@ Then manually:
 ### Step 4: Verify Release
 
 #### 4.1 Check GitHub Release
-- Visit https://github.com/bovet/FSS/releases
+- Visit https://github.com/jean-bovet/Semantica/releases
 - Verify latest release is published
 - Confirm all 3 files are attached
 - Check file sizes are reasonable
@@ -144,7 +144,7 @@ Then manually:
 #### 4.2 Test Download
 ```bash
 # Download and verify DMG
-curl -L https://github.com/bovet/FSS/releases/latest/download/Semantica-1.0.1.dmg -o test.dmg
+curl -L https://github.com/jean-bovet/Semantica/releases/latest/download/Semantica-1.0.1.dmg -o test.dmg
 open test.dmg
 ```
 

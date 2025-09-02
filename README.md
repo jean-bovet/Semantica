@@ -160,7 +160,7 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 ## 📦 Project Structure
 
 ```
-FSS/
+Semantica/
 ├── app/
 │   ├── electron/          # Main process & worker
 │   │   ├── main.ts
