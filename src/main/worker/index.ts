@@ -14,6 +14,20 @@ import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
 
+// Load mock setup if in test mode with mocks enabled
+// This must happen before any other code that might use fetch
+if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
+  console.log('[WORKER] E2E_MOCK_DOWNLOADS is enabled, setting up mocks');
+  // Use require for synchronous loading to ensure mocks are ready before any fetch calls
+  try {
+    const { setupModelDownloadMocks } = require('./test-mocks/setupModelMocks');
+    setupModelDownloadMocks();
+    console.log('[WORKER] Model download mocks configured');
+  } catch (err) {
+    console.error('[WORKER] Failed to load mock setup:', err);
+  }
+}
+
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
 
@@ -342,6 +356,12 @@ async function initializeModel(userDataPath: string) {
       await downloadModel(userDataPath);
       modelReady = true;
       console.log('[WORKER] Model download complete');
+      
+      // In test mode with mocks, add a delay before sending complete
+      // This allows the test to see the last file name in the UI
+      if (process.env.E2E_MOCK_DOWNLOADS === 'true' && process.env.E2E_MOCK_DELAYS === 'true') {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
       
       // Send download complete notification
       if (parentPort) {

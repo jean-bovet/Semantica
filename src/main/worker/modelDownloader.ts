@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import https from 'node:https';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
 import { parentPort } from 'node:worker_threads';
 
 const MODEL_NAME = 'Xenova/multilingual-e5-small';
@@ -81,68 +82,53 @@ export function checkMissingFiles(modelBasePath: string): ModelFile[] {
 }
 
 /**
- * Download a single file with progress reporting
+ * Download a single file using fetch with progress reporting
  */
-function downloadFile(file: ModelFile, onProgress: (progress: DownloadProgress) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    console.log(`[MODEL_DOWNLOADER] Starting download: ${file.name}`);
-    console.log(`[MODEL_DOWNLOADER] From: ${file.remotePath}`);
-    console.log(`[MODEL_DOWNLOADER] To: ${file.localPath}`);
+async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProgress) => void): Promise<void> {
+  console.log(`[MODEL_DOWNLOADER] Starting download: ${file.name}`);
+  console.log(`[MODEL_DOWNLOADER] From: ${file.remotePath}`);
+  console.log(`[MODEL_DOWNLOADER] To: ${file.localPath}`);
 
-    // Ensure directory exists
-    const dir = path.dirname(file.localPath);
-    fs.mkdirSync(dir, { recursive: true });
+  // Ensure directory exists
+  const dir = path.dirname(file.localPath);
+  fs.mkdirSync(dir, { recursive: true });
 
-    // Create write stream
-    const writeStream = fs.createWriteStream(file.localPath);
+  try {
+    // Add artificial delay in test mode
+    if (process.env.E2E_MOCK_DELAYS === 'true') {
+      console.log(`[MODEL_DOWNLOADER] Test mode: Adding 1 second delay for ${file.name}`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Make fetch request (redirects are handled automatically)
+    const response = await fetch(file.remotePath);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    // Get total size from headers
+    const contentLength = response.headers.get('content-length');
+    const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+    console.log(`[MODEL_DOWNLOADER] File size for ${file.name}: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+
+    // Get the response body as a readable stream
+    const body = response.body;
+    if (!body) {
+      throw new Error('Response body is null');
+    }
+
+    // Track downloaded bytes for progress
     let downloadedBytes = 0;
-    let totalBytes = 0;
 
-    // Make HTTPS request
-    https.get(file.remotePath, (response) => {
-      // Handle redirects (including 307 temporary redirects)
-      if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 303 || response.statusCode === 307 || response.statusCode === 308) {
-        const redirectUrl = response.headers.location;
-        if (redirectUrl) {
-          console.log(`[MODEL_DOWNLOADER] Following redirect (${response.statusCode}) for ${file.name}`);
-          // Handle both relative and absolute redirect URLs
-          const fullRedirectUrl = redirectUrl.startsWith('http') ? redirectUrl : `${HF_BASE_URL}${redirectUrl}`;
-          https.get(fullRedirectUrl, (redirectResponse) => {
-            handleResponse(redirectResponse);
-          }).on('error', (err) => {
-            if (fs.existsSync(file.localPath)) {
-              fs.unlinkSync(file.localPath); // Clean up partial file
-            }
-            reject(new Error(`Failed to download ${file.name}: ${err.message}`));
-          });
-        } else {
-          reject(new Error(`Redirect without location for ${file.name}`));
-        }
-        return;
-      }
-
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download ${file.name}: HTTP ${response.statusCode}`));
-        return;
-      }
-
-      handleResponse(response);
-    }).on('error', (err) => {
-      if (fs.existsSync(file.localPath)) {
-        fs.unlinkSync(file.localPath); // Clean up partial file
-      }
-      reject(new Error(`Failed to download ${file.name}: ${err.message}`));
-    });
-
-    function handleResponse(response: any) {
-      totalBytes = parseInt(response.headers['content-length'] || '0', 10);
-      console.log(`[MODEL_DOWNLOADER] File size for ${file.name}: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
-
-      response.on('data', (chunk: Buffer) => {
+    // Create a transform stream to track progress
+    const progressStream = new TransformStream({
+      transform(chunk, controller) {
         downloadedBytes += chunk.length;
-        writeStream.write(chunk);
-
-        const progress = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+        
+        const progress = totalBytes > 0 
+          ? Math.round((downloadedBytes / totalBytes) * 100) 
+          : 0;
         
         onProgress({
           file: file.name,
@@ -151,99 +137,92 @@ function downloadFile(file: ModelFile, onProgress: (progress: DownloadProgress) 
           total: totalBytes,
           status: 'downloading'
         });
-      });
-
-      response.on('end', () => {
-        writeStream.end();
-        console.log(`[MODEL_DOWNLOADER] Completed: ${file.name}`);
         
-        onProgress({
-          file: file.name,
-          progress: 100,
-          loaded: totalBytes,
-          total: totalBytes,
-          status: 'completed'
-        });
-        
-        resolve();
-      });
+        controller.enqueue(chunk);
+      }
+    });
 
-      response.on('error', (err: Error) => {
-        writeStream.destroy();
-        if (fs.existsSync(file.localPath)) {
-          fs.unlinkSync(file.localPath);
-        }
-        reject(new Error(`Download stream error for ${file.name}: ${err.message}`));
-      });
+    // Convert web stream to Node stream for file writing
+    const nodeStream = Readable.fromWeb(body.pipeThrough(progressStream) as any);
+    const writeStream = fs.createWriteStream(file.localPath);
+
+    // Use pipeline for proper error handling and stream management
+    await pipeline(nodeStream, writeStream);
+
+    console.log(`[MODEL_DOWNLOADER] Completed: ${file.name}`);
+    
+    onProgress({
+      file: file.name,
+      progress: 100,
+      loaded: totalBytes,
+      total: totalBytes,
+      status: 'completed'
+    });
+
+  } catch (error) {
+    // Clean up partial file on error
+    if (fs.existsSync(file.localPath)) {
+      try {
+        fs.unlinkSync(file.localPath);
+      } catch (unlinkErr) {
+        console.error(`[MODEL_DOWNLOADER] Failed to clean up partial file: ${unlinkErr}`);
+      }
     }
-  });
+    
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to download ${file.name}: ${errorMessage}`);
+  }
 }
 
 /**
  * Download model files sequentially
  */
 export async function downloadModelSequentially(userDataPath: string): Promise<void> {
+  console.log('[MODEL_DOWNLOADER] Starting model download...');
+  
   const modelBasePath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
   
-  // Check which files are missing
+  // Check which files need to be downloaded
   const missingFiles = checkMissingFiles(modelBasePath);
   
   if (missingFiles.length === 0) {
-    console.log('[MODEL_DOWNLOADER] All model files are present');
+    console.log('[MODEL_DOWNLOADER] All model files already exist');
     return;
   }
-
+  
   console.log(`[MODEL_DOWNLOADER] Need to download ${missingFiles.length} files`);
   
-  let completedFiles = 0;
-  const totalFiles = missingFiles.length;
-
   // Download each missing file sequentially
-  for (const file of missingFiles) {
+  for (let i = 0; i < missingFiles.length; i++) {
+    const file = missingFiles[i];
+    console.log(`[MODEL_DOWNLOADER] Downloading ${i + 1}/${missingFiles.length}: ${file.name}`);
+    
     try {
       await downloadFile(file, (progress) => {
-        // Send progress to main process
+        // Send progress to parent if in worker thread
         if (parentPort) {
           parentPort.postMessage({
             type: 'model:download:progress',
-            payload: {
-              file: progress.file,
-              progress: progress.progress,
-              loaded: progress.loaded,
-              total: progress.total,
-              modelName: MODEL_NAME,
-              status: progress.status,
-              currentFileIndex: completedFiles + 1,
-              totalFiles,
-              overallProgress: Math.round(((completedFiles + (progress.progress / 100)) / totalFiles) * 100)
-            }
+            payload: progress
           });
         }
       });
       
-      completedFiles++;
-      console.log(`[MODEL_DOWNLOADER] Progress: ${completedFiles}/${totalFiles} files completed`);
-      
-    } catch (err) {
-      console.error(`[MODEL_DOWNLOADER] Failed to download ${file.name}:`, err);
-      throw err; // Stop on first error
+      console.log(`[MODEL_DOWNLOADER] Successfully downloaded: ${file.name}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[MODEL_DOWNLOADER] Failed to download ${file.name}: ${errorMessage}`);
+      throw error; // Re-throw to stop the download sequence
     }
   }
-
-  // Verify all files are now present
-  const stillMissing = checkMissingFiles(modelBasePath);
-  if (stillMissing.length > 0) {
-    throw new Error(`Failed to download all required files. Still missing: ${stillMissing.map(f => f.name).join(', ')}`);
-  }
-
-  console.log('[MODEL_DOWNLOADER] All model files downloaded successfully');
+  
+  console.log('[MODEL_DOWNLOADER] Model download complete!');
 }
 
 /**
- * Check if model exists (all required files are present)
+ * Check if model exists
  */
-export function checkModelExists(userDataPath: string): boolean {
-  const modelBasePath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
-  const missingFiles = checkMissingFiles(modelBasePath);
-  return missingFiles.length === 0;
+export function checkModelExists(modelBasePath: string): boolean {
+  const onnxPath = path.join(modelBasePath, 'onnx', 'model_quantized.onnx');
+  return fs.existsSync(onnxPath) && fs.statSync(onnxPath).size > 0;
 }

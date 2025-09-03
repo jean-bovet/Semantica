@@ -44,6 +44,9 @@ test.describe('Model Download', () => {
         // Override all possible model paths to point to our clean directory
         USER_DATA_PATH: testDir,
         TRANSFORMERS_CACHE: path.join(testDir, 'models'),
+        // Enable mocks for deterministic testing with delays
+        E2E_MOCK_DOWNLOADS: 'true',
+        E2E_MOCK_DELAYS: 'true',
         // Clear any default paths
         HOME: testDir,
         APPDATA: testDir,
@@ -57,7 +60,7 @@ test.describe('Model Download', () => {
       
       // The app should detect no model and show download dialog
       const downloadDialog = window.locator('text=Downloading AI Model');
-      await expect(downloadDialog).toBeVisible({ timeout: 15000 });
+      await expect(downloadDialog).toBeVisible({ timeout: 10000 });
       console.log('[TEST] Download dialog appeared');
       
       // Check for progress bar
@@ -65,11 +68,32 @@ test.describe('Model Download', () => {
       await expect(progressBar).toBeVisible();
       console.log('[TEST] Progress bar visible');
       
-      // Since actual download would take too long, we'll just verify the UI appears
-      // In real scenario, you'd want to mock the network requests here
+      // Check that files are shown downloading sequentially
+      // Simply look for the text content directly
       
-      // For now, just close the app after verifying download started
-      await window.waitForTimeout(2000);
+      // Explicitly await each file one by one
+      console.log('[TEST] Waiting for config.json');
+      await expect(window.locator('text=config.json')).toBeVisible({ timeout: 10000 });
+      console.log('[TEST] ✓ Saw config.json');
+      
+      console.log('[TEST] Waiting for tokenizer_config.json');
+      await expect(window.locator('text=tokenizer_config.json')).toBeVisible({ timeout: 10000 });
+      console.log('[TEST] ✓ Saw tokenizer_config.json');
+      
+      console.log('[TEST] Waiting for tokenizer.json');
+      await expect(window.locator('text=tokenizer.json')).toBeVisible({ timeout: 10000 });
+      console.log('[TEST] ✓ Saw tokenizer.json');
+      
+      console.log('[TEST] Waiting for special_tokens_map.json');
+      await expect(window.locator('text=special_tokens_map.json')).toBeVisible({ timeout: 10000 });
+      console.log('[TEST] ✓ Saw special_tokens_map.json');
+      
+      console.log('[TEST] Waiting for model_quantized.onnx');
+      await expect(window.locator('text=model_quantized.onnx')).toBeVisible({ timeout: 15000 });
+      console.log('[TEST] ✓ Saw model_quantized.onnx');
+      
+      console.log('[TEST] All files appeared in sequence');
+      
       console.log('[TEST] Download UI verified');
       
     } finally {
@@ -132,7 +156,7 @@ test.describe('Model Download', () => {
       // The app should eventually be ready (might show "Loading..." briefly)
       // Look for the search input as indicator app is ready
       const searchInput = window.locator('input[type="text"]');
-      await expect(searchInput).toBeVisible({ timeout: 15000 });
+      await expect(searchInput).toBeVisible({ timeout: 10000 });
       console.log('[TEST] App ready without download');
       
     } finally {
@@ -170,7 +194,7 @@ test.describe('Model Download', () => {
       
       // Should show download dialog since model is incomplete
       const downloadDialog = window.locator('text=Downloading AI Model');
-      await expect(downloadDialog).toBeVisible({ timeout: 15000 });
+      await expect(downloadDialog).toBeVisible({ timeout: 10000 });
       console.log('[TEST] Download dialog appeared for incomplete model');
       
     } finally {
