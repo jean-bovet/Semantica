@@ -18,7 +18,6 @@ test.describe('Model Download', () => {
     }
     fs.mkdirSync(testDir, { recursive: true });
     
-    console.log('[TEST] Using clean test directory:', testDir);
   });
 
   test.afterEach(async () => {
@@ -26,9 +25,7 @@ test.describe('Model Download', () => {
     if (fs.existsSync(testDir)) {
       try {
         fs.rmSync(testDir, { recursive: true, force: true });
-        console.log('[TEST] Cleaned up test directory:', testDir);
       } catch (err) {
-        console.warn('[TEST] Failed to clean up test directory:', err);
       }
     }
   });
@@ -56,46 +53,24 @@ test.describe('Model Download', () => {
     
     try {
       const window = await app.firstWindow();
-      console.log('[TEST] Window opened');
       
       // The app should detect no model and show download dialog
       const downloadDialog = window.locator('text=Downloading AI Model');
       await expect(downloadDialog).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] Download dialog appeared');
       
       // Check for progress bar
       const progressBar = window.locator('div[style*="transition: width"]');
       await expect(progressBar).toBeVisible();
-      console.log('[TEST] Progress bar visible');
       
       // Check that files are shown downloading sequentially
       // Simply look for the text content directly
       
       // Explicitly await each file one by one
-      console.log('[TEST] Waiting for config.json');
       await expect(window.locator('text=config.json')).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] ✓ Saw config.json');
-      
-      console.log('[TEST] Waiting for tokenizer_config.json');
       await expect(window.locator('text=tokenizer_config.json')).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] ✓ Saw tokenizer_config.json');
-      
-      console.log('[TEST] Waiting for tokenizer.json');
       await expect(window.locator('text=tokenizer.json')).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] ✓ Saw tokenizer.json');
-      
-      console.log('[TEST] Waiting for special_tokens_map.json');
       await expect(window.locator('text=special_tokens_map.json')).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] ✓ Saw special_tokens_map.json');
-      
-      console.log('[TEST] Waiting for model_quantized.onnx');
       await expect(window.locator('text=model_quantized.onnx')).toBeVisible({ timeout: 15000 });
-      console.log('[TEST] ✓ Saw model_quantized.onnx');
-      
-      console.log('[TEST] All files appeared in sequence');
-      
-      console.log('[TEST] Download UI verified');
-      
     } finally {
       await app.close();
     }
@@ -121,7 +96,6 @@ test.describe('Model Download', () => {
     for (const [filePath, content] of Object.entries(mockFiles)) {
       const fullPath = path.join(modelDir, filePath);
       fs.writeFileSync(fullPath, content);
-      console.log('[TEST] Created mock file:', fullPath);
     }
     
     // Launch app with model already present
@@ -141,7 +115,6 @@ test.describe('Model Download', () => {
     
     try {
       const window = await app.firstWindow();
-      console.log('[TEST] Window opened with existing model');
       
       // Should NOT show download dialog
       const downloadDialog = window.locator('text=Downloading AI Model');
@@ -151,13 +124,11 @@ test.describe('Model Download', () => {
       
       // Verify download dialog is not visible
       await expect(downloadDialog).not.toBeVisible();
-      console.log('[TEST] No download dialog - model already exists');
       
       // The app should eventually be ready (might show "Loading..." briefly)
       // Look for the search input as indicator app is ready
       const searchInput = window.locator('input[type="text"]');
       await expect(searchInput).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] App ready without download');
       
     } finally {
       await app.close();
@@ -190,12 +161,10 @@ test.describe('Model Download', () => {
     
     try {
       const window = await app.firstWindow();
-      console.log('[TEST] Window opened with partial model files');
       
       // Should show download dialog since model is incomplete
       const downloadDialog = window.locator('text=Downloading AI Model');
       await expect(downloadDialog).toBeVisible({ timeout: 10000 });
-      console.log('[TEST] Download dialog appeared for incomplete model');
       
     } finally {
       await app.close();
