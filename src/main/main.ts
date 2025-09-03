@@ -26,6 +26,12 @@ const crashDumpDir = app.getPath('crashDumps');
 console.log('Crash dumps will be saved to:', crashDumpDir);
 fs.mkdirSync(crashDumpDir, { recursive: true });
 
+// Override userData path if specified (for testing)
+if (process.env.USER_DATA_PATH) {
+  app.setPath('userData', process.env.USER_DATA_PATH);
+  console.log('Using custom userData path:', process.env.USER_DATA_PATH);
+}
+
 // Ensure single instance (unless disabled for testing)
 let gotTheLock = true;
 if (!process.env.ELECTRON_DISABLE_SINGLETON) {
