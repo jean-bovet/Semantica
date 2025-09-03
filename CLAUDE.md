@@ -153,3 +153,9 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 - [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
 - Never run `npm run dev` without asking me first
 - Never commit to git without my permission
+
+## Release Notes
+- Release notes should be created in the `releases/` folder
+- Follow the concise format used in existing releases (e.g., v1.0.2.md)
+- Include sections: What's New, How to Update, Notes
+- Keep it brief and user-focused
