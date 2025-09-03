@@ -1,6 +1,6 @@
 {
     "name": "Semantica",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "Offline semantic search for macOS",
     "author": "Jean Bovet",
     "main": "dist/main.cjs",
