@@ -100,6 +100,20 @@ function App() {
   
   // Listen for files loaded event
   useEffect(() => {
+    // Check if indexer is already initialized (happens during hot-reload)
+    const checkInitialState = async () => {
+      try {
+        const progress = await window.api.indexer.progress();
+        if (progress?.initialized) {
+          setFilesLoaded(true);
+        }
+      } catch (err) {
+        console.error('Failed to check indexer state:', err);
+      }
+    };
+    
+    checkInitialState();
+    
     const handleFilesLoaded = () => {
       setFilesLoaded(true);
     };
