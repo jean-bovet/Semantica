@@ -77,6 +77,13 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 
 ## 🔄 Recent Updates
 
+### 2025-09-03
+- ✅ Fixed E2E test failures with sequential execution configuration
+- ✅ Implemented mock network requests using Undici MockAgent
+- ✅ Added E2E_MOCK_DOWNLOADS and E2E_MOCK_DELAYS environment variables
+- ✅ Resolved parallel test execution race conditions
+- ✅ Archived completed planning document (e2e-model-loading-tests.md)
+
 ### 2025-09-01
 - ✅ Implemented EmbedderPool for 2x throughput improvement
 - ✅ Added CPU-aware concurrency (adapts to system resources)

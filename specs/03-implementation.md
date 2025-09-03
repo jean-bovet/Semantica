@@ -519,11 +519,21 @@ const MEMORY_CONFIG = {
 - Parser tests with sample documents
 - Chunking algorithm tests
 - Version detection logic tests
+- Encoding detection tests (30+ test cases)
 
 ### Integration Tests
 - End-to-end indexing flow
 - Memory leak detection
 - Parser upgrade scenarios
+- Model download flow with mocks
+
+### E2E Tests
+- Application startup and initialization
+- Model download progress indicators
+- Search functionality
+- Settings configuration
+- **Sequential execution**: Tests run one at a time to avoid race conditions
+- **Mock configuration**: E2E_MOCK_DOWNLOADS and E2E_MOCK_DELAYS for controlled testing
 
 ### Performance Tests
 - Large file handling

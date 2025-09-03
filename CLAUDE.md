@@ -98,7 +98,15 @@ npm run package
 npm test              # All tests
 npm run test:unit     # Unit tests only
 npm run test:e2e      # E2E tests only
+
+# E2E tests with mocked downloads (for testing without network)
+E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 ```
+
+### E2E Testing Notes
+- Tests run sequentially (not in parallel) to avoid race conditions
+- Mock downloads available for testing model download flow
+- See [operations guide](./specs/04-operations.md#e2e-testing-configuration) for details
 
 ## Recent Updates
 
@@ -121,6 +129,13 @@ npm run test:e2e      # E2E tests only
 - **Encoding utility**: Created `src/main/utils/encoding-detector.ts` for reusable encoding detection
 - **Parser versioning**: Centralized parser versions with single source of truth in each parser file
 - **Comprehensive tests**: Added 30+ unit tests for encoding detection and conversion
+
+### 2025-09-03 - E2E Testing Improvements
+- **Sequential Test Execution**: Configured Playwright to run tests sequentially to avoid race conditions
+- **Mock Network Requests**: Implemented Undici MockAgent for intercepting fetch in worker threads
+- **Test Environment Variables**: Added E2E_MOCK_DOWNLOADS and E2E_MOCK_DELAYS for controlled testing
+- **Fixed Model Path Issues**: Updated checkModelExists to accept userDataPath parameter
+- **Improved Test Reliability**: E2E tests now pass consistently without network dependencies
 
 ### 2025-08-24
 - Implemented search-first UI with modal settings

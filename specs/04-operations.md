@@ -330,6 +330,45 @@ For end users:
 - Index stored in user's Library folder
 - No cloud connectivity
 
+## E2E Testing Configuration
+
+### Running E2E Tests with Mocked Downloads
+When testing the model download flow without actual network requests:
+
+```bash
+# Run with mock downloads and delays to see UI updates
+E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
+```
+
+### Parallel Test Execution Issues
+**Problem**: E2E tests may fail when run in parallel due to race conditions with multiple Electron instances.
+
+**Solution**: Configure Playwright for sequential execution:
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  fullyParallel: false,  // Disable parallel execution
+  workers: 1,            // Use single worker thread
+  // ...
+});
+```
+
+**Symptoms of parallel execution issues**:
+- Tests pass individually but fail in full suite
+- Random timeouts or element not found errors
+- Model download tests showing incomplete file lists
+- Electron instances interfering with each other
+
+### Mock Configuration for E2E Tests
+The application supports mocking model downloads for testing:
+- `E2E_MOCK_DOWNLOADS`: Enable fetch interception in worker thread
+- `E2E_MOCK_DELAYS`: Add realistic delays to mock responses (1s per file)
+
+Mock setup is handled by `setupModelDownloadMocks()` which:
+- Uses Undici's MockAgent to intercept fetch calls
+- Returns mock JSON/binary responses for model files
+- Simulates realistic download delays when enabled
+
 ## Getting Help
 
 ### Diagnostic Information
