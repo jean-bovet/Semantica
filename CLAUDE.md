@@ -137,3 +137,4 @@ npm run test:e2e      # E2E tests only
 - [Documentation Standards](./specs/documentation-standards.md) - File naming conventions
 - [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
 - Never run `npm run dev` without asking me first
+- Never commit to git without my permission
