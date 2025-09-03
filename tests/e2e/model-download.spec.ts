@@ -7,17 +7,30 @@ test.describe('Model Download', () => {
   let testDir: string;
   
   test.beforeEach(async () => {
+    // Clean up any existing semantica-e2e-* directories from previous test runs
+    const tmpDir = os.tmpdir();
+    try {
+      const entries = fs.readdirSync(tmpDir);
+      for (const entry of entries) {
+        if (entry.startsWith('semantica-e2e-')) {
+          const fullPath = path.join(tmpDir, entry);
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        }
+      }
+    } catch (err) {
+      // Ignore errors during cleanup
+    }
+    
     // Create a unique temporary directory for each test
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    testDir = path.join(os.tmpdir(), `semantica-e2e-${timestamp}-${random}`);
+    testDir = path.join(tmpDir, `semantica-e2e-${timestamp}-${random}`);
     
     // Ensure the directory is completely clean
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
     fs.mkdirSync(testDir, { recursive: true });
-    
   });
 
   test.afterEach(async () => {
@@ -41,9 +54,8 @@ test.describe('Model Download', () => {
         // Override all possible model paths to point to our clean directory
         USER_DATA_PATH: testDir,
         TRANSFORMERS_CACHE: path.join(testDir, 'models'),
-        // Enable mocks for deterministic testing with delays
+        // Enable mocks for deterministic testing
         E2E_MOCK_DOWNLOADS: 'true',
-        E2E_MOCK_DELAYS: 'true',
         // Clear any default paths
         HOME: testDir,
         APPDATA: testDir,
@@ -54,6 +66,9 @@ test.describe('Model Download', () => {
     try {
       const window = await app.firstWindow();
       
+      // Wait a moment for the app to initialize
+      await window.waitForTimeout(1000);
+      
       // The app should detect no model and show download dialog
       const downloadDialog = window.locator('text=Downloading AI Model');
       await expect(downloadDialog).toBeVisible({ timeout: 10000 });
@@ -61,9 +76,6 @@ test.describe('Model Download', () => {
       // Check for progress bar
       const progressBar = window.locator('div[style*="transition: width"]');
       await expect(progressBar).toBeVisible();
-      
-      // Check that files are shown downloading sequentially
-      // Simply look for the text content directly
       
       // Explicitly await each file one by one
       await expect(window.locator('text=config.json')).toBeVisible({ timeout: 10000 });

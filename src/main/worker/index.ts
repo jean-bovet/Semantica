@@ -17,12 +17,10 @@ import { setupProfiling, profileHandleFile, recordEvent, profiler } from './prof
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
 if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
-  console.log('[WORKER] E2E_MOCK_DOWNLOADS is enabled, setting up mocks');
   // Use require for synchronous loading to ensure mocks are ready before any fetch calls
   try {
     const { setupModelDownloadMocks } = require('./test-mocks/setupModelMocks');
     setupModelDownloadMocks();
-    console.log('[WORKER] Model download mocks configured');
   } catch (err) {
     console.error('[WORKER] Failed to load mock setup:', err);
   }
@@ -167,8 +165,6 @@ function checkModelExists(userDataPath: string): boolean {
 
 // Helper function to download model (use new sequential downloader)
 async function downloadModel(userDataPath: string): Promise<void> {
-  console.log('[WORKER] Starting sequential model download...');
-  
   try {
     // Use the new sequential downloader
     await downloadModelSequentially(userDataPath);
@@ -182,9 +178,6 @@ async function downloadModel(userDataPath: string): Promise<void> {
     transformers.env.localModelPath = modelCachePath;
     transformers.env.cacheDir = modelCachePath;
     transformers.env.allowRemoteModels = false; // Disable remote downloads since we already have the files
-    
-    console.log('[WORKER] Model cache path configured:', modelCachePath);
-    console.log('[WORKER] Model files downloaded successfully');
   } catch (err) {
     console.error('[WORKER] Model download failed:', err);
     throw err;
@@ -348,31 +341,36 @@ function startEmbedderHealthCheck() {
 async function initializeModel(userDataPath: string) {
   // Check and download model if needed (ONCE at startup)
   console.log('[WORKER] Checking for ML model...');
+  
   modelReady = checkModelExists(userDataPath);
+  console.log('[WORKER] Model check:', modelReady ? 'found' : 'not found');
   
   if (!modelReady) {
     console.log('[WORKER] Model not found, downloading...');
     try {
       await downloadModel(userDataPath);
       modelReady = true;
-      console.log('[WORKER] Model download complete');
+      console.log('[WORKER] ========== MODEL DOWNLOAD COMPLETE ==========');
       
       // In test mode with mocks, add a delay before sending complete
       // This allows the test to see the last file name in the UI
-      if (process.env.E2E_MOCK_DOWNLOADS === 'true' && process.env.E2E_MOCK_DELAYS === 'true') {
+      if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
+        console.log('[WORKER] Test mode: waiting 2 seconds before sending complete');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Send download complete notification
       if (parentPort) {
+        console.log('[WORKER] Sending model:download:complete message');
         parentPort.postMessage({ type: 'model:download:complete' });
       }
     } catch (error) {
-      console.error('[WORKER] Failed to download model:', error);
+      console.error('[WORKER] ========== MODEL DOWNLOAD FAILED ==========');
+      console.error('[WORKER] Error:', error);
       modelReady = false;
     }
   } else {
-    console.log('[WORKER] Model found, skipping download');
+    console.log('[WORKER] ========== MODEL FOUND, SKIPPING DOWNLOAD ==========');
   }
   
   // Send model ready status
@@ -1240,6 +1238,7 @@ parentPort!.on('message', async (msg: any) => {
         
         // Also provide fallback for dbDir
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
+        
         await initDB(dbDir, userDataPath);
         parentPort!.postMessage({ type: 'ready' });
         
@@ -1255,12 +1254,16 @@ parentPort!.on('message', async (msg: any) => {
         break;
         
       case 'checkModel':
+        console.log('[WORKER] ========== RECEIVED checkModel REQUEST ==========');
+        console.log('[WORKER] Current modelReady state:', modelReady);
+        
         // Wait for model initialization to complete before responding
         // This ensures the UI gets the correct status
         const checkInterval = setInterval(() => {
           // Check if initialization is complete (modelReady will be set)
           if (modelReady !== null) {
             clearInterval(checkInterval);
+            console.log('[WORKER] Responding to checkModel with exists:', modelReady);
             if (msg.id) {
               parentPort!.postMessage({ 
                 id: msg.id,

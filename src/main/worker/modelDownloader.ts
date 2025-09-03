@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import { parentPort } from 'node:worker_threads';
+// Don't import fetch - use the global one that can be mocked
 
 const MODEL_NAME = 'Xenova/multilingual-e5-small';
 const HF_BASE_URL = 'https://huggingface.co';
@@ -65,15 +66,11 @@ export function checkMissingFiles(modelBasePath: string): ModelFile[] {
   for (const file of allFiles) {
     if (!fs.existsSync(file.localPath)) {
       missingFiles.push(file);
-      console.log(`[MODEL_DOWNLOADER] Missing: ${file.name}`);
     } else {
       const stats = fs.statSync(file.localPath);
       // Check if file is not empty (could be corrupted download)
       if (stats.size === 0) {
         missingFiles.push(file);
-        console.log(`[MODEL_DOWNLOADER] Empty file (corrupted): ${file.name}`);
-      } else {
-        console.log(`[MODEL_DOWNLOADER] Found: ${file.name} (${(stats.size / 1024).toFixed(2)} KB)`);
       }
     }
   }
@@ -85,21 +82,11 @@ export function checkMissingFiles(modelBasePath: string): ModelFile[] {
  * Download a single file using fetch with progress reporting
  */
 async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProgress) => void): Promise<void> {
-  console.log(`[MODEL_DOWNLOADER] Starting download: ${file.name}`);
-  console.log(`[MODEL_DOWNLOADER] From: ${file.remotePath}`);
-  console.log(`[MODEL_DOWNLOADER] To: ${file.localPath}`);
-
   // Ensure directory exists
   const dir = path.dirname(file.localPath);
   fs.mkdirSync(dir, { recursive: true });
 
   try {
-    // Add artificial delay in test mode
-    if (process.env.E2E_MOCK_DELAYS === 'true') {
-      console.log(`[MODEL_DOWNLOADER] Test mode: Adding 1 second delay for ${file.name}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
     // Make fetch request (redirects are handled automatically)
     const response = await fetch(file.remotePath);
     
@@ -110,7 +97,6 @@ async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProg
     // Get total size from headers
     const contentLength = response.headers.get('content-length');
     const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-    console.log(`[MODEL_DOWNLOADER] File size for ${file.name}: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
 
     // Get the response body as a readable stream
     const body = response.body;
@@ -143,13 +129,12 @@ async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProg
     });
 
     // Convert web stream to Node stream for file writing
-    const nodeStream = Readable.fromWeb(body.pipeThrough(progressStream) as any);
+    // @ts-ignore - Type mismatch between web streams and Node streams
+    const nodeStream = Readable.fromWeb(body.pipeThrough(progressStream));
     const writeStream = fs.createWriteStream(file.localPath);
 
     // Use pipeline for proper error handling and stream management
     await pipeline(nodeStream, writeStream);
-
-    console.log(`[MODEL_DOWNLOADER] Completed: ${file.name}`);
     
     onProgress({
       file: file.name,
@@ -165,7 +150,7 @@ async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProg
       try {
         fs.unlinkSync(file.localPath);
       } catch (unlinkErr) {
-        console.error(`[MODEL_DOWNLOADER] Failed to clean up partial file: ${unlinkErr}`);
+        // Ignore cleanup errors
       }
     }
     
@@ -178,24 +163,18 @@ async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProg
  * Download model files sequentially
  */
 export async function downloadModelSequentially(userDataPath: string): Promise<void> {
-  console.log('[MODEL_DOWNLOADER] Starting model download...');
-  
   const modelBasePath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
   
   // Check which files need to be downloaded
   const missingFiles = checkMissingFiles(modelBasePath);
   
   if (missingFiles.length === 0) {
-    console.log('[MODEL_DOWNLOADER] All model files already exist');
     return;
   }
-  
-  console.log(`[MODEL_DOWNLOADER] Need to download ${missingFiles.length} files`);
   
   // Download each missing file sequentially
   for (let i = 0; i < missingFiles.length; i++) {
     const file = missingFiles[i];
-    console.log(`[MODEL_DOWNLOADER] Downloading ${i + 1}/${missingFiles.length}: ${file.name}`);
     
     try {
       await downloadFile(file, (progress) => {
@@ -207,16 +186,10 @@ export async function downloadModelSequentially(userDataPath: string): Promise<v
           });
         }
       });
-      
-      console.log(`[MODEL_DOWNLOADER] Successfully downloaded: ${file.name}`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[MODEL_DOWNLOADER] Failed to download ${file.name}: ${errorMessage}`);
       throw error; // Re-throw to stop the download sequence
     }
   }
-  
-  console.log('[MODEL_DOWNLOADER] Model download complete!');
 }
 
 /**
