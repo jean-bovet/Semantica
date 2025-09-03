@@ -217,16 +217,22 @@ print_success "Pushed branch and tag to GitHub"
 # Step 5: Build application
 print_step "Step 5/6: Building application"
 echo "This will take a few minutes..."
+
+# Clean dist-app directory to prevent old version files from being picked up
+echo "Cleaning dist-app directory..."
+rm -rf dist-app/*
+
 npm run dist:mac
 print_success "Build completed"
 
 # Step 6: Create GitHub release
 print_step "Step 6/6: Creating GitHub release"
 
-# Find the built files
-DMG_FILE=$(find dist-app -name "*.dmg" -type f | head -1)
-ZIP_FILE=$(find dist-app -name "*.zip" -type f | head -1)
-BLOCKMAP_FILE=$(find dist-app -name "*.blockmap" -type f | head -1)
+# Find the built files - now we can safely use the first file found since dist-app is clean
+# Also use more specific patterns to match the current version
+DMG_FILE=$(find dist-app -name "*${NEW_VERSION}*.dmg" -type f | head -1)
+ZIP_FILE=$(find dist-app -name "*${NEW_VERSION}*.zip" -type f | head -1)
+BLOCKMAP_FILE=$(find dist-app -name "*${NEW_VERSION}*.blockmap" -type f | head -1)
 YML_FILE=$(find dist-app -name "latest-mac.yml" -type f | head -1)
 
 if [ -z "$DMG_FILE" ]; then
