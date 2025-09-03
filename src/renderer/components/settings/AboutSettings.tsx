@@ -7,14 +7,12 @@ interface AboutSettingsProps {
 function AboutSettings({ appVersion }: AboutSettingsProps) {
   return (
     <div className="settings-section">
-      <div className="about-header">
-        <div className="app-icon">🔍</div>
-        <div className="app-info">
-          <h2>Semantica</h2>
-          <p className="app-tagline">Offline semantic search for macOS</p>
-          <p className="app-version">Version {appVersion || 'Loading...'}</p>
-        </div>
-      </div>
+      <p className="app-version" style={{ 
+        margin: '0 0 32px 0',
+        padding: 0,
+        background: 'none',
+        border: 'none'
+      }}>Version {appVersion || 'Loading...'}</p>
       
       <div className="about-section">
         <h4>Privacy First</h4>
