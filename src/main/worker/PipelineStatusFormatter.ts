@@ -17,10 +17,12 @@ export interface EmbeddingQueueStats {
 }
 
 export interface EmbedderStats {
-  index: number;
+  id: string;
   filesProcessed: number;
   memoryUsage: number;
-  needsRestart: boolean;
+  isHealthy: boolean;
+  loadCount: number;
+  restartCount: number;
 }
 
 export interface PipelineData {
@@ -126,9 +128,9 @@ export class PipelineStatusFormatter {
         const tracker = fileTrackers.get(workingFile);
         const progress = tracker ? `[${tracker.processedChunks}/${tracker.totalChunks}]` : '';
         const shortName = this.shortenFileName(workingFile);
-        embedderParts.push(`E${embedder.index}:${shortName}${progress}`);
+        embedderParts.push(`E${embedder.id}:${shortName}${progress}`);
       } else {
-        embedderParts.push(`E${embedder.index}:idle`);
+        embedderParts.push(`E${embedder.id}:idle`);
       }
     }
 

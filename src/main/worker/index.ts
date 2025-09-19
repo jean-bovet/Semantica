@@ -105,11 +105,11 @@ setInterval(async () => {
         // Only restart if we've actually processed some files (avoid restart loop at startup)
         const shouldRestart = stat.filesProcessed > 0 && (
                             stat.filesProcessed > 200 ||
-                            stat.memoryUsage > 1500 * 1024 * 1024); // 1500MB (more reasonable threshold)
-        
+                            stat.memoryUsage > 1500); // Now in MB
+
         if (shouldRestart) {
-          console.log(`[MEMORY] Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
-          await embedderPool.restart(stat.index);
+          console.log(`[MEMORY] Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage)}MB)`);
+          await embedderPool.restartEmbedder(stat.id);
           recordEvent('embedderRestart'); // Track for profiling
         }
       }

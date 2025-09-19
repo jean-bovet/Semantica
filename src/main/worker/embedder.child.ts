@@ -1,71 +1,53 @@
 // A tiny child process that only embeds, then exits when told.
-import path from 'node:path';
-import fs from 'node:fs';
+import { SerialQueue } from '../../shared/utils/SerialQueue';
+import { ModelPathResolver } from '../../shared/embeddings/ModelPathResolver';
+import { EmbeddingProcessor } from '../../shared/embeddings/EmbeddingProcessor';
+import { IPCMessageRouter, IPCMessageBuilder, MessageTypeGuards } from '../../shared/embeddings/IPCMessageProtocol';
 
 let transformers: any = null;
 let pipe: any = null;
 
-// Simple serial queue - chain all embedding operations
-let currentTask: Promise<any> = Promise.resolve();
+// Use the new SerialQueue utility for embedding operations
+const embeddingQueue = new SerialQueue<number[][]>();
+const embeddingProcessor = new EmbeddingProcessor();
+const messageRouter = new IPCMessageRouter();
 
-async function embedSerial(msg: any): Promise<number[][]> {
-  // Add to the serial queue
-  currentTask = currentTask.then(async () => {
+async function embedSerial(texts: string[], isQuery = false): Promise<number[][]> {
+  return embeddingQueue.add(async () => {
     let out: any;
     try {
-      // Add E5 prefixes based on type
-      const prefixedTexts = msg.texts.map((text: string) => {
-        // Use passage: for documents, query: for search queries
-        const prefix = msg.isQuery ? 'query: ' : 'passage: ';
-        return prefix + text;
-      });
+      // Use EmbeddingProcessor to add prefixes
+      const prefixedTexts = embeddingProcessor.addPrefixes(texts, isQuery);
 
       out = await pipe(prefixedTexts, { pooling: 'mean', normalize: true });
 
-      const dim = out.dims.at(-1) ?? 384;
-      const data = out.data as Float32Array;
+      // Use EmbeddingProcessor to convert vectors
+      const { vectors } = embeddingProcessor.processEmbedding(texts, out, isQuery);
 
-      // copy into plain arrays so parent doesn't hold native buffers
-      const res: number[][] = [];
-      for (let i = 0; i < data.length; i += dim) {
-        const v = new Array(dim);
-        for (let j = 0; j < dim; j++) v[j] = data[i + j];
-        res.push(v);
-      }
-
-      return res;
+      return vectors;
     } catch (e: any) {
       throw e;
     } finally {
-      if (out?.dispose) out.dispose();
+      if (out) {
+        embeddingProcessor.cleanup(out);
+      }
       if (global.gc) global.gc();
     }
   });
-
-  return currentTask;
 }
 
 async function initTransformers() {
   if (!transformers) {
     // Dynamic import for ES module
     transformers = await import('@xenova/transformers');
-    
-    // Use TRANSFORMERS_CACHE if set by parent process
-    if (process.env.TRANSFORMERS_CACHE) {
-      transformers.env.localModelPath = process.env.TRANSFORMERS_CACHE;
-      transformers.env.cacheDir = process.env.TRANSFORMERS_CACHE;  // Also set cache directory
-      // Allow downloading models on first use in production
-      transformers.env.allowRemoteModels = true;
-    } else if (process.env.NODE_ENV === 'production') {
-      transformers.env.localModelPath = path.join(process.resourcesPath!, 'models');
-      transformers.env.cacheDir = path.join(process.resourcesPath!, 'models');
-      transformers.env.allowRemoteModels = false;
-    } else {
-      // Development mode
-      transformers.env.localModelPath = path.join(__dirname, '../../../node_modules/@xenova/transformers/.cache');
-      transformers.env.cacheDir = path.join(__dirname, '../../../node_modules/@xenova/transformers/.cache');
-      transformers.env.allowRemoteModels = false;
-    }
+
+    // Use ModelPathResolver to get environment-appropriate paths
+    const pathResolver = new ModelPathResolver();
+    const resolved = pathResolver.resolve();
+
+    transformers.env.localModelPath = resolved.localModelPath;
+    transformers.env.cacheDir = resolved.cacheDir;
+    transformers.env.allowRemoteModels = resolved.allowRemoteModels;
 
     console.log('Transformers cache path:', transformers.env.localModelPath);
     console.log('Allow remote models:', transformers.env.allowRemoteModels);
@@ -73,68 +55,90 @@ async function initTransformers() {
   return transformers;
 }
 
-process.on('message', async (msg: any) => {
-  if (msg?.type === 'check-model') {
+// Set up message handlers using the router
+messageRouter.on('check-model', async () => {
+  try {
+    await initTransformers();
+
+    // Use ModelPathResolver to check model existence
+    const pathResolver = new ModelPathResolver();
+    const modelInfo = pathResolver.getModelInfo();
+
+    const response = IPCMessageBuilder.modelStatus(modelInfo.exists);
+    process.send?.(response);
+  } catch (e: any) {
+    const response = IPCMessageBuilder.modelStatus(false, String(e));
+    process.send?.(response);
+  }
+});
+
+messageRouter.on('init', async (msg) => {
+  if (!MessageTypeGuards.isInitMessage(msg)) return;
+
+  try {
+    const tf = await initTransformers();
+    const modelName = msg.model || 'Xenova/multilingual-e5-small';
+
+    console.log(`[EMBEDDER] Initializing pipeline for ${modelName}...`);
+    console.log(`[EMBEDDER] Cache path: ${transformers.env.localModelPath}`);
+
     try {
-      await initTransformers();
-      
-      // Check if model exists locally
-      const modelPath = path.join(transformers.env.localModelPath, 'Xenova', 'multilingual-e5-small');
-      const modelExists = fs.existsSync(path.join(modelPath, 'onnx', 'model_quantized.onnx'));
-      
-      process.send?.({ type: 'model:status', exists: modelExists });
-    } catch (e: any) {
-      process.send?.({ type: 'model:status', exists: false, error: String(e) });
-    }
-  } else if (msg?.type === 'init') {
-    try {
-      const tf = await initTransformers();
-      const modelName = msg.model || 'Xenova/multilingual-e5-small';
-      
-      console.log(`[EMBEDDER] Initializing pipeline for ${modelName}...`);
-      console.log(`[EMBEDDER] Cache path: ${transformers.env.localModelPath}`);
-      
-      try {
-        // Model should already exist (downloaded by worker), so no progress callback needed
-        console.log('[EMBEDDER] Loading model (already downloaded by worker)...');
-        const startTime = Date.now();
-        
-        pipe = await tf.pipeline('feature-extraction', modelName, { 
-          quantized: true
-          // No progress_callback - model should already exist
-        });
-        
-        const loadTime = Date.now() - startTime;
-        console.log(`[EMBEDDER] Pipeline created successfully in ${loadTime}ms`);
-        
-        // Verify the model files exist
-        const modelPath = path.join(transformers.env.localModelPath, 'Xenova', 'multilingual-e5-small', 'onnx', 'model_quantized.onnx');
-        
-        if (fs.existsSync(modelPath)) {
-          const stats = fs.statSync(modelPath);
-          console.log('[EMBEDDER] Model loaded! Size:', (stats.size / 1024 / 1024).toFixed(2), 'MB');
-          process.send?.({ type: 'ready' });
-        } else {
-          console.error('[EMBEDDER] ERROR: Model file not found:', modelPath);
-          throw new Error('Model file not found - should have been downloaded by worker');
-        }
-      } catch (pipeError: any) {
-        console.error('Pipeline creation error:', pipeError);
-        throw pipeError;
+      console.log('[EMBEDDER] Loading model (already downloaded by worker)...');
+      const startTime = Date.now();
+
+      pipe = await tf.pipeline('feature-extraction', modelName, {
+        quantized: true
+      });
+
+      const loadTime = Date.now() - startTime;
+      console.log(`[EMBEDDER] Pipeline created successfully in ${loadTime}ms`);
+
+      // Use ModelPathResolver to verify model file
+      const pathResolver = new ModelPathResolver(modelName);
+      const modelInfo = pathResolver.getModelInfo();
+
+      if (modelInfo.exists && modelInfo.size) {
+        console.log('[EMBEDDER] Model loaded! Size:', (modelInfo.size / 1024 / 1024).toFixed(2), 'MB');
+        const response = IPCMessageBuilder.ready();
+        process.send?.(response);
+      } else {
+        console.error('[EMBEDDER] ERROR: Model file not found:', modelInfo.path);
+        throw new Error('Model file not found - should have been downloaded by worker');
       }
-    } catch (e: any) {
-      console.error('Pipeline initialization failed:', e);
-      process.send?.({ type: 'init:err', error: String(e) });
+    } catch (pipeError: any) {
+      console.error('Pipeline creation error:', pipeError);
+      throw pipeError;
     }
-  } else if (msg?.type === 'embed') {
-    try {
-      const result = await embedSerial(msg);
-      process.send?.({ type: 'embed:ok', id: msg.id, vectors: result });
-    } catch (e: any) {
-      process.send?.({ type: 'embed:err', id: msg.id, error: String(e) });
-    }
-  } else if (msg?.type === 'shutdown') {
-    process.exit(0);
+  } catch (e: any) {
+    console.error('Pipeline initialization failed:', e);
+    const response = IPCMessageBuilder.initError(e);
+    process.send?.(response);
+  }
+});
+
+messageRouter.on('embed', async (msg) => {
+  if (!MessageTypeGuards.isEmbedMessage(msg)) return;
+
+  try {
+    const result = await embedSerial(msg.texts, msg.isQuery);
+    const response = IPCMessageBuilder.embedSuccess(msg.id, result);
+    process.send?.(response);
+  } catch (e: any) {
+    const response = IPCMessageBuilder.embedError(msg.id, e);
+    process.send?.(response);
+  }
+});
+
+messageRouter.on('shutdown', async () => {
+  embeddingQueue.shutdown();
+  process.exit(0);
+});
+
+// Route incoming messages
+process.on('message', async (msg: any) => {
+  const handled = await messageRouter.route(msg);
+  if (!handled) {
+    console.warn('[EMBEDDER] Unhandled message type:', msg?.type);
   }
 });
 
