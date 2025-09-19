@@ -115,7 +115,7 @@ export class IsolatedEmbedder implements IEmbedder {
     // Get child script path using environment logic
     const childPath = process.env.NODE_ENV === 'production' && process.resourcesPath
       ? path.join(process.resourcesPath, 'app.asar', 'dist', 'embedder.child.cjs')
-      : path.join(__dirname, '../../main/worker/embedder.child.cjs');
+      : path.join(process.cwd(), 'dist', 'embedder.child.cjs');
 
     // Get environment variables from path resolver
     const envVars = this.pathResolver.getTransformersEnv();
