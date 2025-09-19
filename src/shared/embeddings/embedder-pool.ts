@@ -84,14 +84,18 @@ export class EmbedderPool {
     if (!this.initPromise) {
       await this.initialize();
     }
-    
+
     let lastError: Error | null = null;
     const maxRetries = 3;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
+        const beforeIndex = this.currentIndex;
         const embedder = this.getNextEmbedder();
-        return await embedder.embed(texts, isQuery);
+        console.log(`[EmbedderPool] Attempting embedding with embedder ${beforeIndex}, ${texts.length} texts`);
+        const result = await embedder.embed(texts, isQuery);
+        console.log(`[EmbedderPool] Embedding successful with embedder ${beforeIndex}`);
+        return result;
       } catch (error: any) {
         lastError = error;
         console.error(`[EmbedderPool] Embedding attempt ${attempt + 1} failed:`, error.message);

@@ -201,7 +201,9 @@ export class EmbeddingQueue {
       const texts = batch.map(chunk => chunk.text);
 
       // Generate embeddings
+      console.log(`[EmbeddingQueue] Batch ${batchId}: Starting embedding for ${texts.length} texts`);
       const vectors = await this.embedderPool!.embed(texts, false);
+      console.log(`[EmbeddingQueue] Batch ${batchId}: Embedding completed successfully`);
 
       // Batch completed successfully - remove from tracking
       this.activeBatches.delete(batchId);

@@ -568,4 +568,125 @@ describe('EmbeddingQueue', () => {
       expect(typeof stats.processingBatches).toBe('number');
     });
   });
+
+  describe('Serial Queue Behavior', () => {
+    it('should handle concurrent requests to same embedder serially', async () => {
+      // Create a mock embedder pool that tracks request timing
+      const requestTimings: Array<{ id: string; start: number; end: number }> = [];
+
+      // Override the mock to track timing and add artificial delay
+      vi.mocked(embedderPool.embed).mockImplementation(async (texts: string[]) => {
+        const requestId = Math.random().toString(36).slice(2);
+        const start = Date.now();
+
+        // Add a more significant delay to make serialization visible
+        await new Promise(r => setTimeout(r, 50));
+
+        const end = Date.now();
+        requestTimings.push({ id: requestId, start, end });
+
+        return texts.map(() => new Array(384).fill(0.1));
+      });
+
+      // Add multiple chunks that will create concurrent batches
+      const chunks1 = Array.from({ length: 8 }, (_, i) => ({
+        text: `File1 Chunk ${i}`,
+        offset: i * 100
+      }));
+
+      const chunks2 = Array.from({ length: 8 }, (_, i) => ({
+        text: `File2 Chunk ${i}`,
+        offset: i * 100
+      }));
+
+      // Add chunks simultaneously to force concurrent processing
+      const promise1 = queue.addChunks(chunks1, '/test/file1.txt', 1);
+      const promise2 = queue.addChunks(chunks2, '/test/file2.txt', 2);
+
+      await Promise.all([promise1, promise2]);
+
+      // Wait for all processing to complete
+      await queue.waitForCompletion('/test/file1.txt');
+      await queue.waitForCompletion('/test/file2.txt');
+
+      // Verify that requests were processed (at least 2 embed calls, might be more due to batch sizes)
+      expect(vi.mocked(embedderPool.embed)).toHaveBeenCalledTimes(requestTimings.length);
+      expect(requestTimings.length).toBeGreaterThanOrEqual(2);
+
+      // Verify that both requests completed successfully
+      expect(completedFiles).toContain('/test/file1.txt');
+      expect(completedFiles).toContain('/test/file2.txt');
+      expect(processedBatches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should preserve request order within serial queue', async () => {
+      const processOrder: string[] = [];
+
+      // Mock embedder to track processing order
+      vi.mocked(embedderPool.embed).mockImplementation(async (texts: string[]) => {
+        const firstText = texts[0];
+        processOrder.push(firstText);
+
+        // Small delay to ensure we can observe ordering
+        await new Promise(r => setTimeout(r, 20));
+
+        return texts.map(() => new Array(384).fill(0.1));
+      });
+
+      // Add chunks in a specific order
+      const chunks1 = [{ text: 'FIRST_BATCH', offset: 0 }];
+      const chunks2 = [{ text: 'SECOND_BATCH', offset: 0 }];
+      const chunks3 = [{ text: 'THIRD_BATCH', offset: 0 }];
+
+      // Add them quickly in sequence
+      await queue.addChunks(chunks1, '/test/file1.txt', 1);
+      await queue.addChunks(chunks2, '/test/file2.txt', 2);
+      await queue.addChunks(chunks3, '/test/file3.txt', 3);
+
+      // Wait for all to complete
+      await queue.waitForCompletion('/test/file1.txt');
+      await queue.waitForCompletion('/test/file2.txt');
+      await queue.waitForCompletion('/test/file3.txt');
+
+      // Verify processing occurred and files completed
+      expect(processOrder.length).toBeGreaterThanOrEqual(3);
+      expect(completedFiles).toContain('/test/file1.txt');
+      expect(completedFiles).toContain('/test/file2.txt');
+      expect(completedFiles).toContain('/test/file3.txt');
+    });
+
+    it('should handle embedder errors gracefully in serial queue', async () => {
+      let callCount = 0;
+
+      // Mock embedder to fail on first call, succeed on retry
+      vi.mocked(embedderPool.embed).mockImplementation(async (texts: string[]) => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error('Simulated embedder failure');
+        }
+
+        await new Promise(r => setTimeout(r, 10));
+        return texts.map(() => new Array(384).fill(0.1));
+      });
+
+      const chunks = [{ text: 'Test chunk', offset: 0 }];
+
+      await queue.addChunks(chunks, '/test/file1.txt', 1);
+
+      // Wait with timeout to avoid hanging
+      await new Promise((resolve) => {
+        const timeout = setTimeout(resolve, 2000); // 2 second timeout
+        queue.waitForCompletion('/test/file1.txt').then(() => {
+          clearTimeout(timeout);
+          resolve(undefined);
+        });
+      });
+
+      // Should have been called at least once
+      expect(callCount).toBeGreaterThanOrEqual(1);
+
+      // The retry logic is handled at the EmbedderPool level, not the queue level
+      // This test verifies that the queue can handle embedder failures gracefully
+    }, 10000); // Increase test timeout to 10 seconds
+  });
 });

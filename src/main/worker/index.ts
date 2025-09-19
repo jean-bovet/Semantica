@@ -104,8 +104,8 @@ setInterval(async () => {
         // Proactive restart if processed too many files or using too much memory
         // Only restart if we've actually processed some files (avoid restart loop at startup)
         const shouldRestart = stat.filesProcessed > 0 && (
-                            stat.filesProcessed > 200 || 
-                            stat.memoryUsage > 800 * 1024 * 1024); // 800MB
+                            stat.filesProcessed > 200 ||
+                            stat.memoryUsage > 1500 * 1024 * 1024); // 1500MB (more reasonable threshold)
         
         if (shouldRestart) {
           console.log(`[MEMORY] Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
@@ -425,7 +425,7 @@ async function initializeModel(userDataPath: string) {
     embedderPool = new EmbedderPool({
       poolSize,
       maxFilesBeforeRestart: 200,  // Restart every 200 files (was too low)
-      maxMemoryMB: 1000,            // Restart when child process hits 1GB RSS
+      maxMemoryMB: 1500,            // Restart when child process hits 1.5GB RSS
       onEmbedderRestart: (index) => {
         // Notify the embedding queue that an embedder is restarting
         if (embeddingQueue) {
