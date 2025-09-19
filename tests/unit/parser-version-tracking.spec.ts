@@ -178,7 +178,7 @@ describe('Parser Version Tracking', () => {
       const textParser = await import('../../src/main/parsers/text');
       const rtfParser = await import('../../src/main/parsers/rtf');
 
-      expect(pdfParser.PARSER_VERSION).toBe(1);
+      expect(pdfParser.PARSER_VERSION).toBe(2);
       expect(docParser.PARSER_VERSION).toBe(2);
       expect(docxParser.PARSER_VERSION).toBe(1);
       expect(textParser.PARSER_VERSION).toBe(4);

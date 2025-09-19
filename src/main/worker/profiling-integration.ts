@@ -20,8 +20,8 @@ if (profiler.isEnabled()) {
   console.log('🔬 [PROFILING] Performance profiling is ENABLED');
   console.log('🔬 [PROFILING] Report will be generated on shutdown');
 } else {
-  console.log('💡 [PROFILING] Performance profiling is DISABLED');
-  console.log('💡 [PROFILING] To enable: PROFILE=true npm run dev');
+  console.log('[PROFILING] Performance profiling is DISABLED');
+  console.log('[PROFILING] To enable: PROFILE=true npm run dev');
 }
 
 /**

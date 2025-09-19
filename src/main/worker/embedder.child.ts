@@ -5,6 +5,46 @@ import fs from 'node:fs';
 let transformers: any = null;
 let pipe: any = null;
 
+// Simple serial queue - chain all embedding operations
+let currentTask: Promise<any> = Promise.resolve();
+
+async function embedSerial(msg: any): Promise<number[][]> {
+  // Add to the serial queue
+  currentTask = currentTask.then(async () => {
+    let out: any;
+    try {
+      // Add E5 prefixes based on type
+      const prefixedTexts = msg.texts.map((text: string) => {
+        // Use passage: for documents, query: for search queries
+        const prefix = msg.isQuery ? 'query: ' : 'passage: ';
+        return prefix + text;
+      });
+
+      out = await pipe(prefixedTexts, { pooling: 'mean', normalize: true });
+
+      const dim = out.dims.at(-1) ?? 384;
+      const data = out.data as Float32Array;
+
+      // copy into plain arrays so parent doesn't hold native buffers
+      const res: number[][] = [];
+      for (let i = 0; i < data.length; i += dim) {
+        const v = new Array(dim);
+        for (let j = 0; j < dim; j++) v[j] = data[i + j];
+        res.push(v);
+      }
+
+      return res;
+    } catch (e: any) {
+      throw e;
+    } finally {
+      if (out?.dispose) out.dispose();
+      if (global.gc) global.gc();
+    }
+  });
+
+  return currentTask;
+}
+
 async function initTransformers() {
   if (!transformers) {
     // Dynamic import for ES module
@@ -87,31 +127,11 @@ process.on('message', async (msg: any) => {
       process.send?.({ type: 'init:err', error: String(e) });
     }
   } else if (msg?.type === 'embed') {
-    let out: any;
     try {
-      // Add E5 prefixes based on type
-      const prefixedTexts = msg.texts.map((text: string) => {
-        // Use passage: for documents, query: for search queries
-        const prefix = msg.isQuery ? 'query: ' : 'passage: ';
-        return prefix + text;
-      });
-      
-      out = await pipe(prefixedTexts, { pooling: 'mean', normalize: true });
-      const dim = out.dims.at(-1) ?? 384;
-      const data = out.data as Float32Array;
-      // copy into plain arrays so parent doesn't hold native buffers
-      const res: number[][] = [];
-      for (let i = 0; i < data.length; i += dim) {
-        const v = new Array(dim);
-        for (let j = 0; j < dim; j++) v[j] = data[i + j];
-        res.push(v);
-      }
-      process.send?.({ type: 'embed:ok', id: msg.id, vectors: res });
+      const result = await embedSerial(msg);
+      process.send?.({ type: 'embed:ok', id: msg.id, vectors: result });
     } catch (e: any) {
       process.send?.({ type: 'embed:err', id: msg.id, error: String(e) });
-    } finally {
-      if (out?.dispose) out.dispose();
-      if (global.gc) global.gc();
     }
   } else if (msg?.type === 'shutdown') {
     process.exit(0);

@@ -5,6 +5,7 @@ export interface EmbedderPoolConfig {
   poolSize?: number;
   maxFilesBeforeRestart?: number;
   maxMemoryMB?: number;
+  onEmbedderRestart?: (embedderIndex: number) => void;
 }
 
 /**
@@ -83,14 +84,18 @@ export class EmbedderPool {
     if (!this.initPromise) {
       await this.initialize();
     }
-    
+
     let lastError: Error | null = null;
     const maxRetries = 3;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
+        const beforeIndex = this.currentIndex;
         const embedder = this.getNextEmbedder();
-        return await embedder.embed(texts, isQuery);
+        console.log(`[EmbedderPool] Attempting embedding with embedder ${beforeIndex}, ${texts.length} texts`);
+        const result = await embedder.embed(texts, isQuery);
+        console.log(`[EmbedderPool] Embedding successful with embedder ${beforeIndex}`);
+        return result;
       } catch (error: any) {
         lastError = error;
         console.error(`[EmbedderPool] Embedding attempt ${attempt + 1} failed:`, error.message);
@@ -169,16 +174,22 @@ export class EmbedderPool {
       if (index < 0 || index >= this.embedders.length) {
         throw new Error(`Invalid embedder index: ${index}`);
       }
-      
+
       // Check if already restarting
       if (this.restartMutex.has(index)) {
         return this.restartMutex.get(index);
       }
-      
+
       // Create restart promise with mutex
       const restartPromise = (async () => {
         try {
           this.restartingEmbedders.add(index);
+
+          // Notify callback before restart so queue can prepare
+          if (this.config.onEmbedderRestart) {
+            this.config.onEmbedderRestart(index);
+          }
+
           await this.embedders[index].restart();
         } catch (error) {
           console.error(`[EmbedderPool] Failed to restart embedder ${index}:`, error);
@@ -188,7 +199,7 @@ export class EmbedderPool {
           this.restartMutex.delete(index);
         }
       })();
-      
+
       this.restartMutex.set(index, restartPromise);
       return restartPromise;
     } else {

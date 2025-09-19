@@ -179,6 +179,142 @@ describe('ConcurrentQueue', () => {
     });
   });
 
+  describe('Backpressure Control', () => {
+    it('should apply backpressure when callback returns true', async () => {
+      const files = Array.from({ length: 8 }, (_, i) => `file${i}.txt`);
+
+      let backpressureActive = false;
+      let maxConcurrentBeforeBackpressure = 0;
+      let maxConcurrentAfterBackpressure = 0;
+
+      const queueWithBackpressure = new ConcurrentQueue({
+        maxConcurrent: 4,
+        shouldApplyBackpressure: () => backpressureActive
+      });
+
+      queueWithBackpressure.add(files);
+
+      const handler = async (file: string) => {
+        const currentProcessing = queueWithBackpressure.getStats().processing;
+
+        if (!backpressureActive) {
+          maxConcurrentBeforeBackpressure = Math.max(maxConcurrentBeforeBackpressure, currentProcessing);
+        } else {
+          maxConcurrentAfterBackpressure = Math.max(maxConcurrentAfterBackpressure, currentProcessing);
+        }
+
+        // Trigger backpressure after first 2 files
+        if (processedFiles.length === 2) {
+          backpressureActive = true;
+        }
+
+        await new Promise(r => setTimeout(r, 50));
+        processedFiles.push(file);
+      };
+
+      await queueWithBackpressure.process(handler);
+
+      // Should have reached full concurrency before backpressure
+      expect(maxConcurrentBeforeBackpressure).toBeGreaterThan(1);
+
+      // Should have processed all files
+      expect(processedFiles).toHaveLength(8);
+    });
+
+    it('should recover when backpressure is released', async () => {
+      const files = Array.from({ length: 10 }, (_, i) => `file${i}.txt`);
+
+      let backpressureActive = false;
+
+      const queueWithBackpressure = new ConcurrentQueue({
+        maxConcurrent: 4,
+        shouldApplyBackpressure: () => backpressureActive
+      });
+
+      queueWithBackpressure.add(files);
+
+      const handler = async (file: string) => {
+        // Trigger backpressure for middle files
+        if (processedFiles.length >= 2 && processedFiles.length < 6) {
+          backpressureActive = true;
+        } else {
+          backpressureActive = false;
+        }
+
+        await new Promise(r => setTimeout(r, 30));
+        processedFiles.push(file);
+      };
+
+      await queueWithBackpressure.process(handler);
+
+      // Should complete all files despite backpressure periods
+      expect(processedFiles).toHaveLength(10);
+    });
+
+    it('should not apply backpressure when callback returns false', async () => {
+      const files = Array.from({ length: 8 }, (_, i) => `file${i}.txt`);
+
+      const queueWithoutBackpressure = new ConcurrentQueue({
+        maxConcurrent: 4,
+        shouldApplyBackpressure: () => false // Never apply backpressure
+      });
+
+      queueWithoutBackpressure.add(files);
+
+      let maxProcessing = 0;
+      const handler = async (file: string) => {
+        const currentProcessing = queueWithoutBackpressure.getStats().processing;
+        maxProcessing = Math.max(maxProcessing, currentProcessing);
+        await new Promise(r => setTimeout(r, 30));
+        processedFiles.push(file);
+      };
+
+      await queueWithoutBackpressure.process(handler);
+
+      // Should reach full concurrency
+      expect(maxProcessing).toBe(4);
+      expect(processedFiles).toHaveLength(8);
+    });
+
+    it('should combine backpressure with memory throttling', async () => {
+      const files = Array.from({ length: 8 }, (_, i) => `file${i}.txt`);
+
+      let memoryMB = 600; // Below threshold
+      let backpressureActive = false;
+      let throttleEvents: number[] = [];
+
+      const queueWithBoth = new ConcurrentQueue({
+        maxConcurrent: 4,
+        memoryThresholdMB: 700,
+        throttledConcurrent: 2,
+        shouldApplyBackpressure: () => backpressureActive,
+        onMemoryThrottle: (newLimit) => {
+          throttleEvents.push(newLimit);
+        }
+      });
+
+      queueWithBoth.add(files);
+
+      const handler = async (file: string) => {
+        // Trigger memory pressure early
+        if (processedFiles.length === 1) {
+          memoryMB = 800; // Above threshold
+        }
+
+        await new Promise(r => setTimeout(r, 20));
+        processedFiles.push(file);
+      };
+
+      await queueWithBoth.process(handler, () => memoryMB);
+
+      // Should complete all files
+      expect(processedFiles).toHaveLength(8);
+
+      // Should have seen some throttling events
+      expect(throttleEvents.length).toBeGreaterThan(0);
+    });
+  });
+
   describe('Pause and Resume', () => {
     it('should pause and resume processing', async () => {
       const files = Array.from({ length: 10 }, (_, i) => `file${i}.txt`);

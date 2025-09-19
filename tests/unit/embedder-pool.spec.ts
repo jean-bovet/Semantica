@@ -226,20 +226,122 @@ describe('EmbedderPool', () => {
     });
   });
   
+  describe('real component integration', () => {
+    // These tests use real IsolatedEmbedder instances (no mocks)
+    let realPool: EmbedderPool;
+
+    afterEach(async () => {
+      if (realPool) {
+        await realPool.dispose();
+        realPool = null as any;
+      }
+    });
+
+    it('should distribute requests across real embedders', async () => {
+      // Skip this test in CI or if model not available
+      if (process.env.CI || process.env.SKIP_REAL_EMBEDDER_TESTS) {
+        return;
+      }
+
+      // Temporarily remove mocks for this test
+      vi.doUnmock('../../src/shared/embeddings/isolated');
+      const { EmbedderPool: RealEmbedderPool } = await import('../../src/shared/embeddings/embedder-pool');
+
+      realPool = new RealEmbedderPool({
+        poolSize: 2,
+        maxFilesBeforeRestart: 10,
+        maxMemoryMB: 100
+      });
+
+      try {
+        await realPool.initialize();
+
+        // Test round-robin distribution with real embedders
+        const requests = [
+          ['first text'],
+          ['second text'],
+          ['third text'],
+          ['fourth text']
+        ];
+
+        const results = [];
+        for (const texts of requests) {
+          const vectors = await realPool.embed(texts, false);
+          results.push(vectors);
+        }
+
+        // All requests should succeed
+        expect(results).toHaveLength(4);
+        results.forEach(vectors => {
+          expect(vectors).toHaveLength(1);
+          expect(vectors[0]).toHaveLength(384);
+        });
+
+      } catch (error: any) {
+        if (error.message?.includes('Model') || error.message?.includes('ENOENT')) {
+          console.warn('Skipping real embedder test - model not available');
+          return;
+        }
+        throw error;
+      }
+    });
+
+    it('should handle concurrent embedding requests', async () => {
+      // Skip this test in CI or if model not available
+      if (process.env.CI || process.env.SKIP_REAL_EMBEDDER_TESTS) {
+        return;
+      }
+
+      vi.doUnmock('../../src/shared/embeddings/isolated');
+      const { EmbedderPool: RealEmbedderPool } = await import('../../src/shared/embeddings/embedder-pool');
+
+      realPool = new RealEmbedderPool({
+        poolSize: 2,
+        maxFilesBeforeRestart: 10,
+        maxMemoryMB: 100
+      });
+
+      try {
+        await realPool.initialize();
+
+        // Send multiple concurrent requests
+        const concurrentRequests = Array.from({ length: 6 }, (_, i) =>
+          realPool.embed([`concurrent text ${i}`], false)
+        );
+
+        const results = await Promise.all(concurrentRequests);
+
+        // All should succeed
+        expect(results).toHaveLength(6);
+        results.forEach(vectors => {
+          expect(vectors).toHaveLength(1);
+          expect(vectors[0]).toHaveLength(384);
+        });
+
+      } catch (error: any) {
+        if (error.message?.includes('Model') || error.message?.includes('ENOENT')) {
+          console.warn('Skipping real embedder test - model not available');
+          return;
+        }
+        throw error;
+      }
+    });
+  });
+
   describe('disposal', () => {
     it('should dispose all embedders', async () => {
       pool = new EmbedderPool({ poolSize: 3 });
       await pool.initialize();
-      
+
       const mockInstances = (IsolatedEmbedder as any).mock.results.map((r: any) => r.value);
-      
+
       await pool.dispose();
-      
+
       // All embedders should be disposed
       mockInstances.forEach((instance: any) => {
         expect(instance.shutdown).toHaveBeenCalledTimes(1);
       });
-      
+
       // Pool should be reset
       expect(pool.getPoolSize()).toBe(0);
       expect(pool.isInitialized()).toBe(false);

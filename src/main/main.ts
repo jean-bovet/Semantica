@@ -61,7 +61,7 @@ function spawnWorker() {
   workerReady = false;
   
   worker = new Worker(path.join(__dirname, 'worker.cjs'));
-  
+
   worker.on('message', (msg: any) => {
     if (msg.type === 'ready') {
       workerReady = true;
@@ -88,6 +88,11 @@ function spawnWorker() {
       win?.webContents.send('model:download:progress', msg.payload);
     } else if (msg.type === 'model:download:complete') {
       win?.webContents.send('model:download:complete');
+    } else if (msg.type === 'pipeline:status') {
+      // Log pipeline status to main process console AND send to renderer console
+      console.log(msg.payload);
+      // Also send to renderer process console (which shows in browser dev tools)
+      win?.webContents.executeJavaScript(`console.log(${JSON.stringify(msg.payload)})`);
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
       pendingCallbacks.delete(msg.id);
