@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EmbedderPool, getEmbedderPool, disposeEmbedderPool } from '../../src/shared/embeddings/embedder-pool';
 import { IsolatedEmbedder } from '../../src/shared/embeddings/isolated';
+import { TestLoadBalancer } from '../../src/shared/test-utils/TestLoadBalancer';
+import { TestHealthManager } from '../../src/shared/test-utils/TestHealthManager';
 
 // Mock the IsolatedEmbedder
 vi.mock('../../src/shared/embeddings/isolated', () => {
@@ -432,7 +434,17 @@ describe('EmbedderPool', () => {
   
   describe('parallel processing simulation', () => {
     it('should handle concurrent embed requests efficiently', async () => {
-      pool = new EmbedderPool({ poolSize: 3 });
+      // Create test dependencies
+      const testLoadBalancer = new TestLoadBalancer<IsolatedEmbedder>();
+      const testHealthManager = new TestHealthManager<IsolatedEmbedder>();
+
+      pool = new EmbedderPool({
+        poolSize: 3,
+        dependencies: {
+          loadBalancer: testLoadBalancer,
+          healthManager: testHealthManager
+        }
+      });
       await pool.initialize();
       
       // Simulate parallel batch processing

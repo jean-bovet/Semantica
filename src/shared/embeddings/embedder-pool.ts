@@ -3,6 +3,15 @@ import { LoadBalancer } from '../utils/LoadBalancer';
 import { HealthManager } from './HealthManager';
 import { EmbedderFactory } from './EmbedderFactory';
 
+/**
+ * Dependencies that can be injected for testing
+ */
+export interface EmbedderPoolDependencies {
+  loadBalancer?: LoadBalancer<IsolatedEmbedder>;
+  healthManager?: HealthManager<IsolatedEmbedder>;
+  factory?: EmbedderFactory;
+}
+
 export interface EmbedderPoolConfig {
   modelName?: string;
   poolSize?: number;
@@ -21,6 +30,9 @@ export interface EmbedderPoolConfig {
 
   // Factory options
   factoryConfig?: any;
+
+  // Dependency injection
+  dependencies?: EmbedderPoolDependencies;
 }
 
 /**
@@ -32,7 +44,7 @@ export class EmbedderPool {
   private loadBalancer: LoadBalancer<IsolatedEmbedder>;
   private healthManager: HealthManager<IsolatedEmbedder>;
   private factory: EmbedderFactory;
-  private config: Required<EmbedderPoolConfig>;
+  private config: Required<Omit<EmbedderPoolConfig, 'dependencies'>>;
   private initPromise: Promise<void> | null = null;
 
   constructor(config: EmbedderPoolConfig = {}) {
@@ -50,16 +62,16 @@ export class EmbedderPool {
       factoryConfig: config.factoryConfig || {} as any
     };
 
-    // Initialize factory with merged config
-    this.factory = new EmbedderFactory({
+    // Initialize factory with dependency injection
+    this.factory = config.dependencies?.factory || new EmbedderFactory({
       modelName: this.config.modelName,
       maxFilesBeforeRestart: this.config.maxFilesBeforeRestart,
       maxMemoryMB: this.config.maxMemoryMB,
       ...this.config.factoryConfig
     });
 
-    // Initialize load balancer
-    this.loadBalancer = new LoadBalancer<IsolatedEmbedder>({
+    // Initialize load balancer with dependency injection
+    this.loadBalancer = config.dependencies?.loadBalancer || new LoadBalancer<IsolatedEmbedder>({
       strategy: this.config.loadBalancingStrategy,
       healthChecker: async (embedder) => {
         const stats = embedder.getStats();
@@ -69,8 +81,8 @@ export class EmbedderPool {
       retryDelay: 100
     });
 
-    // Initialize health manager
-    this.healthManager = new HealthManager<IsolatedEmbedder>({
+    // Initialize health manager with dependency injection
+    this.healthManager = config.dependencies?.healthManager || new HealthManager<IsolatedEmbedder>({
       checkInterval: this.config.healthCheckInterval,
       maxConsecutiveErrors: this.config.maxConsecutiveErrors,
       restartDelay: this.config.restartDelay,

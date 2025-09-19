@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { ModelPathResolver } from '../../src/shared/embeddings/ModelPathResolver';
 import { TestFileSystem } from '../../src/shared/test-utils/TestFileSystem';
 import { TestOSUtils, TestPathUtils } from '../../src/shared/test-utils/TestOSUtils';
+import path from 'node:path';
 
 describe('ModelPathResolver', () => {
   let resolver: ModelPathResolver;
