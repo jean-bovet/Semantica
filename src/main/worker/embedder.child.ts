@@ -8,7 +8,7 @@ let transformers: any = null;
 let pipe: any = null;
 
 // Use the new SerialQueue utility for embedding operations
-const embeddingQueue = new SerialQueue<number[][]>();
+const embeddingQueue = new SerialQueue();
 const embeddingProcessor = new EmbeddingProcessor();
 const messageRouter = new IPCMessageRouter();
 

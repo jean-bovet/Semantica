@@ -230,11 +230,10 @@ export class EmbedderFactory {
  * Mock embedder for testing purposes
  */
 export class MockEmbedder {
-  private config: EmbedderFactoryConfig;
   private isInitialized = false;
 
-  constructor(config: EmbedderFactoryConfig) {
-    this.config = config;
+  constructor(_config: EmbedderFactoryConfig) {
+    // Mock embedder ignores config for simplicity
   }
 
   async initialize(): Promise<boolean> {
@@ -256,7 +255,7 @@ export class MockEmbedder {
     });
   }
 
-  async embedWithRetry(texts: string[], maxRetries = 3): Promise<number[][]> {
+  async embedWithRetry(texts: string[]): Promise<number[][]> {
     return this.embed(texts);
   }
 

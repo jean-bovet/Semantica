@@ -153,8 +153,6 @@ export const DEFAULT_CONFIGS = {
 export class EmbedderConfigValidator {
   private readonly environment: keyof typeof CONFIG_SCHEMAS;
   private readonly rules: ValidationRules;
-  private readonly pathResolver: ModelPathResolver;
-
   constructor(
     environment: keyof typeof CONFIG_SCHEMAS = 'production',
     customRules?: Partial<ValidationRules>
@@ -164,9 +162,6 @@ export class EmbedderConfigValidator {
       ...CONFIG_SCHEMAS[environment],
       ...customRules
     };
-
-    // Create a temporary path resolver for validation
-    this.pathResolver = new ModelPathResolver();
   }
 
   /**

@@ -2,7 +2,7 @@
  * A serial queue that processes async operations one at a time using promise chaining.
  * Ensures operations are executed in the order they were added, with proper error isolation.
  */
-export class SerialQueue<T = any> {
+export class SerialQueue {
   private currentTask: Promise<any> = Promise.resolve();
   private isShutdown = false;
 

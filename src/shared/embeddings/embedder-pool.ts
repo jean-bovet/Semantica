@@ -87,7 +87,7 @@ export class EmbedderPool {
       maxConsecutiveErrors: this.config.maxConsecutiveErrors,
       restartDelay: this.config.restartDelay,
       maxRestarts: this.config.maxRestarts,
-      healthChecker: async (embedder, id) => {
+      healthChecker: async (embedder) => {
         try {
           const stats = embedder.getStats();
           return stats.isReady;

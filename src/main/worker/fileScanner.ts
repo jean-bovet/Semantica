@@ -65,7 +65,7 @@ export class FileScanner {
    * and configuration options.
    */
   shouldIndexFile(
-    filePath: string,
+    _filePath: string,
     fileRecord: FileStatus | null,
     forceReindex: boolean,
     fileStats?: FileStats,

@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
 const pdfParse = require('pdf-parse');
 

@@ -102,7 +102,7 @@ export class LinearRetryStrategy implements RetryStrategy {
     };
   }
 
-  calculateDelay(context: RetryContext): number {
+  calculateDelay(_context: RetryContext): number {
     return Math.min(this.config.initialDelayMs, this.config.maxDelayMs);
   }
 

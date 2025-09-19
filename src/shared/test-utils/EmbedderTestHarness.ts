@@ -1,8 +1,7 @@
 import { IsolatedEmbedder } from '../embeddings/isolated';
 import { EmbedderConfig } from '../embeddings/IEmbedder';
-import { EmbedderState, ProcessStateMachine } from '../utils/ProcessStateMachine';
+import { EmbedderState } from '../utils/ProcessStateMachine';
 import { EmbedderEventEmitter, createEmbedderEventEmitter } from '../embeddings/EmbedderEventEmitter';
-import { RetryExecutor, RetryStrategyFactory } from '../utils/RetryStrategy';
 import { EmbedderConfigValidator } from '../embeddings/EmbedderConfigValidator';
 
 /**
@@ -68,7 +67,7 @@ export class MockEmbedder {
     return true;
   }
 
-  async embed(texts: string[], isQuery = false): Promise<number[][]> {
+  async embed(texts: string[]): Promise<number[][]> {
     if (!this.isInitialized) {
       throw new Error('Mock embedder not initialized');
     }
@@ -92,14 +91,14 @@ export class MockEmbedder {
     });
   }
 
-  async embedWithRetry(texts: string[], isQuery = false): Promise<number[][]> {
+  async embedWithRetry(texts: string[]): Promise<number[][]> {
     // Simple retry logic for mock
     let attempts = 0;
     const maxAttempts = 3;
 
     while (attempts < maxAttempts) {
       try {
-        return await this.embed(texts, isQuery);
+        return await this.embed(texts);
       } catch (error) {
         attempts++;
         if (attempts >= maxAttempts) {
@@ -273,10 +272,10 @@ export class EmbedderTestHarness {
   /**
    * Test embedding with retry logic
    */
-  async testEmbeddingWithRetry(texts: string[] = ['test text'], isQuery = false): Promise<number[][]> {
+  async testEmbeddingWithRetry(texts: string[] = ['test text']): Promise<number[][]> {
     this.log(`Testing embedding with retry for ${texts.length} texts`);
 
-    const result = await this.embedder.embedWithRetry(texts, isQuery);
+    const result = await this.embedder.embedWithRetry(texts);
 
     this.log(`Retry test completed, generated ${result.length} embeddings`);
     return result;
@@ -301,7 +300,7 @@ export class EmbedderTestHarness {
         await this.embedder.embed(['error test']);
       } catch (error) {
         errors++;
-        this.log(`Expected error caught: ${error.message}`);
+        this.log(`Expected error caught: ${(error as Error).message}`);
       }
 
       // Restore normal error rate
@@ -312,7 +311,7 @@ export class EmbedderTestHarness {
         recovered = true;
         this.log('Recovery successful');
       } catch (error) {
-        this.log(`Recovery failed: ${error.message}`);
+        this.log(`Recovery failed: ${(error as Error).message}`);
       }
     }
 
@@ -364,7 +363,7 @@ export class EmbedderTestHarness {
       this.log('Post-restart operation successful');
 
     } catch (error) {
-      this.log(`Restart test error: ${error.message}`);
+      this.log(`Restart test error: ${(error as Error).message}`);
     }
 
     return { restarted, operational };
@@ -552,18 +551,18 @@ export class EmbedderTestHarness {
         this.trackEvent('embedder_initialized', {});
       });
 
-      eventEmitter.on('state:changed', (embedderId, from, to, reason) => {
+      eventEmitter.on('state:changed', (_, from, to, reason) => {
         this.trackEvent('state_changed', { from, to, reason });
       });
     }
 
     // Override embedder methods to track calls
     const originalEmbed = this.embedder.embed.bind(this.embedder);
-    this.embedder.embed = async (texts: string[], isQuery = false) => {
-      this.trackEvent('embed_started', { textCount: texts.length, isQuery });
+    this.embedder.embed = async (texts: string[]) => {
+      this.trackEvent('embed_started', { textCount: texts.length });
 
       try {
-        const result = await originalEmbed(texts, isQuery);
+        const result = await originalEmbed(texts);
         this.trackEvent('embed_completed', { textCount: texts.length, vectorCount: result.length });
         return result;
       } catch (error: any) {

@@ -323,7 +323,7 @@ export class PerformanceProfiler {
   }
   
   // Track database operations
-  recordDBWrite(batchSize: number, queueDepth: number): void {
+  recordDBWrite(_batchSize: number, queueDepth: number): void {
     if (!this.enabled) return;
     
     this.dbWriteQueue.push(queueDepth);

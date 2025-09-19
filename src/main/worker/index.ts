@@ -669,8 +669,7 @@ async function handleFileOriginal(filePath: string) {
     
     const currentHash = await getFileHash(filePath);
     const previousHash = fileHashes.get(filePath);
-    const stat = await fs.promises.stat(filePath);
-    const mtime = stat.mtimeMs;
+    await fs.promises.stat(filePath);
     const ext = path.extname(filePath).slice(1).toLowerCase();
     const parserVersion = getParserVersion(ext);
     

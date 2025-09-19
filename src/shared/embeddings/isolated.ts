@@ -5,8 +5,8 @@ import { ProcessMemoryMonitor } from '../utils/ProcessMemoryMonitor';
 import { ModelPathResolver } from './ModelPathResolver';
 import { IPCMessageBuilder, MessageTypeGuards } from './IPCMessageProtocol';
 import { ProcessStateMachine, EmbedderState } from '../utils/ProcessStateMachine';
-import { createEmbedderEventEmitter, EmbedderEventHelpers, ErrorContext, PerformanceMetrics } from './EmbedderEventEmitter';
-import { RetryExecutor, RetryStrategyFactory, RetryContext } from '../utils/RetryStrategy';
+import { createEmbedderEventEmitter, EmbedderEventHelpers } from './EmbedderEventEmitter';
+import { RetryExecutor, RetryStrategyFactory } from '../utils/RetryStrategy';
 
 export class IsolatedEmbedder implements IEmbedder {
   private processManager: ChildProcessManager | null = null;
@@ -80,16 +80,6 @@ export class IsolatedEmbedder implements IEmbedder {
     });
   }
 
-  /**
-   * Get memory usage of the child process
-   */
-  private async getChildMemoryUsage(): Promise<{ rss: number; vsz: number } | null> {
-    const status = this.processManager?.getStatus();
-    if (!status?.pid) return null;
-
-    const memInfo = await this.memoryMonitor.getMemoryUsage(status.pid);
-    return memInfo ? { rss: memInfo.rss, vsz: memInfo.vsz } : null;
-  }
   
   public async initialize(): Promise<boolean> {
     // Transition to spawning state if uninitialized
@@ -286,15 +276,15 @@ export class IsolatedEmbedder implements IEmbedder {
     if (this.filesSinceSpawn > 50 && this.filesSinceSpawn % 10 === 0) {  // Check every 10 files after 50
       const status = this.processManager.getStatus();
       if (status.pid) {
-        const checkResult = await this.memoryMonitor.checkMemoryAndRestart(status.pid, this.filesSinceSpawn);
+        const checkResult = await this.memoryMonitor.checkMemoryAndRestart(status.pid);
 
         // Emit memory usage event
         const memInfo = await this.memoryMonitor.getMemoryUsage(status.pid);
         if (memInfo) {
           const memoryInfo = EmbedderEventHelpers.createMemoryInfo(
             memInfo.rss,
-            memInfo.heapUsed || 0,
-            memInfo.external || 0,
+            (memInfo as any).heapUsed || 0,
+            (memInfo as any).external || 0,
             this.config.maxMemoryMB
           );
           this.events.emit('memory:usage', memoryInfo);
@@ -384,7 +374,9 @@ export class IsolatedEmbedder implements IEmbedder {
   /**
    * Embed text with retry logic using configurable retry strategy
    */
-  async embedWithRetry(texts: string[], isQuery = false): Promise<number[][]> {
+  async embedWithRetry(texts: string[], maxRetries?: number): Promise<number[][]> {
+    // For backward compatibility, if maxRetries is provided, treat second param as isQuery boolean
+    const isQuery = typeof maxRetries === 'boolean' ? maxRetries : false;
     const operationId = `embed_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
     return this.retryExecutor.execute(async () => {
@@ -408,7 +400,7 @@ export class IsolatedEmbedder implements IEmbedder {
     }
 
     // Check memory using the monitor
-    const checkResult = await this.memoryMonitor.checkMemoryAndRestart(status.pid, this.filesSinceSpawn);
+    const checkResult = await this.memoryMonitor.checkMemoryAndRestart(status.pid);
 
     // Also check file count threshold
     const fileThresholdExceeded = this.filesSinceSpawn > this.config.maxFilesBeforeRestart;
@@ -458,8 +450,8 @@ export class IsolatedEmbedder implements IEmbedder {
       timeInCurrentState: this.stateMachine.getTimeInCurrentState(),
       memoryUsage: {
         rss: Math.round(memoryUsage.rss / 1024 / 1024),
-        heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
-        external: Math.round(memoryUsage.external / 1024 / 1024)
+        heapUsed: Math.round((memoryUsage as any).heapUsed / 1024 / 1024),
+        external: Math.round((memoryUsage as any).external / 1024 / 1024)
       },
       stateHistory: stateMachineStats
     };
@@ -504,7 +496,7 @@ export class IsolatedEmbedder implements IEmbedder {
 // Legacy singleton functions - DEPRECATED: Use EmbedderFactory instead
 // These are kept for backward compatibility but should be replaced
 
-import { EmbedderFactory, defaultEmbedderFactory } from './EmbedderFactory';
+import { defaultEmbedderFactory } from './EmbedderFactory';
 
 // Global instance for backward compatibility
 let legacyEmbedder: IsolatedEmbedder | null = null;

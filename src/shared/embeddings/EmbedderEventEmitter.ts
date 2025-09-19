@@ -297,10 +297,7 @@ export class EmbedderEventEmitter extends EventEmitter {
    * Set up debug logging for all events
    */
   private setupDebugLogging(): void {
-    // Log all events in debug mode
-    const originalEmit = this.emit.bind(this);
-
-    // We can't easily override emit due to typing, so we'll handle debug in updateEventMetrics
+    // Debug logging is handled in updateEventMetrics method
   }
 
   /**
@@ -358,7 +355,7 @@ export const globalEmbedderEvents = new EmbedderEventEmitter({
  */
 export function createEmbedderEventEmitter(embedderId: string): {
   emitter: EmbedderEventEmitter;
-  emit: <K extends keyof EmbedderEvents>(event: K, ...args: Omit<Parameters<EmbedderEvents[K]>, 0>) => boolean;
+  emit: <K extends keyof EmbedderEvents>(event: K, ...args: any[]) => boolean;
 } {
   const emitter = new EmbedderEventEmitter();
 
@@ -367,12 +364,12 @@ export function createEmbedderEventEmitter(embedderId: string): {
     event: K,
     ...args: any[]
   ): boolean => {
-    return emitter.emit(event, embedderId, ...args);
+    return (emitter as any).emit(event, embedderId, ...args);
   };
 
   return {
     emitter,
-    emit: scopedEmit as any
+    emit: scopedEmit
   };
 }
 

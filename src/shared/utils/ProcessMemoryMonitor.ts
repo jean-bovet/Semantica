@@ -57,7 +57,7 @@ export class ProcessMemoryMonitor {
     };
 
     // Set up dependencies with defaults
-    this.execSync = config.dependencies?.execSync || nodeExecSync;
+    this.execSync = config.dependencies?.execSync || (nodeExecSync as any);
 
     if (this.config.maxMemoryMB <= 0) {
       throw new Error('maxMemoryMB must be greater than 0');
@@ -94,8 +94,7 @@ export class ProcessMemoryMonitor {
    * @returns Memory check result with restart recommendation
    */
   async checkMemoryAndRestart(
-    pid: number,
-    fileCount = 0
+    pid: number
   ): Promise<MemoryCheckResult> {
     const current = await this.getMemoryUsage(pid);
 

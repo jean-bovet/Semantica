@@ -1,5 +1,4 @@
 import { EventEmitter } from 'node:events';
-import { ChildProcess } from 'node:child_process';
 
 /**
  * Test implementation of execSync for testing process memory monitoring
@@ -12,7 +11,7 @@ export class TestExecSync {
   /**
    * Mock execSync behavior
    */
-  execSync(command: string, options?: { encoding?: BufferEncoding; timeout?: number }): string {
+  execSync(command: string): string {
     const result = this.mockResults.get(command) || this.defaultResult;
 
     if (result instanceof Error) {
@@ -63,12 +62,12 @@ export class TestExecSync {
 /**
  * Test implementation of child process for testing without spawning real processes
  */
-export class TestChildProcess extends EventEmitter implements Partial<ChildProcess> {
+export class TestChildProcess extends EventEmitter {
   public pid: number;
   public killed = false;
   public connected = true;
-  public stdout = new EventEmitter();
-  public stderr = new EventEmitter();
+  public stdout = new EventEmitter() as any;
+  public stderr = new EventEmitter() as any;
 
   private messageHandlers: Array<(message: any) => void> = [];
 
@@ -113,7 +112,7 @@ export class TestChildProcess extends EventEmitter implements Partial<ChildProce
   /**
    * Mock kill method
    */
-  kill(signal?: string): boolean {
+  kill(signal?: any): boolean {
     this.killed = true;
     this.connected = false;
 
@@ -188,7 +187,7 @@ export class TestSpawn {
   /**
    * Mock spawn function
    */
-  spawn(command: string, args?: string[], options?: any): TestChildProcess {
+  spawn(command: string, args?: string[]): TestChildProcess {
     const pid = this.processCounter++;
     const key = `${command} ${args?.join(' ') || ''}`;
 
