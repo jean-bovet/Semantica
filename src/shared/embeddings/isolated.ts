@@ -4,16 +4,24 @@ import { ChildProcessManager } from '../utils/ChildProcessManager';
 import { ProcessMemoryMonitor } from '../utils/ProcessMemoryMonitor';
 import { ModelPathResolver } from './ModelPathResolver';
 import { IPCMessageBuilder, MessageTypeGuards } from './IPCMessageProtocol';
+import { ProcessStateMachine, EmbedderState } from '../utils/ProcessStateMachine';
+import { createEmbedderEventEmitter, EmbedderEventHelpers, ErrorContext, PerformanceMetrics } from './EmbedderEventEmitter';
+import { RetryExecutor, RetryStrategyFactory, RetryContext } from '../utils/RetryStrategy';
 
 export class IsolatedEmbedder implements IEmbedder {
   private processManager: ChildProcessManager | null = null;
   private memoryMonitor: ProcessMemoryMonitor;
   private pathResolver: ModelPathResolver;
-  private inflight = new Map<string, { resolve: Function, reject: Function }>();
+  private stateMachine: ProcessStateMachine;
+  private events: ReturnType<typeof createEmbedderEventEmitter>;
+  private retryExecutor: RetryExecutor;
+  private inflight = new Map<string, { resolve: Function, reject: Function, startTime: number }>();
   public filesSinceSpawn = 0; // Made public for shouldRestart check
-  private ready = false;
   private initPromise: Promise<void> | null = null;
   private readonly config: Required<EmbedderConfig>;
+  private readonly embedderId: string;
+  private spawnTime = 0;
+  private restartCount = 0;
 
   constructor(private modelName = 'Xenova/multilingual-e5-small', config?: EmbedderConfig) {
     this.config = {
@@ -28,11 +36,50 @@ export class IsolatedEmbedder implements IEmbedder {
       this.modelName = this.config.modelName;
     }
 
+    // Generate unique embedder ID
+    this.embedderId = `embedder_${Math.random().toString(36).slice(2)}`;
+
     // Initialize utilities
     this.memoryMonitor = ProcessMemoryMonitor.forEmbedder(this.config.maxMemoryMB);
     this.pathResolver = new ModelPathResolver(this.modelName);
+    this.stateMachine = new ProcessStateMachine({ enableLogging: process.env.NODE_ENV !== 'production' });
+    this.events = createEmbedderEventEmitter(this.embedderId);
+    this.retryExecutor = new RetryExecutor(RetryStrategyFactory.forEmbedder());
+
+    // Set up state machine event handlers
+    this.setupStateMachineEvents();
+
+    // Emit initialization event
+    this.events.emit('embedder:initialized');
   }
-  
+
+  /**
+   * Set up state machine event handlers for monitoring and debugging
+   */
+  private setupStateMachineEvents(): void {
+    this.stateMachine.on('stateChange', (from, to, context) => {
+      console.log(`[ISOLATED] State: ${from} → ${to}${context.reason ? ` (${context.reason})` : ''}`);
+
+      // Handle automatic restart on error if no operations are pending
+      if (to === EmbedderState.Error && this.inflight.size === 0) {
+        // Schedule restart after a brief delay
+        setTimeout(async () => {
+          if (this.stateMachine.isErrorState() && !this.stateMachine.isShuttingDown()) {
+            try {
+              await this.restart();
+            } catch (error) {
+              console.error('[ISOLATED] Auto-restart failed:', error);
+            }
+          }
+        }, 1000);
+      }
+    });
+
+    this.stateMachine.on('invalidTransition', (from, to, reason) => {
+      console.warn(`[ISOLATED] Invalid state transition: ${from} → ${to} (${reason})`);
+    });
+  }
+
   /**
    * Get memory usage of the child process
    */
@@ -45,6 +92,13 @@ export class IsolatedEmbedder implements IEmbedder {
   }
   
   public async initialize(): Promise<boolean> {
+    // Transition to spawning state if uninitialized
+    if (this.stateMachine.isState(EmbedderState.Uninitialized)) {
+      this.stateMachine.transition(EmbedderState.Spawning, {
+        reason: 'Initialize called'
+      });
+    }
+
     // Ensure child process is spawned and model is loaded
     // Model MUST already exist at this point (checked by worker)
     await this.ensureReady();
@@ -60,7 +114,11 @@ export class IsolatedEmbedder implements IEmbedder {
       this.processManager = null;
     }
 
-    this.ready = false;
+    // Transition to spawning state
+    this.stateMachine.transition(EmbedderState.Spawning, {
+      reason: 'Spawning child process'
+    });
+
     this.filesSinceSpawn = 0;
     this.inflight.clear();
 
@@ -99,12 +157,23 @@ export class IsolatedEmbedder implements IEmbedder {
     // Set up event handlers
     this.processManager.on('ready', () => {
       console.log('[ISOLATED] Embedder ready');
-      this.ready = true;
+      this.stateMachine.transition(EmbedderState.Ready, {
+        reason: 'Process manager signaled ready'
+      });
+
+      // Check and emit model load event
+      const modelInfo = this.pathResolver.getModelInfo();
+      if (modelInfo.exists && modelInfo.size) {
+        this.events.emit('resource:model_loaded', modelInfo.path, modelInfo.size);
+      }
     });
 
     this.processManager.on('error', (err) => {
       console.error('[ISOLATED] Embedder child error:', err);
-      this.ready = false;
+      this.stateMachine.transition(EmbedderState.Error, {
+        reason: 'Process manager error',
+        error: err
+      });
 
       // Reject all pending operations
       for (const handler of this.inflight.values()) {
@@ -115,7 +184,14 @@ export class IsolatedEmbedder implements IEmbedder {
 
     this.processManager.on('exit', (code, signal) => {
       console.error(`[ISOLATED] Embedder child exited with code ${code}, signal ${signal}`);
-      this.ready = false;
+      this.events.emit('debug:process_exit', code, signal);
+
+      if (!this.stateMachine.isShuttingDown()) {
+        this.stateMachine.transition(EmbedderState.Error, {
+          reason: `Process exited with code ${code}, signal ${signal}`,
+          metadata: { code, signal }
+        });
+      }
 
       // Reject all pending operations
       for (const handler of this.inflight.values()) {
@@ -126,6 +202,7 @@ export class IsolatedEmbedder implements IEmbedder {
 
     this.processManager.on('message', (msg: any) => {
       if (MessageTypeGuards.isEmbedSuccessMessage(msg) || MessageTypeGuards.isEmbedErrorMessage(msg)) {
+        this.events.emit('ipc:message_received', msg.type, msg.id);
         const handler = this.inflight.get(msg.id);
         if (handler) {
           this.inflight.delete(msg.id);
@@ -137,7 +214,10 @@ export class IsolatedEmbedder implements IEmbedder {
         }
       } else if (MessageTypeGuards.isInitErrorMessage(msg)) {
         console.error('[ISOLATED] Embedder init failed:', msg.error);
-        this.ready = false;
+        this.stateMachine.transition(EmbedderState.Error, {
+          reason: 'Embedder initialization failed',
+          error: new Error(msg.error)
+        });
       }
     });
 
@@ -155,7 +235,7 @@ export class IsolatedEmbedder implements IEmbedder {
       }, 60000);
 
       const checkReady = setInterval(() => {
-        if (this.ready) {
+        if (this.stateMachine.isReady()) {
           clearInterval(checkReady);
           clearTimeout(timeout);
           resolve();
@@ -165,13 +245,16 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   private async ensureReady(): Promise<void> {
-    if (!this.ready || !this.processManager) {
+    if (!this.stateMachine.isReady() || !this.processManager) {
       if (!this.initPromise) {
         this.initPromise = this.spawnChild()
           .catch((err) => {
             console.error('[ISOLATED] Failed to spawn child:', err);
             // Reset state on failure
-            this.ready = false;
+            this.stateMachine.transition(EmbedderState.Error, {
+              reason: 'Failed to spawn child process',
+              error: err
+            });
             this.processManager = null;
             throw err;
           })
@@ -184,10 +267,18 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   async embed(texts: string[], isQuery = false): Promise<number[][]> {
+    // Check if we can accept operations
+    if (!this.stateMachine.canAcceptOperations()) {
+      throw new Error(`Cannot embed: embedder is in state ${this.stateMachine.getState()}`);
+    }
+
     await this.ensureReady();
 
     // Double-check process manager is available
     if (!this.processManager || !this.processManager.isConnected()) {
+      this.stateMachine.transition(EmbedderState.Error, {
+        reason: 'Process manager not connected'
+      });
       throw new Error('Embedder child process is not connected');
     }
 
@@ -196,6 +287,24 @@ export class IsolatedEmbedder implements IEmbedder {
       const status = this.processManager.getStatus();
       if (status.pid) {
         const checkResult = await this.memoryMonitor.checkMemoryAndRestart(status.pid, this.filesSinceSpawn);
+
+        // Emit memory usage event
+        const memInfo = await this.memoryMonitor.getMemoryUsage(status.pid);
+        if (memInfo) {
+          const memoryInfo = EmbedderEventHelpers.createMemoryInfo(
+            memInfo.rss,
+            memInfo.heapUsed || 0,
+            memInfo.external || 0,
+            this.config.maxMemoryMB
+          );
+          this.events.emit('memory:usage', memoryInfo);
+
+          // Emit warning if memory usage is high
+          if (memoryInfo.percentage > 80) {
+            this.events.emit('memory:warning', memoryInfo, 80);
+          }
+        }
+
         if (checkResult.shouldRestart) {
           console.log('[ISOLATED] Memory limit reached, restarting embedder:', checkResult.reason);
           await this.restart();
@@ -213,16 +322,39 @@ export class IsolatedEmbedder implements IEmbedder {
       // Create typed embed message
       const embedMessage = IPCMessageBuilder.embed(texts, isQuery);
 
+      const startTime = Date.now();
+      this.events.emit('operation:started', embedMessage.id, 'embed');
+      this.events.emit('ipc:message_sent', 'embed', embedMessage.id);
+
       this.inflight.set(embedMessage.id, {
         resolve: (vectors: number[][]) => {
           clearTimeout(timeout);
+          const duration = Date.now() - startTime;
           this.filesSinceSpawn++;
+
+          // Emit performance metrics
+          const metrics = EmbedderEventHelpers.createPerformanceMetrics(
+            embedMessage.id,
+            texts.length,
+            duration,
+            vectors.length
+          );
+          this.events.emit('performance:metrics', metrics);
+          this.events.emit('operation:completed', embedMessage.id, duration);
+
+          // Check for slow operations
+          if (duration > 5000) {
+            this.events.emit('performance:slow_operation', 'embed', duration);
+          }
+
           resolve(vectors);
         },
         reject: (err: Error) => {
           clearTimeout(timeout);
+          this.events.emit('operation:failed', embedMessage.id, err);
           reject(err);
-        }
+        },
+        startTime
       });
 
       try {
@@ -235,9 +367,12 @@ export class IsolatedEmbedder implements IEmbedder {
         this.inflight.delete(embedMessage.id);
         clearTimeout(timeout);
 
-        // If process died, mark as not ready
+        // If process died, transition to error state
         if (err.message?.includes('not connected') || err.message?.includes('disconnected')) {
-          this.ready = false;
+          this.stateMachine.transition(EmbedderState.Error, {
+            reason: 'Process disconnected during embed operation',
+            error: err
+          });
           this.processManager = null;
         }
         reject(new Error(`Failed to send message to embedder: ${err.message || err}`));
@@ -247,31 +382,20 @@ export class IsolatedEmbedder implements IEmbedder {
 
 
   /**
-   * Embed text with retry logic
+   * Embed text with retry logic using configurable retry strategy
    */
-  async embedWithRetry(texts: string[], maxRetries = 3): Promise<number[][]> {
-    let lastError: Error | null = null;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        return await this.embed(texts);
-      } catch (error: any) {
-        lastError = error;
-        console.warn(`Embed attempt ${attempt + 1} failed:`, error.message);
-        
-        if (attempt < maxRetries - 1) {
-          // Wait before retry with exponential backoff
-          await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
-          
-          // If process died, restart it
-          if (!this.processManager || !this.processManager.isConnected()) {
-            await this.restart();
-          }
-        }
+  async embedWithRetry(texts: string[], isQuery = false): Promise<number[][]> {
+    const operationId = `embed_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    return this.retryExecutor.execute(async () => {
+      // Check if process needs restart before attempting embed
+      if (!this.processManager || !this.processManager.isConnected() || this.stateMachine.isErrorState()) {
+        await this.restart();
+        await this.ensureReady();
       }
-    }
-    
-    throw lastError || new Error('Embed failed after retries');
+
+      return this.embed(texts, isQuery);
+    }, operationId);
   }
 
   /**
@@ -296,6 +420,23 @@ export class IsolatedEmbedder implements IEmbedder {
    * Restart the embedder
    */
   async restart(): Promise<void> {
+    const previousUptime = this.spawnTime ? Date.now() - this.spawnTime : 0;
+    this.restartCount++;
+
+    this.stateMachine.transition(EmbedderState.Restarting, {
+      reason: 'Manual restart requested'
+    });
+
+    // Emit restart event
+    const restartInfo = EmbedderEventHelpers.createRestartInfo(
+      'Manual restart requested',
+      'manual',
+      previousUptime,
+      this.filesSinceSpawn,
+      this.restartCount
+    );
+    this.events.emit('embedder:restarted', restartInfo);
+
     if (this.processManager) {
       await this.processManager.restart();
     } else {
@@ -308,14 +449,19 @@ export class IsolatedEmbedder implements IEmbedder {
    */
   getStats() {
     const memoryUsage = process.memoryUsage();
+    const stateMachineStats = this.stateMachine.getStatistics();
+
     return {
       filesSinceSpawn: this.filesSinceSpawn,
-      isReady: this.ready,
+      isReady: this.stateMachine.isReady(),
+      state: this.stateMachine.getState(),
+      timeInCurrentState: this.stateMachine.getTimeInCurrentState(),
       memoryUsage: {
         rss: Math.round(memoryUsage.rss / 1024 / 1024),
         heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
         external: Math.round(memoryUsage.external / 1024 / 1024)
-      }
+      },
+      stateHistory: stateMachineStats
     };
   }
 
@@ -330,6 +476,10 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   async shutdown(): Promise<void> {
+    this.stateMachine.transition(EmbedderState.ShuttingDown, {
+      reason: 'Shutdown requested'
+    });
+
     if (this.processManager) {
       try {
         // Send shutdown message
@@ -343,8 +493,11 @@ export class IsolatedEmbedder implements IEmbedder {
       this.processManager = null;
     }
 
-    this.ready = false;
     this.inflight.clear();
+
+    this.stateMachine.transition(EmbedderState.Shutdown, {
+      reason: 'Shutdown completed'
+    });
   }
 }
 
