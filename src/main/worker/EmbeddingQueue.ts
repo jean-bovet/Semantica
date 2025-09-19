@@ -9,6 +9,7 @@ export interface QueuedChunk {
     fileIndex: number;
     chunkIndex: number;
   };
+  retryCount?: number;
 }
 
 export interface FileTracker {
@@ -57,6 +58,7 @@ export class EmbeddingQueue {
   private processingBatches = 0;
   private maxConcurrentBatches = 2; // Match embedder pool size
   private batchProcessor?: BatchProcessor;
+  private maxRetries = 3; // Maximum retry attempts per batch
 
   constructor(config: EmbeddingQueueConfig = {}) {
     this.maxQueueSize = config.maxQueueSize || 2000;
@@ -253,8 +255,47 @@ export class EmbeddingQueue {
         }
       }
 
-      // Re-queue the batch for retry (at the front)
-      this.queue.unshift(...batch);
+      // Check retry count and decide whether to retry
+      const currentRetryCount = batch[0]?.retryCount || 0;
+      if (currentRetryCount < this.maxRetries) {
+        // Increment retry count for all chunks in the batch
+        batch.forEach(chunk => {
+          chunk.retryCount = currentRetryCount + 1;
+        });
+
+        // Re-queue the batch for retry (at the front)
+        this.queue.unshift(...batch);
+      } else {
+        // Max retries exceeded, mark chunks as failed
+        console.error(`[EmbeddingQueue] Max retries (${this.maxRetries}) exceeded for batch, dropping chunks`);
+
+        // Update file trackers to reflect failed chunks
+        for (const filePath of affectedFiles) {
+          const tracker = this.fileTrackers.get(filePath);
+          if (tracker) {
+            const failedChunks = batch.filter(c => c.metadata.filePath === filePath).length;
+            tracker.processedChunks += failedChunks; // Count as processed (failed)
+
+            // Check if file is complete (including failed chunks)
+            if (tracker.processedChunks >= tracker.totalChunks) {
+              if (this.onFileComplete) {
+                this.onFileComplete(filePath);
+              }
+
+              // Resolve completion promise if waiting
+              if (tracker.completionPromise) {
+                tracker.completionPromise.resolve();
+                delete tracker.completionPromise;
+              }
+
+              // Clean up tracker after a delay
+              setTimeout(() => {
+                this.fileTrackers.delete(filePath);
+              }, 5000);
+            }
+          }
+        }
+      }
 
     } finally {
       this.processingBatches--;
@@ -306,6 +347,13 @@ export class EmbeddingQueue {
       trackedFiles: this.fileTrackers.size,
       backpressureActive: this.queue.length > this.backpressureThreshold
     };
+  }
+
+  /**
+   * Get file tracking information for pipeline visualization
+   */
+  getFileTrackers(): Map<string, FileTracker> {
+    return new Map(this.fileTrackers);
   }
 
   /**

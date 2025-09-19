@@ -13,6 +13,7 @@ import type { ScanConfig as FileScannerConfig } from './fileScanner';
 import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
+import { PipelineStatusFormatter } from './PipelineStatusFormatter';
 
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
@@ -58,12 +59,41 @@ setInterval(async () => {
     lastMemoryLog = { rssMB, heapMB, heapTotalMB, extMB, fileCount };
   }
   
-  // Log queue status if there are files
-  const stats = fileQueue.getStats();
-  if (stats.queued > 0 || stats.processing > 0) {
-    const processingFiles = fileQueue.getProcessingFiles().map(p => path.basename(p)).join(', ');
+  // Log enhanced pipeline status (always show when there's activity)
+  const fileStats = fileQueue.getStats();
+  const hasActivity = fileStats.queued > 0 || fileStats.processing > 0 || fileStats.completed > 0;
+
+  if (hasActivity) {
+    const embeddingStats = embeddingQueue ? embeddingQueue.getStats() : {
+      queueDepth: 0,
+      processingBatches: 0,
+      isProcessing: false,
+      trackedFiles: 0,
+      backpressureActive: false
+    };
+
+    const embedderStats = embedderPool ? embedderPool.getStats() : [];
+    const processingFiles = fileQueue.getProcessingFiles();
+    const fileTrackers = embeddingQueue ? embeddingQueue.getFileTrackers() : new Map();
     const maxConcurrent = fileQueue.getCurrentMaxConcurrent();
-    console.log(`[QUEUE STATUS] 📊 Queued: ${stats.queued}, Processing: ${stats.processing}/${maxConcurrent}${processingFiles ? ` (${processingFiles})` : ''}`);
+
+    const pipelineStatus = PipelineStatusFormatter.formatPipelineStatus({
+      fileStats,
+      embeddingStats,
+      embedderStats,
+      processingFiles,
+      fileTrackers,
+      maxConcurrent
+    });
+
+    // Log to worker console (for terminal/logs)
+    console.log(pipelineStatus);
+
+    // Send to main process for Electron dev console
+    parentPort?.postMessage({
+      type: 'pipeline:status',
+      payload: pipelineStatus
+    });
   }
   
   // Check embedder pool health and restart if needed
@@ -311,7 +341,7 @@ async function initDB(dir: string, _userDataPath: string) {
     
     // Setup profiling if enabled
     setupProfiling();
-    
+
     console.log('Worker ready');
   } catch (error) {
     console.error('Failed to initialize database:', error);

@@ -16,6 +16,9 @@ Welcome to the technical documentation for Semantica, an offline semantic search
 | [06-build-optimization.md](./06-build-optimization.md) | Build system, optimization, two-package architecture | ✅ Current |
 | [07-signing-distribution.md](./07-signing-distribution.md) | Code signing, notarization, distribution | ✅ Current |
 | [08-startup-flow.md](./08-startup-flow.md) | Detailed startup sequence and model download flow | ✅ Current |
+| [09-performance-architecture.md](./09-performance-architecture.md) | Performance optimization and profiling system | ✅ Current |
+| [10-release-process.md](./10-release-process.md) | Release management and versioning process | ✅ Current |
+| [11-embedding-queue-retry-mechanism.md](./11-embedding-queue-retry-mechanism.md) | Fault tolerance and retry logic for embedding processing | ✅ Current |
 
 ### Archived Documentation
 
@@ -57,6 +60,8 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 | **UI Framework** | ✅ Production | 1.0 | React with search-first design |
 | **Memory Management** | ✅ Production | 4.0 | EmbedderPool with auto-restart |
 | **Error Recovery** | ✅ Production | 1.0 | Auto-restart and retry logic |
+| **Embedding Queue** | ✅ Production | 1.0 | Producer-consumer with retry mechanism |
+| **Retry System** | ✅ Production | 1.0 | Bounded retries (max 3 attempts) with graceful failure |
 
 ### Performance Metrics
 
