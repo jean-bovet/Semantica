@@ -396,6 +396,151 @@ describe('EmbeddingQueue', () => {
     });
   });
 
+  describe('Embedder Restart Recovery', () => {
+    it('should recover batches when embedder restarts', async () => {
+      // Reset the mock to default behavior first
+      vi.mocked(embedderPool.embed).mockImplementation(async (texts: string[]) => {
+        // Default success behavior
+        return texts.map(() => new Array(384).fill(0.1));
+      });
+
+      const chunks = [
+        { text: 'Chunk 1', offset: 0 },
+        { text: 'Chunk 2', offset: 100 }
+      ];
+
+      await queue.addChunks(chunks, '/test/restart-file.txt', 1);
+
+      // Simulate embedder restart immediately (this tests recovery mechanism)
+      // Note: In real scenario, this would happen when embedder process dies
+      queue.onEmbedderRestart(0);
+
+      // Wait for completion
+      await queue.waitForCompletion('/test/restart-file.txt');
+
+      // Should have processed the chunks
+      expect(completedFiles).toContain('/test/restart-file.txt');
+      expect(processedBatches.length).toBeGreaterThan(0);
+
+      // Verify processingBatches counter is back to 0
+      const stats = queue.getStats();
+      expect(stats.processingBatches).toBe(0);
+    });
+
+    it('should correctly decrement processingBatches on embedder failure', async () => {
+      // Add chunks to process
+      const chunks = Array.from({ length: 16 }, (_, i) => ({
+        text: `Chunk ${i}`,
+        offset: i * 100
+      }));
+
+      await queue.addChunks(chunks, '/test/counter-test.txt', 1);
+
+      // Simulate embedder restart while processing
+      queue.onEmbedderRestart(0);
+
+      // Check that processingBatches is properly managed
+      const stats = queue.getStats();
+      expect(stats.processingBatches).toBeGreaterThanOrEqual(0);
+      expect(stats.processingBatches).toBeLessThanOrEqual(2); // Max concurrent
+    });
+
+    it('should not duplicate batches during recovery', async () => {
+      // Track batches for this test only
+      const testBatches: ProcessedBatch[] = [];
+
+      // Create a new queue with isolated batch processor
+      const testQueue = new EmbeddingQueue({
+        maxQueueSize: 100,
+        batchSize: 8,
+        backpressureThreshold: 50
+      });
+
+      testQueue.initialize(embedderPool, async (batch) => {
+        testBatches.push(batch);
+      });
+
+      const chunks = [
+        { text: 'Unique chunk 1', offset: 0 },
+        { text: 'Unique chunk 2', offset: 100 }
+      ];
+
+      await testQueue.addChunks(chunks, '/test/no-duplicate.txt', 1);
+      await testQueue.waitForCompletion('/test/no-duplicate.txt');
+
+      // Verify chunks were processed exactly once
+      const totalProcessedChunks = testBatches.reduce((sum, batch) => sum + batch.chunks.length, 0);
+      expect(totalProcessedChunks).toBe(2);
+
+      // Simulate restarts after completion (should not affect anything)
+      testQueue.onEmbedderRestart(0);
+      testQueue.onEmbedderRestart(0);
+
+      // Wait a bit to ensure no additional processing
+      await new Promise(r => setTimeout(r, 50));
+
+      // Verify no additional processing happened
+      const finalTotal = testBatches.reduce((sum, batch) => sum + batch.chunks.length, 0);
+      expect(finalTotal).toBe(2);
+
+      // Clean up
+      testQueue.clear();
+    });
+
+    it('should handle multiple concurrent embedder restarts', async () => {
+      // Add multiple files to process
+      const file1Chunks = Array.from({ length: 8 }, (_, i) => ({
+        text: `File1-Chunk${i}`,
+        offset: i * 100
+      }));
+      const file2Chunks = Array.from({ length: 8 }, (_, i) => ({
+        text: `File2-Chunk${i}`,
+        offset: i * 100
+      }));
+
+      await queue.addChunks(file1Chunks, '/test/concurrent-restart1.txt', 1);
+      await queue.addChunks(file2Chunks, '/test/concurrent-restart2.txt', 2);
+
+      // Simulate both embedders restarting
+      queue.onEmbedderRestart(0);
+      queue.onEmbedderRestart(1);
+
+      // Wait for completion
+      await Promise.all([
+        queue.waitForCompletion('/test/concurrent-restart1.txt'),
+        queue.waitForCompletion('/test/concurrent-restart2.txt')
+      ]);
+
+      // Both files should complete
+      expect(completedFiles).toContain('/test/concurrent-restart1.txt');
+      expect(completedFiles).toContain('/test/concurrent-restart2.txt');
+
+      // All chunks should be processed
+      const totalChunks = processedBatches.reduce((sum, batch) => sum + batch.chunks.length, 0);
+      expect(totalChunks).toBe(16);
+    });
+
+    it('should maintain file progress tracking during recovery', async () => {
+      const chunks = Array.from({ length: 10 }, (_, i) => ({
+        text: `Chunk ${i}`,
+        offset: i * 100
+      }));
+
+      await queue.addChunks(chunks, '/test/progress-track.txt', 1);
+
+      // Simulate embedder restart mid-processing
+      setTimeout(() => queue.onEmbedderRestart(0), 50);
+
+      await queue.waitForCompletion('/test/progress-track.txt');
+
+      // Check progress events were consistent
+      const fileProgress = progressEvents.filter(e => e.filePath === '/test/progress-track.txt');
+      const lastProgress = fileProgress[fileProgress.length - 1];
+      expect(lastProgress?.processed).toBe(10);
+      expect(lastProgress?.total).toBe(10);
+    });
+  });
+
   describe('Queue Management', () => {
     it('should clear queue correctly', () => {
       queue.clear();

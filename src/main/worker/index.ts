@@ -425,7 +425,13 @@ async function initializeModel(userDataPath: string) {
     embedderPool = new EmbedderPool({
       poolSize,
       maxFilesBeforeRestart: 200,  // Restart every 200 files (was too low)
-      maxMemoryMB: 1000             // Restart when child process hits 1GB RSS
+      maxMemoryMB: 1000,            // Restart when child process hits 1GB RSS
+      onEmbedderRestart: (index) => {
+        // Notify the embedding queue that an embedder is restarting
+        if (embeddingQueue) {
+          embeddingQueue.onEmbedderRestart(index);
+        }
+      }
     });
     
     try {

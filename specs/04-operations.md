@@ -37,6 +37,32 @@
 
 ## Troubleshooting Common Issues
 
+### Pipeline Gets Stuck Processing
+
+#### Problem: "X batches processing" Never Completes
+**Symptoms**:
+- Pipeline status shows "2 batches processing" indefinitely
+- Both embedders show as idle
+- Queue depth remains constant
+- Files stuck in "parsing..." state
+
+**Root Cause**: Embedder restart during batch processing can orphan batches, causing counter inconsistency.
+
+**Solution**: This issue was resolved in v1.0.4 with automatic batch recovery. The system now:
+- Tracks all in-flight batches
+- Automatically recovers lost batches when embedders restart
+- Properly manages the processing counter
+- Logs recovery operations for monitoring
+
+**Monitoring**: Check logs for recovery messages:
+```
+[EmbeddingQueue] Handling embedder 0 restart, checking for lost batches...
+[EmbeddingQueue] Found 2 potentially lost batches, recovering...
+[EmbeddingQueue] Recovery complete. processingBatches now: 0
+```
+
+If you see repeated stuck states on older versions, restart the application to clear the queue.
+
 ### Files Not Being Indexed
 
 #### 1. Scanned PDFs Show "No text extracted"

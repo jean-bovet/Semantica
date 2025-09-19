@@ -5,6 +5,7 @@ export interface EmbedderPoolConfig {
   poolSize?: number;
   maxFilesBeforeRestart?: number;
   maxMemoryMB?: number;
+  onEmbedderRestart?: (embedderIndex: number) => void;
 }
 
 /**
@@ -169,16 +170,22 @@ export class EmbedderPool {
       if (index < 0 || index >= this.embedders.length) {
         throw new Error(`Invalid embedder index: ${index}`);
       }
-      
+
       // Check if already restarting
       if (this.restartMutex.has(index)) {
         return this.restartMutex.get(index);
       }
-      
+
       // Create restart promise with mutex
       const restartPromise = (async () => {
         try {
           this.restartingEmbedders.add(index);
+
+          // Notify callback before restart so queue can prepare
+          if (this.config.onEmbedderRestart) {
+            this.config.onEmbedderRestart(index);
+          }
+
           await this.embedders[index].restart();
         } catch (error) {
           console.error(`[EmbedderPool] Failed to restart embedder ${index}:`, error);
@@ -188,7 +195,7 @@ export class EmbedderPool {
           this.restartMutex.delete(index);
         }
       })();
-      
+
       this.restartMutex.set(index, restartPromise);
       return restartPromise;
     } else {
