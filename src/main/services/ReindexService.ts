@@ -71,7 +71,7 @@ export class ReindexService {
     
     // Parser upgraded
     if (!fileRecord.parser_version || fileRecord.parser_version < currentVersion) {
-      this.logger.log(`[REINDEX] 🔄 Parser upgraded for ${ext}: v${fileRecord.parser_version} -> v${currentVersion}`);
+      this.logger.log(`[REINDEX] Parser upgraded for ${ext}: v${fileRecord.parser_version} -> v${currentVersion}`);
       return true;
     }
     
@@ -102,7 +102,7 @@ export class ReindexService {
       return result;
     }
     
-    this.logger.log('[REINDEX] 🔍 Checking for parser upgrades...');
+    this.logger.log('[REINDEX] Checking for parser upgrades...');
     
     try {
       // Get all indexed files

@@ -1,8 +1,9 @@
 import * as fs from 'fs';
+import { promises as fsPromises } from 'fs';
 const pdfParse = require('pdf-parse');
 
 // Parser version - single source of truth (imported by parserVersions.ts)
-export const PARSER_VERSION = 1; // Version 1: Initial pdf-parse implementation
+export const PARSER_VERSION = 2; // Version 2: Async file reading to prevent blocking
 
 export interface PDFPage {
   page: number;
@@ -11,7 +12,7 @@ export interface PDFPage {
 
 export async function parsePdf(filePath: string): Promise<PDFPage[]> {
   try {
-    const dataBuffer = fs.readFileSync(filePath);
+    const dataBuffer = await fsPromises.readFile(filePath);
     
     // Check if file is actually a PDF
     const header = dataBuffer.toString('utf8', 0, Math.min(5, dataBuffer.length));

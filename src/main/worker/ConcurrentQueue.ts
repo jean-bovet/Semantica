@@ -11,6 +11,7 @@ export interface QueueOptions {
   throttledConcurrent?: number;
   onProgress?: (queued: number, processing: number) => void;
   onMemoryThrottle?: (newLimit: number, memoryMB: number) => void;
+  shouldApplyBackpressure?: () => boolean;
 }
 
 export interface ProcessingStats {
@@ -133,6 +134,16 @@ export class ConcurrentQueue {
       }
 
       const currentMaxConcurrent = this.lastMaxConcurrent === -1 ? this.maxConcurrent : this.lastMaxConcurrent;
+
+      // Check if backpressure should be applied (e.g., embedding queue is full)
+      if (this.options.shouldApplyBackpressure?.()) {
+        // Reduce concurrent files when embedding queue is under pressure
+        const backpressureLimit = Math.max(1, Math.floor(currentMaxConcurrent / 2));
+        if (this.processing.size >= backpressureLimit) {
+          await new Promise(r => setTimeout(r, 200)); // Wait longer when under pressure
+          continue;
+        }
+      }
 
       // Start new jobs up to limit
       while (this.processing.size < currentMaxConcurrent && this.queue.length > 0) {

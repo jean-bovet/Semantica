@@ -78,7 +78,7 @@ setInterval(async () => {
                             stat.memoryUsage > 800 * 1024 * 1024); // 800MB
         
         if (shouldRestart) {
-          console.log(`[MEMORY] ♾️ Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
+          console.log(`[MEMORY] Proactively restarting embedder ${stat.index} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage / 1024 / 1024)}MB)`);
           await embedderPool.restart(stat.index);
           recordEvent('embedderRestart'); // Track for profiling
         }
@@ -101,6 +101,7 @@ try {
 }
 // Use isolated embedder for better memory management
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
+import { EmbeddingQueue } from './EmbeddingQueue';
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
@@ -118,6 +119,7 @@ let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
 let embedderPool: EmbedderPool | null = null;
+let embeddingQueue: EmbeddingQueue | null = null;
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
@@ -141,7 +143,11 @@ const fileQueue = new ConcurrentQueue({
   },
   onMemoryThrottle: (newLimit, memoryMB) => {
     recordEvent(newLimit < concurrencySettings.optimal ? 'throttleStart' : 'throttleEnd'); // Track throttling
-    console.log(`[MEMORY] ⚠️ Adjusting concurrency: ${newLimit} (RSS: ${Math.round(memoryMB)}MB)`);
+    console.log(`[MEMORY] Adjusting concurrency: ${newLimit} (RSS: ${Math.round(memoryMB)}MB)`);
+  },
+  shouldApplyBackpressure: () => {
+    // Apply backpressure when embedding queue is getting full
+    return embeddingQueue ? embeddingQueue.shouldApplyBackpressure() : false;
   }
 });
 const fileHashes = new Map<string, string>();
@@ -245,16 +251,15 @@ async function initDB(dir: string, _userDataPath: string) {
         }
       });
       
-      uniquePaths.forEach(filePath => {
+      for (const filePath of uniquePaths) {
         try {
-          if (fs.existsSync(filePath)) {
-            const hash = getFileHash(filePath);
-            fileHashes.set(filePath, hash);
-          }
+          await fs.promises.access(filePath);
+          const hash = await getFileHash(filePath);
+          fileHashes.set(filePath, hash);
         } catch (_e) {
-          // File might have been deleted
+          // File doesn't exist, skip
         }
-      });
+      }
       
       console.log(`Loaded ${fileHashes.size} existing indexed files`);
     } catch (_e) {
@@ -396,7 +401,54 @@ async function initializeModel(userDataPath: string) {
     try {
       await embedderPool.initialize();
       console.log('[WORKER] Embedder pool initialized successfully');
-      
+
+      // Initialize the embedding queue with the pool
+      const batchSize = settings?.embeddingBatchSize ?? 32;
+      embeddingQueue = new EmbeddingQueue({
+        maxQueueSize: 2000,
+        batchSize,
+        backpressureThreshold: 1000,
+        onProgress: (filePath, processed, total) => {
+          console.log(`[EMBEDDING] Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
+        },
+        onFileComplete: (filePath) => {
+          console.log(`[EMBEDDING] ✅ Completed: ${path.basename(filePath)}`);
+        }
+      });
+      // Initialize with batch processor that writes to database
+      embeddingQueue.initialize(embedderPool, async (batch) => {
+        // Extract file metadata from the first chunk
+        const filePath = batch.chunks[0].metadata.filePath;
+        const fileExt = path.extname(filePath).slice(1).toLowerCase();
+
+        // Get file stats
+        const stat = await fs.promises.stat(filePath);
+        const mtime = stat.mtimeMs;
+
+        // Create database rows
+        const rows = batch.chunks.map((chunk, idx) => {
+          const id = crypto.createHash('sha1')
+            .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+            .digest('hex');
+
+          return {
+            id,
+            path: filePath,
+            mtime,
+            page: chunk.metadata.page || 0,
+            offset: chunk.metadata.offset,
+            text: chunk.text,
+            vector: batch.vectors[idx],
+            type: fileExt,
+            title: path.basename(filePath)
+          };
+        });
+
+        // Write to database
+        await mergeRows(rows);
+      });
+      console.log('[WORKER] Embedding queue initialized successfully');
+
       // Start health check monitoring
       startEmbedderHealthCheck();
     } catch (error) {
@@ -470,8 +522,8 @@ async function deleteByPath(filePath: string) {
   }
 }
 
-function getFileHash(filePath: string): string {
-  const stat = fs.statSync(filePath);
+async function getFileHash(filePath: string): Promise<string> {
+  const stat = await fs.promises.stat(filePath);
   return `${stat.size}-${stat.mtimeMs}`;
 }
 
@@ -508,7 +560,7 @@ async function updateFileStatus(filePath: string, status: string, error?: string
   try {
     let stats: any = { mtime: new Date() };
     try {
-      stats = fs.statSync(filePath);
+      stats = await fs.promises.stat(filePath);
     } catch (_e) {
       // File might not exist (e.g., deleted status)
     }
@@ -546,7 +598,10 @@ async function handleFileOriginal(filePath: string) {
     fileCount++; // Track files processed
     console.log(`[INDEXING] Starting: ${filePath}`);
     
-    if (!fs.existsSync(filePath)) {
+    try {
+      await fs.promises.access(filePath);
+    } catch (_e) {
+      // File doesn't exist
       await deleteByPath(filePath);
       fileHashes.delete(filePath);
       await updateFileStatus(filePath, 'deleted');
@@ -576,9 +631,9 @@ async function handleFileOriginal(filePath: string) {
       return;
     }
     
-    const currentHash = getFileHash(filePath);
+    const currentHash = await getFileHash(filePath);
     const previousHash = fileHashes.get(filePath);
-    const stat = fs.statSync(filePath);
+    const stat = await fs.promises.stat(filePath);
     const mtime = stat.mtimeMs;
     const ext = path.extname(filePath).slice(1).toLowerCase();
     const parserVersion = getParserVersion(ext);
@@ -653,7 +708,7 @@ async function handleFileOriginal(filePath: string) {
       } catch (pdfError: any) {
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
         await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`, 0, parserVersion);
-        console.warn(`[INDEXING] ⚠️ Failed: ${path.basename(filePath)} - PDF: ${errorMsg}`);
+        console.warn(`[INDEXING] Failed: ${path.basename(filePath)} - PDF: ${errorMsg}`);
         return;
       }
     } else {
@@ -685,7 +740,7 @@ async function handleFileOriginal(filePath: string) {
       } catch (parseError: any) {
         const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
         await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
-        console.warn(`[INDEXING] ⚠️ Failed: ${path.basename(filePath)} - ${errorMsg}`);
+        console.warn(`[INDEXING] Failed: ${path.basename(filePath)} - ${errorMsg}`);
         return;
       }
     }
@@ -693,7 +748,7 @@ async function handleFileOriginal(filePath: string) {
     if (chunks.length === 0) {
       // Mark file as failed if no chunks were extracted
       await updateFileStatus(filePath, 'failed', 'No text content extracted', 0, parserVersion);
-      console.warn(`[INDEXING] ⚠️ Failed: ${path.basename(filePath)} - No text content extracted`);
+      console.warn(`[INDEXING] Failed: ${path.basename(filePath)} - No text content extracted`);
       return;
     }
     
@@ -703,63 +758,25 @@ async function handleFileOriginal(filePath: string) {
       profiler.recordChunks(filePath, chunks.length, avgChunkSize);
     }
     
-    // Get batch configuration from settings
-    const settings = configManager?.getSettings();
-    const batchSize = settings?.embeddingBatchSize ?? 32;
+    // Use the embedding queue for processing
+    if (!embeddingQueue) {
+      throw new Error('Embedding queue not initialized');
+    }
+
+    // Get a unique file index for tracking
+    const fileIndex = fileCount++;
+
+    // Add chunks to the queue
+    await embeddingQueue.addChunks(chunks, filePath, fileIndex);
+
+    // File metadata is handled in the batch processor callback
+
+    // Wait for all chunks from this file to be processed
+    await embeddingQueue.waitForCompletion(filePath);
+
+    // For profiling compatibility
     let totalEmbedTime = 0;
     let totalDbTime = 0;
-    
-    // Process chunks in batches (embedder pool handles parallelism across files)
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, Math.min(i + batchSize, chunks.length));
-      const texts = batch.map(c => c.text);
-      
-      // Record embedding batch for profiling
-      if (profiler.isEnabled()) {
-        profiler.recordEmbeddingBatch(filePath);
-      }
-      
-      // Time embedding
-      const startEmbed = Date.now();
-      // Use embedder pool for parallel processing
-      const vectors = await embedderPool!.embed(texts, false);
-      const embedTime = Date.now() - startEmbed;
-      totalEmbedTime += embedTime;
-      
-      const rows = batch.map((c, idx) => {
-        const id = crypto.createHash('sha1')
-          .update(`${filePath}:${c.page || 0}:${c.offset}`)
-          .digest('hex');
-        
-        return {
-          id,
-          path: filePath,
-          mtime,
-          page: c.page || 0,
-          offset: c.offset,
-          text: c.text,
-          vector: vectors[idx],
-          type: ext,
-          title: path.basename(filePath)
-        };
-      });
-      
-      // Time database write
-      const startDb = Date.now();
-      await mergeRows(rows);
-      const dbTime = Date.now() - startDb;
-      totalDbTime += dbTime;
-      
-      // Clear batch data immediately to help GC
-      batch.length = 0;
-      texts.length = 0;
-      vectors.length = 0;
-      rows.length = 0;
-      
-      // Yield to event loop after each batch
-      await new Promise(r => setImmediate(r));
-      if (global.gc) global.gc();
-    }
     
     // Record operation timings for profiling
     if (profiler.isEnabled()) {
@@ -979,7 +996,7 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
   // Get effective exclude patterns (including bundle patterns if enabled)
   const effectivePatterns = configManager?.getEffectiveExcludePatterns() || excludePatterns || [];
   
-  console.log(`[WATCHER] 👀 Starting to watch ${roots.length} folder(s): ${roots.join(', ')}`);
+  console.log(`[WATCHER] Starting to watch ${roots.length} folder(s): ${roots.join(', ')}`);
   watcher = chokidar.watch(roots, {
     ignored: effectivePatterns,
     ignoreInitial: true,  // Don't re-scan all files on startup
@@ -1012,7 +1029,7 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
   // After watcher is set up, scan for new and modified files using our new classes
   await (async () => {
     if (forceReindex) {
-      console.log('🔄 Force re-indexing enabled - all files will be queued');
+      console.log('Force re-indexing enabled - all files will be queued');
     } else {
       console.log('Scanning for new and modified files...');
     }
@@ -1083,7 +1100,7 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
             // Only calculate hash if file was modified after indexing
             if (fileModTime > indexedTime) {
               hashChecks++;
-              const currentHash = getFileHash(filePath);
+              const currentHash = await getFileHash(filePath);
               if (currentHash !== fileRecord.file_hash) {
                 filesToIndex.push(filePath);
                 reasons.set(filePath, 'modified' as any);

@@ -489,7 +489,7 @@ export class PerformanceProfiler {
     };
     
     fs.writeFileSync(fileName, JSON.stringify(fullReport, null, 2));
-    console.log(`\n📊 Performance report saved to: ${fileName}`);
+    console.log(`\nPerformance report saved to: ${fileName}`);
     console.log(summary);
   }
   
@@ -502,9 +502,9 @@ export class PerformanceProfiler {
       `📁 Files Processed: ${report.successfulFiles}/${report.totalFiles}`,
       `⏱️  Total Time: ${(report.totalDuration / 1000).toFixed(1)}s`,
       `⚡ Avg File Time: ${(report.averageFileTime / 1000).toFixed(2)}s`,
-      `🔄 Max Concurrency: ${report.concurrency.maxConcurrent}`,
+      `Max Concurrency: ${report.concurrency.maxConcurrent}`,
       '',
-      '📊 Operation Breakdown:',
+      'Operation Breakdown:',
     ];
     
     // Sort operations by time
@@ -530,7 +530,7 @@ export class PerformanceProfiler {
     lines.push(`  Embedder Restarts: ${report.memory.embedderRestarts}`);
     
     if (report.concurrency.throttleEvents > 0) {
-      lines.push('', '⚠️  Performance Issues:');
+      lines.push('', 'Performance Issues:');
       lines.push(`  Throttle Events: ${report.concurrency.throttleEvents}`);
       lines.push(`  Throttle Duration: ${(report.concurrency.throttleDuration / 1000).toFixed(1)}s`);
     }
