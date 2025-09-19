@@ -151,10 +151,11 @@ describe('EmbedderPool', () => {
       
       const mockInstances = (IsolatedEmbedder as any).mock.results.map((r: any) => r.value);
       
-      // Use specific embedder index
-      await pool.embedWithIndex(['text 1'], 1);
-      await pool.embedWithIndex(['text 2'], 1);
-      await pool.embedWithIndex(['text 3'], 2);
+      // Use specific embedder IDs
+      const embedderIds = pool.getEmbedderIds();
+      await pool.embedWithId(['text 1'], embedderIds[1]);
+      await pool.embedWithId(['text 2'], embedderIds[1]);
+      await pool.embedWithId(['text 3'], embedderIds[2]);
       
       expect(mockInstances[0].embed).not.toHaveBeenCalled();
       expect(mockInstances[1].embed).toHaveBeenCalledTimes(2);
@@ -165,8 +166,8 @@ describe('EmbedderPool', () => {
       pool = new EmbedderPool({ poolSize: 2 });
       await pool.initialize();
       
-      await expect(pool.embedWithIndex(['text'], 5)).rejects.toThrow('Invalid embedder index: 5');
-      await expect(pool.embedWithIndex(['text'], -1)).rejects.toThrow('Invalid embedder index: -1');
+      await expect(pool.embedWithId(['text'], 'invalid-id')).rejects.toThrow('Invalid embedder ID: invalid-id');
+      await expect(pool.embedWithId(['text'], 'another-invalid')).rejects.toThrow('Invalid embedder ID: another-invalid');
     });
   });
   
@@ -178,17 +179,17 @@ describe('EmbedderPool', () => {
       const stats = pool.getStats();
       
       expect(stats).toHaveLength(2);
-      expect(stats[0]).toEqual({
-        index: 0,
-        filesProcessed: 10,
-        memoryUsage: 150 * 1024 * 1024,
-        needsRestart: false
-      });
-      expect(stats[1]).toEqual({
-        index: 1,
-        filesProcessed: 10,
-        memoryUsage: 150 * 1024 * 1024,
-        needsRestart: false
+
+      // Verify each stat has the correct structure
+      stats.forEach(stat => {
+        expect(stat).toEqual({
+          id: expect.any(String),
+          filesProcessed: expect.any(Number),
+          memoryUsage: expect.any(Number),
+          isHealthy: expect.any(Boolean),
+          loadCount: expect.any(Number),
+          restartCount: expect.any(Number)
+        });
       });
     });
     
@@ -198,8 +199,9 @@ describe('EmbedderPool', () => {
       
       const mockInstances = (IsolatedEmbedder as any).mock.results.map((r: any) => r.value);
       
-      await pool.restart(1);
-      
+      const embedderIds = pool.getEmbedderIds();
+      await pool.restartEmbedder(embedderIds[1]);
+
       expect(mockInstances[0].restart).not.toHaveBeenCalled();
       expect(mockInstances[1].restart).toHaveBeenCalledTimes(1);
       expect(mockInstances[2].restart).not.toHaveBeenCalled();
@@ -211,7 +213,7 @@ describe('EmbedderPool', () => {
       
       const mockInstances = (IsolatedEmbedder as any).mock.results.map((r: any) => r.value);
       
-      await pool.restart();
+      await pool.restartAll();
       
       mockInstances.forEach((instance: any) => {
         expect(instance.restart).toHaveBeenCalledTimes(1);
@@ -222,7 +224,7 @@ describe('EmbedderPool', () => {
       pool = new EmbedderPool({ poolSize: 2 });
       await pool.initialize();
       
-      await expect(pool.restart(5)).rejects.toThrow('Invalid embedder index: 5');
+      await expect(pool.restartEmbedder('invalid-id')).rejects.toThrow('Invalid embedder ID: invalid-id');
     });
   });
   

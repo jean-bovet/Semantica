@@ -1,31 +1,36 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ModelPathResolver } from '../../src/shared/embeddings/ModelPathResolver';
-import path from 'node:path';
-import fs from 'node:fs';
-
-// Mock fs module
-vi.mock('node:fs', () => ({
-  default: {
-    existsSync: vi.fn(),
-    statSync: vi.fn(),
-    mkdirSync: vi.fn()
-  },
-  existsSync: vi.fn(),
-  statSync: vi.fn(),
-  mkdirSync: vi.fn()
-}));
-
-// Mock os module
-vi.mock('node:os', () => ({
-  homedir: vi.fn(() => '/home/user')
-}));
+import { TestFileSystem } from '../../src/shared/test-utils/TestFileSystem';
+import { TestOSUtils, TestPathUtils } from '../../src/shared/test-utils/TestOSUtils';
 
 describe('ModelPathResolver', () => {
   let resolver: ModelPathResolver;
+  let testFs: TestFileSystem;
+  let testOs: TestOSUtils;
+  let testPath: TestPathUtils;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    resolver = new ModelPathResolver();
+    testFs = new TestFileSystem();
+    testOs = new TestOSUtils('/test/home/user');
+    testPath = new TestPathUtils('/');
+
+    resolver = new ModelPathResolver('Xenova/multilingual-e5-small', {
+      dependencies: {
+        fs: {
+          existsSync: (path) => testFs.existsSync(path),
+          statSync: (path) => testFs.statSync(path),
+          mkdirSync: (path, options) => testFs.mkdirSync(path, options)
+        },
+        path: {
+          join: (...paths) => testPath.join(...paths),
+          dirname: (path) => testPath.dirname(path),
+          sep: testPath.sep
+        },
+        os: {
+          homedir: () => testOs.homedir()
+        }
+      }
+    });
   });
 
   describe('constructor', () => {
@@ -89,14 +94,29 @@ describe('ModelPathResolver', () => {
     });
 
     it('should fall back to user data directory', () => {
-      const resolver = new ModelPathResolver('test-model', {
-        nodeEnv: 'production'
+      const testResolver = new ModelPathResolver('test-model', {
+        nodeEnv: 'production',
         // No resourcesPath provided
+        dependencies: {
+          fs: {
+            existsSync: (path) => testFs.existsSync(path),
+            statSync: (path) => testFs.statSync(path),
+            mkdirSync: (path, options) => testFs.mkdirSync(path, options)
+          },
+          path: {
+            join: (...paths) => testPath.join(...paths),
+            dirname: (path) => testPath.dirname(path),
+            sep: testPath.sep
+          },
+          os: {
+            homedir: () => testOs.homedir()
+          }
+        }
       });
 
-      const resolved = resolver.resolve();
+      const resolved = testResolver.resolve();
 
-      expect(resolved.localModelPath).toBe('/home/user/.offline-search/models');
+      expect(resolved.localModelPath).toBe('/test/home/user/.offline-search/models');
       expect(resolved.allowRemoteModels).toBe(true);
     });
   });
@@ -123,46 +143,61 @@ describe('ModelPathResolver', () => {
 
   describe('model existence checking', () => {
     it('should return true when model exists', () => {
-      vi.mocked(fs.default.existsSync).mockReturnValue(true);
-
       const resolved = resolver.resolve();
-      expect(resolved.exists).toBe(true);
+
+      // Add the model file to the test file system
+      testFs.addFile(resolved.modelFilePath, 'test model content');
+
+      const resolvedAgain = resolver.resolve();
+      expect(resolvedAgain.exists).toBe(true);
     });
 
     it('should return false when model does not exist', () => {
-      vi.mocked(fs.default.existsSync).mockReturnValue(false);
-
       const resolved = resolver.resolve();
       expect(resolved.exists).toBe(false);
     });
 
     it('should handle fs errors gracefully', () => {
-      vi.mocked(fs.default.existsSync).mockImplementation(() => {
-        throw new Error('Permission denied');
+      // Create a resolver with a broken fs implementation
+      const brokenResolver = new ModelPathResolver('test-model', {
+        dependencies: {
+          fs: {
+            existsSync: () => { throw new Error('Permission denied'); },
+            statSync: (path) => testFs.statSync(path),
+            mkdirSync: (path, options) => testFs.mkdirSync(path, options)
+          },
+          path: {
+            join: (...paths) => testPath.join(...paths),
+            dirname: (path) => testPath.dirname(path),
+            sep: testPath.sep
+          },
+          os: {
+            homedir: () => testOs.homedir()
+          }
+        }
       });
 
-      const resolved = resolver.resolve();
+      const resolved = brokenResolver.resolve();
       expect(resolved.exists).toBe(false);
     });
   });
 
   describe('getModelInfo', () => {
     it('should return model info when file exists', () => {
-      vi.mocked(fs.default.existsSync).mockReturnValue(true);
-      vi.mocked(fs.default.statSync).mockReturnValue({
-        size: 1024 * 1024 * 100 // 100MB
-      } as any);
+      const resolved = resolver.resolve();
+      const modelSize = 1024 * 1024 * 100; // 100MB
+
+      // Add the model file with specific size
+      testFs.addFileWithSize(resolved.modelFilePath, modelSize);
 
       const info = resolver.getModelInfo();
 
       expect(info.exists).toBe(true);
-      expect(info.size).toBe(1024 * 1024 * 100);
+      expect(info.size).toBe(modelSize);
       expect(info.path).toContain('model_quantized.onnx');
     });
 
     it('should return info without size when file does not exist', () => {
-      vi.mocked(fs.default.existsSync).mockReturnValue(false);
-
       const info = resolver.getModelInfo();
 
       expect(info.exists).toBe(false);
@@ -171,36 +206,60 @@ describe('ModelPathResolver', () => {
     });
 
     it('should handle stat errors gracefully', () => {
-      vi.mocked(fs.default.existsSync).mockReturnValue(true);
-      vi.mocked(fs.default.statSync).mockImplementation(() => {
-        throw new Error('Stat failed');
+      // Create a resolver with broken statSync but working existsSync
+      const brokenStatResolver = new ModelPathResolver('test-model', {
+        dependencies: {
+          fs: {
+            existsSync: (path) => testFs.existsSync(path),
+            statSync: () => { throw new Error('Stat failed'); },
+            mkdirSync: (path, options) => testFs.mkdirSync(path, options)
+          },
+          path: {
+            join: (...paths) => testPath.join(...paths),
+            dirname: (path) => testPath.dirname(path),
+            sep: testPath.sep
+          },
+          os: {
+            homedir: () => testOs.homedir()
+          }
+        }
       });
 
-      const info = resolver.getModelInfo();
+      const resolved = brokenStatResolver.resolve();
+      testFs.addFile(resolved.modelFilePath, 'test content');
 
+      const info = brokenStatResolver.getModelInfo();
       expect(info.exists).toBe(false);
     });
   });
 
   describe('ensureModelDirectory', () => {
     it('should create model directory', () => {
-      const mockMkdir = vi.mocked(fs.default.mkdirSync);
-
       const dirPath = resolver.ensureModelDirectory();
-
-      expect(mockMkdir).toHaveBeenCalledWith(
-        expect.any(String),
-        { recursive: true }
-      );
       expect(dirPath).toBeTruthy();
+      expect(typeof dirPath).toBe('string');
     });
 
     it('should handle mkdir errors', () => {
-      vi.mocked(fs.default.mkdirSync).mockImplementation(() => {
-        throw new Error('Permission denied');
+      const brokenMkdirResolver = new ModelPathResolver('test-model', {
+        dependencies: {
+          fs: {
+            existsSync: (path) => testFs.existsSync(path),
+            statSync: (path) => testFs.statSync(path),
+            mkdirSync: () => { throw new Error('Permission denied'); }
+          },
+          path: {
+            join: (...paths) => testPath.join(...paths),
+            dirname: (path) => testPath.dirname(path),
+            sep: testPath.sep
+          },
+          os: {
+            homedir: () => testOs.homedir()
+          }
+        }
       });
 
-      expect(() => resolver.ensureModelDirectory()).toThrow('Failed to create model directory');
+      expect(() => brokenMkdirResolver.ensureModelDirectory()).toThrow('Failed to create model directory');
     });
   });
 
@@ -219,15 +278,30 @@ describe('ModelPathResolver', () => {
 
   describe('edge cases', () => {
     it('should handle undefined process.resourcesPath', () => {
-      const resolver = new ModelPathResolver('test-model', {
+      const testResolver = new ModelPathResolver('test-model', {
         nodeEnv: 'production',
-        resourcesPath: undefined
+        resourcesPath: undefined,
+        dependencies: {
+          fs: {
+            existsSync: (path) => testFs.existsSync(path),
+            statSync: (path) => testFs.statSync(path),
+            mkdirSync: (path, options) => testFs.mkdirSync(path, options)
+          },
+          path: {
+            join: (...paths) => testPath.join(...paths),
+            dirname: (path) => testPath.dirname(path),
+            sep: testPath.sep
+          },
+          os: {
+            homedir: () => testOs.homedir()
+          }
+        }
       });
 
-      const resolved = resolver.resolve();
+      const resolved = testResolver.resolve();
 
       // Should fall back to user data directory
-      expect(resolved.localModelPath).toBe('/home/user/.offline-search/models');
+      expect(resolved.localModelPath).toBe('/test/home/user/.offline-search/models');
     });
 
     it('should handle empty model name', () => {

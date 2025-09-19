@@ -164,10 +164,14 @@ describe('SerialQueue', () => {
     });
 
     it('should handle drain with errors gracefully', async () => {
-      queue.add(async () => {
+      // Add an operation that will fail, but catch the error to prevent unhandled rejection
+      const failingOperation = queue.add(async () => {
         await new Promise(resolve => setTimeout(resolve, 10));
         throw new Error('Operation failed');
       });
+
+      // We expect this operation to fail, so catch the error
+      await expect(failingOperation).rejects.toThrow('Operation failed');
 
       // Drain should not throw even if operations fail
       await expect(queue.drain()).resolves.toBeUndefined();

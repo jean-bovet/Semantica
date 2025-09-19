@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execSync as nodeExecSync } from 'child_process';
 
 /**
  * Memory usage information for a process
@@ -11,6 +11,13 @@ export interface ProcessMemoryInfo {
 }
 
 /**
+ * Dependencies that can be injected for testing
+ */
+export interface ProcessMemoryDependencies {
+  execSync?: (command: string, options?: { encoding?: BufferEncoding; timeout?: number }) => string;
+}
+
+/**
  * Configuration for memory monitoring
  */
 export interface MemoryMonitorConfig {
@@ -18,6 +25,7 @@ export interface MemoryMonitorConfig {
   warningThresholdPercent?: number;
   checkIntervalMS?: number;
   platform?: NodeJS.Platform;
+  dependencies?: ProcessMemoryDependencies;
 }
 
 /**
@@ -36,6 +44,7 @@ export interface MemoryCheckResult {
  */
 export class ProcessMemoryMonitor {
   private readonly config: MemoryMonitorConfig;
+  private readonly execSync: ProcessMemoryDependencies['execSync'];
   private lastCheck: ProcessMemoryInfo | null = null;
   private checkCount = 0;
 
@@ -46,6 +55,9 @@ export class ProcessMemoryMonitor {
       platform: process.platform,
       ...config
     };
+
+    // Set up dependencies with defaults
+    this.execSync = config.dependencies?.execSync || nodeExecSync;
 
     if (this.config.maxMemoryMB <= 0) {
       throw new Error('maxMemoryMB must be greater than 0');
@@ -171,7 +183,7 @@ export class ProcessMemoryMonitor {
   private getUnixMemoryInfo(pid: number): ProcessMemoryInfo {
     try {
       // Use ps command to get RSS and VSZ in KB
-      const result = execSync(`ps -o rss=,vsz= -p ${pid}`, {
+      const result = this.execSync!(`ps -o rss=,vsz= -p ${pid}`, {
         encoding: 'utf8',
         timeout: 5000
       });
@@ -199,7 +211,7 @@ export class ProcessMemoryMonitor {
   private getWindowsMemoryInfo(pid: number): ProcessMemoryInfo {
     try {
       // Use tasklist command to get memory info
-      const result = execSync(
+      const result = this.execSync!(
         `tasklist /fi "PID eq ${pid}" /fo csv | findstr "${pid}"`,
         {
           encoding: 'utf8',

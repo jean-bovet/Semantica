@@ -1,5 +1,12 @@
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn as nodeSpawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+
+/**
+ * Dependencies that can be injected for testing
+ */
+export interface ChildProcessDependencies {
+  spawn?: (command: string, args?: string[], options?: any) => ChildProcess;
+}
 
 /**
  * Configuration for child process management
@@ -14,6 +21,7 @@ export interface ChildProcessConfig {
   restartDelay?: number;
   onStdout?: (data: string) => void;
   onStderr?: (data: string) => void;
+  dependencies?: ChildProcessDependencies;
 }
 
 /**
@@ -47,7 +55,8 @@ export interface ProcessStatus {
  */
 export class ChildProcessManager extends EventEmitter {
   private child: ChildProcess | null = null;
-  private config: Required<ChildProcessConfig>;
+  private config: Required<Omit<ChildProcessConfig, 'dependencies'>>;
+  private readonly spawn: ChildProcessDependencies['spawn'];
   private spawning = false;
   private ready = false;
   private restartCount = 0;
@@ -70,6 +79,9 @@ export class ChildProcessManager extends EventEmitter {
       onStderr: () => {},
       ...config
     };
+
+    // Set up dependencies with defaults
+    this.spawn = config.dependencies?.spawn || nodeSpawn;
 
     // Validate required config
     if (!this.config.scriptPath) {
@@ -244,7 +256,7 @@ export class ChildProcessManager extends EventEmitter {
       };
 
       // Spawn the child process
-      this.child = spawn(nodePath, [...this.config.nodeArgs, this.config.scriptPath], {
+      this.child = this.spawn!(nodePath, [...this.config.nodeArgs, this.config.scriptPath], {
         stdio: this.config.stdio as any,
         env
       });

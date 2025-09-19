@@ -93,21 +93,28 @@ describe('EmbeddingProcessor', () => {
 
       const vectors = processor.convertToVectors(output);
 
-      expect(vectors).toEqual([[0.1, 0.2, 0.3]]);
+      // Use toBeCloseTo for floating-point comparisons
+      expect(vectors).toHaveLength(1);
+      expect(vectors[0]).toHaveLength(3);
+      expect(vectors[0][0]).toBeCloseTo(0.1, 5);
+      expect(vectors[0][1]).toBeCloseTo(0.2, 5);
+      expect(vectors[0][2]).toBeCloseTo(0.3, 5);
     });
 
     it('should use default dimension when dims is missing last element', () => {
+      // Create a processor with dimension that matches our test data
+      const testProcessor = new EmbeddingProcessor({ defaultDimension: 4 });
+
       const data = new Float32Array([1, 2, 3, 4]);
       const output = {
         data,
-        dims: [] // Empty dims array
+        dims: [] // Empty dims array - should use default dimension
       };
 
-      const vectors = processor.convertToVectors(output);
+      const vectors = testProcessor.convertToVectors(output);
 
-      // Should use default dimension of 384, but our data only has 4 elements
-      // So it should create one partial vector
-      expect(vectors.length).toBe(0); // 4 elements can't fill 384 dimensions
+      // Should use default dimension of 4 and create one vector
+      expect(vectors).toEqual([[1, 2, 3, 4]]);
     });
 
     it('should handle regular number array', () => {
@@ -294,6 +301,9 @@ describe('EmbeddingProcessor', () => {
     });
 
     it('should handle dispose errors gracefully', () => {
+      // Mock console.warn to suppress expected warning output
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
       const mockDispose = vi.fn(() => {
         throw new Error('Dispose failed');
       });
@@ -306,6 +316,12 @@ describe('EmbeddingProcessor', () => {
 
       // Should not throw even if dispose fails
       expect(() => processor.cleanup(output)).not.toThrow();
+
+      // Verify that the warning was logged
+      expect(consoleWarnSpy).toHaveBeenCalledWith('Failed to dispose transformer output:', expect.any(Error));
+
+      // Restore console.warn
+      consoleWarnSpy.mockRestore();
     });
   });
 

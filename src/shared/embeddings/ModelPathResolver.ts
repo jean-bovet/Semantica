@@ -1,5 +1,25 @@
-import path from 'node:path';
-import fs from 'node:fs';
+import nodePath from 'node:path';
+import nodeFs from 'node:fs';
+import { homedir } from 'node:os';
+
+/**
+ * Dependencies that can be injected for testing
+ */
+export interface ModelPathDependencies {
+  fs?: {
+    existsSync: (path: string) => boolean;
+    statSync: (path: string) => { size: number };
+    mkdirSync: (path: string, options?: { recursive?: boolean }) => void;
+  };
+  path?: {
+    join: (...paths: string[]) => string;
+    dirname: (path: string) => string;
+    sep: string;
+  };
+  os?: {
+    homedir: () => string;
+  };
+}
 
 /**
  * Configuration for model path resolution
@@ -10,6 +30,7 @@ export interface ModelPathConfig {
   userDataPath?: string;
   nodeEnv?: string;
   resourcesPath?: string;
+  dependencies?: ModelPathDependencies;
 }
 
 /**
@@ -30,6 +51,9 @@ export interface ResolvedModelPaths {
 export class ModelPathResolver {
   private readonly modelName: string;
   private readonly config: ModelPathConfig;
+  private readonly fs: ModelPathDependencies['fs'];
+  private readonly path: ModelPathDependencies['path'];
+  private readonly os: ModelPathDependencies['os'];
 
   constructor(modelName = 'Xenova/multilingual-e5-small', config: ModelPathConfig = {}) {
     this.modelName = modelName;
@@ -38,6 +62,23 @@ export class ModelPathResolver {
       transformersCache: process.env.TRANSFORMERS_CACHE,
       resourcesPath: process.resourcesPath,
       ...config
+    };
+
+    // Set up dependencies with defaults
+    this.fs = config.dependencies?.fs || {
+      existsSync: nodeFs.existsSync,
+      statSync: nodeFs.statSync,
+      mkdirSync: nodeFs.mkdirSync
+    };
+
+    this.path = config.dependencies?.path || {
+      join: nodePath.join,
+      dirname: nodePath.dirname,
+      sep: nodePath.sep
+    };
+
+    this.os = config.dependencies?.os || {
+      homedir: homedir
     };
   }
 
@@ -70,7 +111,7 @@ export class ModelPathResolver {
 
     // Production environment with ASAR packaging
     if (this.config.nodeEnv === 'production' && this.config.resourcesPath) {
-      const modelsPath = path.join(this.config.resourcesPath, 'models');
+      const modelsPath = this.path!.join(this.config.resourcesPath, 'models');
       return {
         localModelPath: modelsPath,
         cacheDir: modelsPath,
@@ -80,7 +121,7 @@ export class ModelPathResolver {
 
     // Development environment
     if (this.config.nodeEnv !== 'production') {
-      const devCachePath = path.join(__dirname, '../../../node_modules/@xenova/transformers/.cache');
+      const devCachePath = this.path!.join(__dirname, '../../../node_modules/@xenova/transformers/.cache');
       return {
         localModelPath: devCachePath,
         cacheDir: devCachePath,
@@ -90,8 +131,8 @@ export class ModelPathResolver {
 
     // Fallback to user data directory
     const userDataPath = this.config.userDataPath ||
-      path.join(require('os').homedir(), '.offline-search');
-    const modelsPath = path.join(userDataPath, 'models');
+      this.path!.join(this.os!.homedir(), '.offline-search');
+    const modelsPath = this.path!.join(userDataPath, 'models');
 
     return {
       localModelPath: modelsPath,
@@ -104,8 +145,8 @@ export class ModelPathResolver {
    * Get the full path to the model file
    */
   private getModelFilePath(basePath: string): string {
-    const modelDir = this.modelName.replace('/', path.sep);
-    return path.join(basePath, modelDir, 'onnx', 'model_quantized.onnx');
+    const modelDir = this.modelName.replace('/', this.path!.sep);
+    return this.path!.join(basePath, modelDir, 'onnx', 'model_quantized.onnx');
   }
 
   /**
@@ -113,7 +154,7 @@ export class ModelPathResolver {
    */
   private checkModelExists(modelFilePath: string): boolean {
     try {
-      return fs.existsSync(modelFilePath);
+      return this.fs!.existsSync(modelFilePath);
     } catch {
       return false;
     }
@@ -130,7 +171,7 @@ export class ModelPathResolver {
     }
 
     try {
-      const stats = fs.statSync(resolved.modelFilePath);
+      const stats = this.fs!.statSync(resolved.modelFilePath);
       return {
         exists: true,
         size: stats.size,
@@ -146,10 +187,10 @@ export class ModelPathResolver {
    */
   ensureModelDirectory(): string {
     const resolved = this.resolve();
-    const modelDir = path.dirname(resolved.modelFilePath);
+    const modelDir = this.path!.dirname(resolved.modelFilePath);
 
     try {
-      fs.mkdirSync(modelDir, { recursive: true });
+      this.fs!.mkdirSync(modelDir, { recursive: true });
       return modelDir;
     } catch (error) {
       throw new Error(`Failed to create model directory ${modelDir}: ${error}`);
