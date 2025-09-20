@@ -279,7 +279,8 @@ if (gotTheLock) {
       notifyFilesLoaded: () => win?.webContents.send('files:loaded'),
       notifyReady: () => win?.webContents.send('app:ready'),
       notifyError: (err) => win?.webContents.send('startup:error', err)
-    }
+    },
+    { workerTimeout: 15000 } // Increase timeout to 15s for large databases
   );
   
   // Start the coordinated startup
