@@ -47,9 +47,12 @@ describe('Worker Initialization Flow', () => {
     });
     
     // Initialize worker
-    worker.postMessage({ 
+    worker.postMessage({
       type: 'init',
-      dbDir: path.join(testDir, 'db')
+      payload: {
+        dbDir: path.join(testDir, 'db'),
+        userDataPath: testDir
+      }
     });
     
     // Wait for ready message
@@ -111,10 +114,13 @@ describe('Worker Initialization Flow', () => {
     };
     
     // Initialize with config
-    worker.postMessage({ 
+    worker.postMessage({
       type: 'init',
-      dbDir: path.join(testDir, 'db'),
-      config: mockConfig
+      payload: {
+        dbDir: path.join(testDir, 'db'),
+        userDataPath: testDir,
+        config: mockConfig
+      }
     });
     
     // Simulate scan completion detection
@@ -162,9 +168,12 @@ describe('Worker Initialization Flow', () => {
     });
     
     // Initialize with watched folder
-    worker.postMessage({ 
+    worker.postMessage({
       type: 'init',
-      dbDir: path.join(testDir, 'db')
+      payload: {
+        dbDir: path.join(testDir, 'db'),
+        userDataPath: testDir
+      }
     });
     
     // Then start watching

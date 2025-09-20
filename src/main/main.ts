@@ -251,7 +251,13 @@ if (gotTheLock) {
   const coordinator = new StartupCoordinator(
     {
       waitForWorker: () => waitForWorker(),
-      waitForModel: () => sendToWorker('checkModel'),
+      waitForModel: async () => {
+        const result = await sendToWorker('checkModel');
+        if (!result || !result.exists) {
+          throw new Error('Model not found');
+        }
+        return result;
+      },
       waitForFiles: () => new Promise<void>(resolve => {
         const handler = () => {
           win?.webContents.off('ipc-message', checkFilesLoaded);

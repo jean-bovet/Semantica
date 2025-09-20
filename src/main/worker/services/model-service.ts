@@ -11,7 +11,7 @@ import type { IModelService } from '../types/interfaces';
 import { EmbedderPool } from '../../../shared/embeddings/embedder-pool';
 // Model checking utilities
 async function checkModelExists(userDataPath: string): Promise<boolean> {
-  const modelPath = path.join(userDataPath, 'models', 'multilingual-e5-small', 'config.json');
+  const modelPath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small', 'config.json');
   return fs.existsSync(modelPath);
 }
 import { logger } from '../../../shared/utils/logger';
@@ -63,7 +63,7 @@ export class ModelService implements IModelService {
     
     // Model download would be handled by the renderer process
     // This just checks if it's completed
-    const modelPath = path.join(this.userDataPath, 'models', 'multilingual-e5-small');
+    const modelPath = path.join(this.userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
     const configPath = path.join(modelPath, 'config.json');
     
     // Wait for model to be downloaded (with timeout)
@@ -142,7 +142,7 @@ export class ModelService implements IModelService {
   }
 
   getModelPath(): string {
-    return path.join(this.userDataPath, 'models', 'multilingual-e5-small');
+    return path.join(this.userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
   }
 
   async warmup(): Promise<void> {

@@ -149,7 +149,8 @@ export class WorkerCore implements IWorkerCore {
 
     switch (type) {
       case 'checkModel':
-        return await this.model.checkModel();
+        const exists = await this.model.checkModel();
+        return { exists };
 
       case 'downloadModel':
         await this.model.downloadModel();
