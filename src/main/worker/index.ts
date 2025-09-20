@@ -3,7 +3,7 @@ import * as lancedb from '@lancedb/lancedb';
 import { getParserVersion } from './parserVersions';
 import { ReindexService } from '../services/ReindexService';
 import { ConcurrentQueue } from './ConcurrentQueue';
-import { 
+import {
   initializeFileStatusTable
 } from './fileStatusManager';
 import { migrateIndexedFilesToStatus } from './migrateFileStatus';
@@ -14,6 +14,7 @@ import { FolderRemovalManager } from './FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
 import { PipelineStatusFormatter } from './PipelineStatusFormatter';
+import { logger } from '../../shared/utils/logger';
 
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
@@ -23,7 +24,7 @@ if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
     const { setupModelDownloadMocks } = require('./test-mocks/setupModelMocks');
     setupModelDownloadMocks();
   } catch (err) {
-    console.error('[WORKER] Failed to load mock setup:', err);
+    logger.error('WORKER', 'Failed to load mock setup:', err);
   }
 }
 
@@ -55,7 +56,7 @@ setInterval(async () => {
   const filesChanged = fileCount !== lastMemoryLog.fileCount;
   
   if (rssChanged || heapChanged || filesChanged) {
-    console.log(`Memory: RSS=${rssMB}MB, Heap=${heapMB}MB/${heapTotalMB}MB, External=${extMB}MB, Files processed: ${fileCount}`);
+    logger.log('MEMORY', `RSS=${rssMB}MB, Heap=${heapMB}MB/${heapTotalMB}MB, External=${extMB}MB, Files processed: ${fileCount}`);
     lastMemoryLog = { rssMB, heapMB, heapTotalMB, extMB, fileCount };
   }
   
@@ -87,6 +88,7 @@ setInterval(async () => {
     });
 
     // Log to worker console (for terminal/logs)
+    // Pipeline status is always visible (doesn't need category check)
     console.log(pipelineStatus);
 
     // Send to main process for Electron dev console
@@ -108,13 +110,13 @@ setInterval(async () => {
                             stat.memoryUsage > 1500); // Now in MB
 
         if (shouldRestart) {
-          console.log(`[MEMORY] Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage)}MB)`);
+          logger.log('MEMORY', `Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage)}MB)`);
           await embedderPool.restartEmbedder(stat.id);
           recordEvent('embedderRestart'); // Track for profiling
         }
       }
     } catch (error) {
-      console.error('[MEMORY] Failed to check embedder health:', error);
+      logger.error('MEMORY', 'Failed to check embedder health:', error);
     }
   }
 }, 2000);
@@ -127,7 +129,7 @@ let parsePdf: any = null;
 try {
   parsePdf = require('../parsers/pdf').parsePdf;
 } catch (_e) {
-  console.log('PDF parsing not available');
+  logger.log('STARTUP', 'PDF parsing not available');
 }
 // Use isolated embedder for better memory management
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
@@ -153,7 +155,7 @@ let embeddingQueue: EmbeddingQueue | null = null;
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
-console.log(`[PERFORMANCE] ${getConcurrencyMessage(concurrencySettings)}`);
+logger.log('PERFORMANCE', getConcurrencyMessage(concurrencySettings));
 
 const fileQueue = new ConcurrentQueue({
   maxConcurrent: concurrencySettings.optimal,
@@ -173,7 +175,7 @@ const fileQueue = new ConcurrentQueue({
   },
   onMemoryThrottle: (newLimit, memoryMB) => {
     recordEvent(newLimit < concurrencySettings.optimal ? 'throttleStart' : 'throttleEnd'); // Track throttling
-    console.log(`[MEMORY] Adjusting concurrency: ${newLimit} (RSS: ${Math.round(memoryMB)}MB)`);
+    logger.log('MEMORY', `Adjusting concurrency: ${newLimit} (RSS: ${Math.round(memoryMB)}MB)`);
   },
   shouldApplyBackpressure: () => {
     // Apply backpressure when embedding queue is getting full
@@ -215,7 +217,7 @@ async function downloadModel(userDataPath: string): Promise<void> {
     transformers.env.cacheDir = modelCachePath;
     transformers.env.allowRemoteModels = false; // Disable remote downloads since we already have the files
   } catch (err) {
-    console.error('[WORKER] Model download failed:', err);
+    logger.error('WORKER', 'Model download failed:', err);
     throw err;
   }
 }
@@ -249,19 +251,19 @@ async function initDB(dir: string, _userDataPath: string) {
       try {
         await table.delete('id = "init"');
       } catch (e: any) {
-        console.log('Could not delete init record (may not exist):', e?.message || e);
+        logger.log('DATABASE', 'Could not delete init record (may not exist):', e?.message || e);
       }
       
       return table;
     });
     
-    console.log('Database initialized');
+    logger.log('DATABASE', 'Database initialized');
     
     // Initialize file status table (optional - won't fail if it doesn't work)
     try {
       fileStatusTable = await initializeFileStatusTable(db);
     } catch (e) {
-      console.error('Failed to initialize file status table:', e);
+      logger.error('FILE-STATUS', 'Failed to initialize file status table:', e);
       fileStatusTable = null;
     }
     
@@ -291,9 +293,9 @@ async function initDB(dir: string, _userDataPath: string) {
         }
       }
       
-      console.log(`Loaded ${fileHashes.size} existing indexed files`);
+      logger.log('DATABASE', `Loaded ${fileHashes.size} existing indexed files`);
     } catch (_e) {
-      console.log('No existing files in index');
+      logger.log('DATABASE', 'No existing files in index');
     }
     
     // Initialize ReindexService with the file status table
@@ -303,7 +305,7 @@ async function initDB(dir: string, _userDataPath: string) {
     if (fileStatusTable) {
       const migrated = await migrateIndexedFilesToStatus(tbl, fileStatusTable, fileHashes);
       if (migrated > 0) {
-        console.log(`Created ${migrated} missing file status records`);
+        logger.log('FILE-STATUS', `Created ${migrated} missing file status records`);
       }
     }
     
@@ -330,7 +332,7 @@ async function initDB(dir: string, _userDataPath: string) {
           });
         }
       } catch (err) {
-        console.error('Error during reindex check:', err);
+        logger.error('REINDEX', 'Error during reindex check:', err);
       }
     }, 100); // Small delay to ensure ready message is sent first
     
@@ -338,18 +340,18 @@ async function initDB(dir: string, _userDataPath: string) {
     const config = await configManager!.getConfig();
     const savedFolders = config.watchedFolders || [];
     if (savedFolders.length > 0) {
-      console.log('Auto-starting watch on saved folders:', savedFolders);
+      logger.log('WATCHER', 'Auto-starting watch on saved folders:', savedFolders);
       await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
     } else {
-      console.log('No saved folders to watch');
+      logger.log('WATCHER', 'No saved folders to watch');
     }
     
     // Setup profiling if enabled
     setupProfiling();
 
-    console.log('Worker ready');
+    logger.log('WORKER', 'Worker ready');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    logger.error('DATABASE', 'Failed to initialize database:', error);
     throw error;
   }
 }
@@ -368,49 +370,49 @@ function startEmbedderHealthCheck() {
     try {
       await embedderPool.checkHealth();
     } catch (error) {
-      console.error('[WORKER] Health check failed:', error);
+      logger.error('WORKER', 'Health check failed:', error);
     }
   };
   
   // Check health every 5 seconds
   healthCheckInterval = setInterval(performHealthCheck, 5000);
-  console.log('[WORKER] Started embedder health check monitoring');
+  logger.log('WORKER', 'Started embedder health check monitoring');
 }
 
 // Separate function to check and download model after worker is ready
 async function initializeModel(userDataPath: string) {
   // Check and download model if needed (ONCE at startup)
-  console.log('[WORKER] Checking for ML model...');
+  logger.log('WORKER', 'Checking for ML model...');
   
   modelReady = checkModelExists(userDataPath);
-  console.log('[WORKER] Model check:', modelReady ? 'found' : 'not found');
+  logger.log('WORKER', 'Model check:', modelReady ? 'found' : 'not found');
   
   if (!modelReady) {
-    console.log('[WORKER] Model not found, downloading...');
+    logger.log('WORKER', 'Model not found, downloading...');
     try {
       await downloadModel(userDataPath);
       modelReady = true;
-      console.log('[WORKER] ========== MODEL DOWNLOAD COMPLETE ==========');
+      logger.log('WORKER', '========== MODEL DOWNLOAD COMPLETE ==========');
       
       // In test mode with mocks, add a delay before sending complete
       // This allows the test to see the last file name in the UI
       if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
-        console.log('[WORKER] Test mode: waiting 2 seconds before sending complete');
+        logger.log('WORKER', 'Test mode: waiting 2 seconds before sending complete');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Send download complete notification
       if (parentPort) {
-        console.log('[WORKER] Sending model:download:complete message');
+        logger.log('WORKER', 'Sending model:download:complete message');
         parentPort.postMessage({ type: 'model:download:complete' });
       }
     } catch (error) {
-      console.error('[WORKER] ========== MODEL DOWNLOAD FAILED ==========');
-      console.error('[WORKER] Error:', error);
+      logger.error('WORKER', '========== MODEL DOWNLOAD FAILED ==========');
+      logger.error('WORKER', 'Error:', error);
       modelReady = false;
     }
   } else {
-    console.log('[WORKER] ========== MODEL FOUND, SKIPPING DOWNLOAD ==========');
+    logger.log('WORKER', '========== MODEL FOUND, SKIPPING DOWNLOAD ==========');
   }
   
   // Send model ready status
@@ -425,7 +427,7 @@ async function initializeModel(userDataPath: string) {
   if (!embedderPool) {
     const settings = configManager?.getSettings();
     const poolSize = settings?.embedderPoolSize ?? 2;
-    console.log(`[WORKER] Initializing embedder pool with ${poolSize} processes`);
+    logger.log('WORKER', `Initializing embedder pool with ${poolSize} processes`);
     
     embedderPool = new EmbedderPool({
       poolSize,
@@ -440,25 +442,25 @@ async function initializeModel(userDataPath: string) {
     });
     
     try {
-      console.log('[WORKER] About to call embedderPool.initialize()');
+      logger.log('WORKER', 'About to call embedderPool.initialize()');
       await embedderPool.initialize();
-      console.log('[WORKER] Embedder pool initialized successfully');
+      logger.log('WORKER', 'Embedder pool initialized successfully');
 
       // Initialize the embedding queue with the pool
       const batchSize = settings?.embeddingBatchSize ?? 32;
-      console.log('[WORKER] Creating EmbeddingQueue with batch size:', batchSize);
+      logger.log('WORKER', 'Creating EmbeddingQueue with batch size:', batchSize);
       embeddingQueue = new EmbeddingQueue({
         maxQueueSize: 2000,
         batchSize,
         backpressureThreshold: 1000,
         onProgress: (filePath, processed, total) => {
-          console.log(`[EMBEDDING] Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
+          logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
         },
         onFileComplete: (filePath) => {
-          console.log(`[EMBEDDING] ✅ Completed: ${path.basename(filePath)}`);
+          logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
         }
       });
-      console.log('[WORKER] About to call embeddingQueue.initialize()');
+      logger.log('WORKER', 'About to call embeddingQueue.initialize()');
       // Initialize with batch processor that writes to database
       embeddingQueue.initialize(embedderPool, async (batch) => {
         // Extract file metadata from the first chunk
@@ -491,18 +493,18 @@ async function initializeModel(userDataPath: string) {
         // Write to database
         await mergeRows(rows);
       });
-      console.log('[WORKER] Embedding queue initialized successfully');
+      logger.log('WORKER', 'Embedding queue initialized successfully');
 
       // Start health check monitoring
       startEmbedderHealthCheck();
     } catch (error) {
-      console.error('[WORKER] Failed to initialize embedder pool:', error);
+      logger.error('WORKER', 'Failed to initialize embedder pool:', error);
       // Critical error - we need the embedder pool to function
       throw new Error(`Failed to initialize embedder pool: ${error}`);
     }
   }
 
-  console.log('[WORKER] Model initialization completed successfully');
+  logger.log('WORKER', 'Model initialization completed successfully');
 }
 
 async function mergeRows(rows: any[]) {
@@ -518,7 +520,7 @@ async function mergeRows(rows: any[]) {
           .execute(rows);
         resolve();
       } catch (error) {
-        console.error('Failed to merge rows:', error);
+        logger.error('DATABASE', 'Failed to merge rows:', error);
         // Retry once on conflict
         if ((error as any)?.message?.includes('Commit conflict')) {
           try {
@@ -529,7 +531,7 @@ async function mergeRows(rows: any[]) {
               .execute(rows);
             resolve();
           } catch (retryError) {
-            console.error('Retry failed:', retryError);
+            logger.error('DATABASE', 'Retry failed:', retryError);
             reject(retryError);
           }
         } else {
@@ -564,7 +566,7 @@ async function deleteByPath(filePath: string) {
     const query = `path = "${escaped}"`;
     await tbl.delete(query);
   } catch (error) {
-    console.error('Failed to delete by path:', filePath, error);
+    logger.error('DATABASE', 'Failed to delete by path:', filePath, error);
   }
 }
 
@@ -642,7 +644,7 @@ async function updateFileStatus(filePath: string, status: string, error?: string
 async function handleFileOriginal(filePath: string) {
   try {
     fileCount++; // Track files processed
-    console.log(`[INDEXING] Starting: ${filePath}`);
+    logger.log('INDEXING', `Starting: ${filePath}`);
     
     try {
       await fs.promises.access(filePath);
@@ -669,7 +671,7 @@ async function handleFileOriginal(filePath: string) {
         if (bundleMatch) {
           const bundlePath = bundleMatch[1];
           if (!fileHashes.has(bundlePath + '_logged')) {
-            console.log(`[INDEXING] 📦 Skipping bundle: ${bundlePath}`);
+            logger.log('INDEXING', `📦 Skipping bundle: ${bundlePath}`);
             fileHashes.set(bundlePath + '_logged', 'logged');
           }
         }
@@ -693,7 +695,7 @@ async function handleFileOriginal(filePath: string) {
           .toArray();
         if (fileStatus.length > 0 && fileStatus[0].parser_version !== parserVersion) {
           needsReindex = true;
-          console.log(`[INDEXING] 🔄 Parser version changed for ${path.basename(filePath)}: v${fileStatus[0].parser_version} -> v${parserVersion}`);
+          logger.log('INDEXING', `🔄 Parser version changed for ${path.basename(filePath)}: v${fileStatus[0].parser_version} -> v${parserVersion}`);
         }
       } catch (_e) {
         // Ignore errors in checking file status
@@ -701,14 +703,14 @@ async function handleFileOriginal(filePath: string) {
     }
     
     if (!needsReindex && previousHash === currentHash) {
-      console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - Already up-to-date`);
+      logger.log('INDEXING', `⏭️ Skipped: ${path.basename(filePath)} - Already up-to-date`);
       return;
     }
     
     // Find parser for this file extension
     const parserEntry = getParserForExtension(ext);
     if (!parserEntry) {
-      console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - No parser for .${ext}`);
+      logger.log('INDEXING', `⏭️ Skipped: ${path.basename(filePath)} - No parser for .${ext}`);
       return;
     }
     
@@ -719,7 +721,7 @@ async function handleFileOriginal(filePath: string) {
     const isTypeEnabled = fileTypes[parserKey as keyof typeof fileTypes] ?? false;
     
     if (!isTypeEnabled) {
-      console.log(`[INDEXING] ⏭️ Skipped: ${path.basename(filePath)} - File type disabled`);
+      logger.log('INDEXING', `⏭️ Skipped: ${path.basename(filePath)} - File type disabled`);
       return;
     }
     
@@ -753,7 +755,7 @@ async function handleFileOriginal(filePath: string) {
       } catch (pdfError: any) {
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
         await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`, 0, parserVersion);
-        console.warn(`[INDEXING] Failed: ${path.basename(filePath)} - PDF: ${errorMsg}`);
+        logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - PDF: ${errorMsg}`);
         return;
       }
     } else {
@@ -785,7 +787,7 @@ async function handleFileOriginal(filePath: string) {
       } catch (parseError: any) {
         const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
         await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
-        console.warn(`[INDEXING] Failed: ${path.basename(filePath)} - ${errorMsg}`);
+        logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - ${errorMsg}`);
         return;
       }
     }
@@ -793,7 +795,7 @@ async function handleFileOriginal(filePath: string) {
     if (chunks.length === 0) {
       // Mark file as failed if no chunks were extracted
       await updateFileStatus(filePath, 'failed', 'No text content extracted', 0, parserVersion);
-      console.warn(`[INDEXING] Failed: ${path.basename(filePath)} - No text content extracted`);
+      logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - No text content extracted`);
       return;
     }
     
@@ -837,7 +839,7 @@ async function handleFileOriginal(filePath: string) {
     // Update file status as successfully indexed
     const totalChunks = chunks.length;
     await updateFileStatus(filePath, 'indexed', undefined, totalChunks, parserVersion);
-    console.log(`[INDEXING] ✅ Success: ${path.basename(filePath)} - ${totalChunks} chunks created`);
+    logger.log('INDEXING', `✅ Success: ${path.basename(filePath)} - ${totalChunks} chunks created`);
     
     // Clear references to help garbage collection
     chunks = null as any;
@@ -864,7 +866,7 @@ async function handleFileOriginal(filePath: string) {
       global.gc();
     }
   } catch (error: any) {
-    console.error(`[INDEXING] ❌ Error: ${path.basename(filePath)} -`, error.message || error);
+    logger.error('INDEXING', `❌ Error: ${path.basename(filePath)} -`, error.message || error);
     // Track the error in the database
     await updateFileStatus(filePath, 'error', error.message || String(error));
   }
@@ -896,19 +898,19 @@ async function search(query: string, k = 10) {
     
     return mappedResults;
   } catch (error) {
-    console.error('Search failed:', error);
+    logger.error('DATABASE', 'Search failed:', error);
     return [];
   }
 }
 
 async function reindexAll() {
-  console.log('Starting full re-index with multilingual E5 model...');
+  logger.log('REINDEX', 'Starting full re-index with multilingual E5 model...');
   
   try {
     // Get all watched folders
     const watchedFolders = configManager?.getWatchedFolders() || [];
     if (watchedFolders.length === 0) {
-      console.log('No folders to re-index');
+      logger.log('REINDEX', 'No folders to re-index');
       return;
     }
     
@@ -917,9 +919,9 @@ async function reindexAll() {
       try {
         // Delete all existing chunks
         await tbl.delete('1=1'); // Delete all rows
-        console.log('Cleared existing index');
+        logger.log('REINDEX', 'Cleared existing index');
       } catch (e) {
-        console.error('Error clearing index:', e);
+        logger.error('REINDEX', 'Error clearing index:', e);
       }
     }
     
@@ -928,9 +930,9 @@ async function reindexAll() {
       try {
         // Delete all file status records
         await fileStatusTable.delete('1=1');
-        console.log('Cleared file status records');
+        logger.log('FILE-STATUS', 'Cleared file status records');
       } catch (e) {
-        console.error('Error clearing file status:', e);
+        logger.error('FILE-STATUS', 'Error clearing file status:', e);
       }
     }
     
@@ -943,13 +945,13 @@ async function reindexAll() {
     }
     
     // Pass a flag to force re-indexing of all files
-    console.log('Restarting file watcher to re-index all files...');
+    logger.log('REINDEX', 'Restarting file watcher to re-index all files...');
     await startWatching(watchedFolders, configManager?.getEffectiveExcludePatterns(), true);
     
-    console.log('Re-indexing started - files will be processed through normal queue');
+    logger.log('REINDEX', 'Re-indexing started - files will be processed through normal queue');
     
   } catch (error) {
-    console.error('Re-index failed:', error);
+    logger.error('REINDEX', 'Re-index failed:', error);
     throw error;
   }
 }
@@ -961,7 +963,7 @@ async function maybeCreateIndex() {
       await tbl.createIndex('vector').catch(() => {});
     }
   } catch (error) {
-    console.error('Failed to create index:', error);
+    logger.error('DATABASE', 'Failed to create index:', error);
   }
 }
 
@@ -992,7 +994,7 @@ async function cleanupRemovedFolders(removedFolders: string[]) {
   try {
     // Remove files from in-memory cache
     const removedCount = folderRemovalManager.removeFilesFromCache(fileHashes, removedFolders);
-    console.log(`[CLEANUP] Removed ${removedCount} files from cache`);
+    logger.log('CLEANUP', `Removed ${removedCount} files from cache`);
     
     // Get all paths from database once
     const allRecords = await tbl.query().select(['path']).toArray();
@@ -1000,7 +1002,7 @@ async function cleanupRemovedFolders(removedFolders: string[]) {
     
     // Identify which database paths need to be deleted
     const pathsToDelete = folderRemovalManager.filterPathsInFolders(allPaths, removedFolders);
-    console.log(`[CLEANUP] Found ${pathsToDelete.length} files to delete from database`);
+    logger.log('CLEANUP', `Found ${pathsToDelete.length} files to delete from database`);
     
     // Delete from vector database
     for (const path of pathsToDelete) {
@@ -1018,9 +1020,9 @@ async function cleanupRemovedFolders(removedFolders: string[]) {
       }
     }
     
-    console.log(`[CLEANUP] Completed cleanup for ${removedFolders.length} folder(s)`);
+    logger.log('CLEANUP', `Completed cleanup for ${removedFolders.length} folder(s)`);
   } catch (error) {
-    console.error('[CLEANUP] Error during folder cleanup:', error);
+    logger.error('CLEANUP', 'Error during folder cleanup:', error);
   }
 }
 
@@ -1034,14 +1036,14 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
   
   // If folders were removed, delete their files from the database
   if (removedFolders.length > 0) {
-    console.log(`[CLEANUP] Removing files from ${removedFolders.length} folder(s): ${removedFolders.join(', ')}`);
+    logger.log('CLEANUP', `Removing files from ${removedFolders.length} folder(s): ${removedFolders.join(', ')}`);
     await cleanupRemovedFolders(removedFolders);
   }
   
   // Get effective exclude patterns (including bundle patterns if enabled)
   const effectivePatterns = configManager?.getEffectiveExcludePatterns() || excludePatterns || [];
   
-  console.log(`[WATCHER] Starting to watch ${roots.length} folder(s): ${roots.join(', ')}`);
+  logger.log('WATCHER', `Starting to watch ${roots.length} folder(s): ${roots.join(', ')}`);
   watcher = chokidar.watch(roots, {
     ignored: effectivePatterns,
     ignoreInitial: true,  // Don't re-scan all files on startup
@@ -1061,25 +1063,25 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     try {
       const records = await fileStatusTable.query().toArray();
       fileStatusCache = new Map(records.map((r: any) => [r.path, r]));
-      console.log(`Loaded ${fileStatusCache.size} file status records into cache`);
+      logger.log('FILE-STATUS', `Loaded ${fileStatusCache.size} file status records into cache`);
     } catch (e) {
-      console.error('Could not cache file status records:', e);
+      logger.error('FILE-STATUS', 'Could not cache file status records:', e);
       fileStatusCache = new Map();
     }
   } else {
-    console.log('File status table not available for caching');
+    logger.log('FILE-STATUS', 'File status table not available for caching');
     fileStatusCache = new Map();
   }
   
   // After watcher is set up, scan for new and modified files using our new classes
   await (async () => {
     if (forceReindex) {
-      console.log('Force re-indexing enabled - all files will be queued');
+      logger.log('WATCHER', 'Force re-indexing enabled - all files will be queued');
     } else {
-      console.log('Scanning for new and modified files...');
+      logger.log('WATCHER', 'Scanning for new and modified files...');
     }
-    console.log('File status cache size:', fileStatusCache?.size || 0);
-    console.log('Queue already has:', fileQueue.getStats().queued, 'files');
+    logger.log('FILE-STATUS', 'File status cache size:', fileStatusCache?.size || 0);
+    logger.log('QUEUE', 'Queue already has:', fileQueue.getStats().queued, 'files');
     
     // Get enabled extensions from registry based on config
     const fileTypes = configManager?.getSettings().fileTypes || {};
@@ -1167,23 +1169,23 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     // Calculate statistics using the orchestrator
     const stats = orchestrator.calculateReindexStats(supportedFiles, fileStatusCache || new Map(), reasons);
     
-    console.log('Scan results:');
-    console.log(`  - New files: ${stats.newFiles}`);
-    console.log(`  - Modified files: ${stats.modifiedFiles}`);
-    console.log(`  - Skipped files: ${stats.skippedFiles}`);
-    console.log(`  - Failed files to retry: ${stats.failedFiles}`);
-    console.log(`  - Outdated files: ${stats.outdatedFiles}`);
-    console.log(`  - Hash calculations performed: ${hashChecks}`);
+    logger.log('WATCHER', 'Scan results:');
+    logger.log('WATCHER', `  - New files: ${stats.newFiles}`);
+    logger.log('WATCHER', `  - Modified files: ${stats.modifiedFiles}`);
+    logger.log('WATCHER', `  - Skipped files: ${stats.skippedFiles}`);
+    logger.log('WATCHER', `  - Failed files to retry: ${stats.failedFiles}`);
+    logger.log('WATCHER', `  - Outdated files: ${stats.outdatedFiles}`);
+    logger.log('WATCHER', `  - Hash calculations performed: ${hashChecks}`);
     
     if (filesToIndex.length > 0) {
-      console.log(`Adding ${filesToIndex.length} files to queue`);
+      logger.log('QUEUE', `Adding ${filesToIndex.length} files to queue`);
       fileQueue.add(filesToIndex);
       // Start processing if not already active
       processQueue();
     } else {
-      console.log('No new or modified files found');
+      logger.log('WATCHER', 'No new or modified files found');
     }
-    console.log('Total queue size after scan:', fileQueue.getStats().queued);
+    logger.log('QUEUE', 'Total queue size after scan:', fileQueue.getStats().queued);
     
     // Initialize indexed counts for each folder after scan
     for (const [folder, stats] of folderStats) {
@@ -1224,7 +1226,7 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
       // Use shouldReindex to determine if file needs processing
       if (reindexService.shouldReindex(p, fileRecord)) {
         fileQueue.add(p);
-        console.log(`[QUEUE] 📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
+        logger.log('QUEUE', `📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
         // Start processing if not already active
         processQueue();
       }
@@ -1237,7 +1239,7 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     
     if (supported && !fileQueue.isProcessing(p)) {
       fileQueue.add(p);
-      console.log(`[QUEUE] 📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
+      logger.log('QUEUE', `📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
       // Start processing if not already active
       processQueue();
     }
@@ -1265,22 +1267,22 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
 let isProcessingActive = false;
 
 async function processQueue() {
-  console.log(`[PROCESS-QUEUE] Called - isProcessingActive: ${isProcessingActive}, modelReady: ${modelReady}`);
+  logger.log('PROCESS-QUEUE', `Called - isProcessingActive: ${isProcessingActive}, modelReady: ${modelReady}`);
 
   // Prevent multiple instances running
   if (isProcessingActive) {
-    console.log(`[PROCESS-QUEUE] Already processing, skipping`);
+    logger.log('PROCESS-QUEUE', 'Already processing, skipping');
     return;
   }
 
   // Wait for model to be ready
   if (!modelReady) {
-    console.log(`[PROCESS-QUEUE] Model not ready, skipping`);
+    logger.log('PROCESS-QUEUE', 'Model not ready, skipping');
     return;
   }
 
   const queueStats = fileQueue.getStats();
-  console.log(`[PROCESS-QUEUE] Starting - Queue: ${queueStats.queued} files, Processing: ${queueStats.processing}`);
+  logger.log('PROCESS-QUEUE', `Starting - Queue: ${queueStats.queued} files, Processing: ${queueStats.processing}`);
 
   isProcessingActive = true;
 
@@ -1289,20 +1291,20 @@ async function processQueue() {
     await fileQueue.process(
       async (filePath) => {
         const maxConcurrent = fileQueue.getCurrentMaxConcurrent();
-        console.log(`[INDEXING] 🔄 Processing: ${path.basename(filePath)} (${fileQueue.getProcessingFiles().length}/${maxConcurrent} concurrent)`);
+        logger.log('INDEXING', `🔄 Processing: ${path.basename(filePath)} (${fileQueue.getProcessingFiles().length}/${maxConcurrent} concurrent)`);
 
         try {
           await handleFile(filePath);
         } finally {
-          console.log(`[INDEXING] ✨ Completed: ${path.basename(filePath)} (${fileQueue.getProcessingFiles().length}/${maxConcurrent} still processing)`);
+          logger.log('INDEXING', `✨ Completed: ${path.basename(filePath)} (${fileQueue.getProcessingFiles().length}/${maxConcurrent} still processing)`);
         }
       },
       () => process.memoryUsage().rss / 1024 / 1024 // Memory getter
     );
-    console.log(`[PROCESS-QUEUE] Completed processing all files`);
+    logger.log('PROCESS-QUEUE', 'Completed processing all files');
   } finally {
     isProcessingActive = false;
-    console.log(`[PROCESS-QUEUE] Processing flag reset`);
+    logger.log('PROCESS-QUEUE', 'Processing flag reset');
   }
 }
 
@@ -1323,17 +1325,17 @@ parentPort!.on('message', async (msg: any) => {
         // Initialize model in background after worker is ready
         initializeModel(userDataPath).then(() => {
           // Start processing queue now that model is ready
-          console.log('[WORKER] Model initialization complete - starting queue processing');
+          logger.log('WORKER', 'Model initialization complete - starting queue processing');
           processQueue();
         }).catch((error) => {
-          console.error('[WORKER] Model initialization error:', error);
+          logger.error('WORKER', 'Model initialization error:', error);
           // Don't start processing if model initialization failed
         });
         break;
         
       case 'checkModel':
-        console.log('[WORKER] ========== RECEIVED checkModel REQUEST ==========');
-        console.log('[WORKER] Current modelReady state:', modelReady);
+        logger.log('WORKER', '========== RECEIVED checkModel REQUEST ==========');
+        logger.log('WORKER', 'Current modelReady state:', modelReady);
         
         // Wait for model initialization to complete before responding
         // This ensures the UI gets the correct status
@@ -1341,7 +1343,7 @@ parentPort!.on('message', async (msg: any) => {
           // Check if initialization is complete (modelReady will be set)
           if (modelReady !== null) {
             clearInterval(checkInterval);
-            console.log('[WORKER] Responding to checkModel with exists:', modelReady);
+            logger.log('WORKER', 'Responding to checkModel with exists:', modelReady);
             if (msg.id) {
               parentPort!.postMessage({ 
                 id: msg.id,
@@ -1484,7 +1486,7 @@ parentPort!.on('message', async (msg: any) => {
             parentPort!.postMessage({ id: msg.id, payload: { success: true } });
           }
         }).catch(error => {
-          console.error('Re-index error:', error);
+          logger.error('REINDEX', 'Re-index error:', error);
           if (msg.id) {
             parentPort!.postMessage({ id: msg.id, error: error.message });
           }
@@ -1524,7 +1526,7 @@ parentPort!.on('message', async (msg: any) => {
                 }
               }
             } catch (e) {
-              console.error('Error searching file status table:', e);
+              logger.error('FILE-STATUS', 'Error searching file status table:', e);
             }
           }
           
@@ -1553,7 +1555,7 @@ parentPort!.on('message', async (msg: any) => {
             parentPort!.postMessage({ id: msg.id, payload: results });
           }
         } catch (error) {
-          console.error('Search files error:', error);
+          logger.error('DATABASE', 'Search files error:', error);
           if (msg.id) {
             parentPort!.postMessage({ id: msg.id, payload: [] });
           }
@@ -1562,13 +1564,13 @@ parentPort!.on('message', async (msg: any) => {
       
       case 'shutdown':
         // Clean shutdown requested
-        console.log('Worker shutting down...');
+        logger.log('WORKER', 'Worker shutting down...');
         
         // Generate profiling report if enabled
         if (process.env.PROFILE === 'true') {
           const { profiler } = require('./profiling-integration');
           if (profiler.isEnabled()) {
-            console.log('🔬 [PROFILING] Generating performance report...');
+            logger.log('PROFILING', '🔬 Generating performance report...');
             await profiler.saveReport();
           }
         }
@@ -1588,7 +1590,7 @@ parentPort!.on('message', async (msg: any) => {
         process.exit(0);
     }
   } catch (error: any) {
-    console.error('Worker message error:', error);
+    logger.error('WORKER', 'Worker message error:', error);
     if (msg.id) {
       parentPort!.postMessage({ id: msg.id, error: error?.message || String(error) });
     }
@@ -1597,11 +1599,11 @@ parentPort!.on('message', async (msg: any) => {
 
 // Add error handlers to prevent crashes
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('WORKER', 'Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  logger.error('WORKER', 'Uncaught Exception:', error);
   // Keep the worker alive
 });
 
@@ -1620,7 +1622,7 @@ process.on('SIGTERM', async () => {
   if (process.env.PROFILE === 'true') {
     const { profiler } = require('./profiling-integration');
     if (profiler.isEnabled()) {
-      console.log('🔬 [PROFILING] Generating performance report...');
+      logger.log('PROFILING', '🔬 Generating performance report...');
       await profiler.saveReport();
     }
   }

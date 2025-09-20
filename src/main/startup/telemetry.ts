@@ -1,3 +1,5 @@
+import { logger } from '../../shared/utils/logger';
+
 export class StartupTelemetry {
   private marks = new Map<string, number>();
   
@@ -13,12 +15,12 @@ export class StartupTelemetry {
   
   report(): void {
     if (process.env.NODE_ENV === 'development') {
-      console.log('Startup Metrics:');
-      console.log(`  Time to window: ${this.measure('app-start', 'window-shown')}ms`);
-      console.log(`  Time to worker: ${this.measure('app-start', 'worker-ready')}ms`);
-      console.log(`  Time to model: ${this.measure('app-start', 'model-ready')}ms`);
-      console.log(`  Time to files: ${this.measure('app-start', 'files-loaded')}ms`);
-      console.log(`  Time to ready: ${this.measure('app-start', 'app-ready')}ms`);
+      logger.log('STARTUP', 'Startup Metrics:');
+      logger.log('STARTUP', `  Time to window: ${this.measure('app-start', 'window-shown')}ms`);
+      logger.log('STARTUP', `  Time to worker: ${this.measure('app-start', 'worker-ready')}ms`);
+      logger.log('STARTUP', `  Time to model: ${this.measure('app-start', 'model-ready')}ms`);
+      logger.log('STARTUP', `  Time to files: ${this.measure('app-start', 'files-loaded')}ms`);
+      logger.log('STARTUP', `  Time to ready: ${this.measure('app-start', 'app-ready')}ms`);
     }
   }
 }

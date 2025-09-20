@@ -3,6 +3,8 @@
  * This handles the actual loading of transformer models.
  */
 
+import { logger } from '../../utils/logger';
+
 import { IModelLoader, ModelInfo } from '../interfaces/IModelLoader';
 import { IPipeline, PipelineOptions, TransformerOutput } from '../interfaces/IPipeline';
 import { ModelPathResolver } from '../ModelPathResolver';
@@ -80,7 +82,7 @@ export class TransformersModelLoader implements IModelLoader {
    * Check if a model exists locally
    */
   checkModelExists(name: string): boolean {
-    const modelInfo = this.pathResolver.getModelInfo(name);
+    const modelInfo = this.pathResolver.getModelInfo();
     return modelInfo.exists;
   }
 
@@ -93,8 +95,7 @@ export class TransformersModelLoader implements IModelLoader {
     return {
       exists: info.exists,
       path: info.path,
-      size: info.size,
-      error: info.error
+      size: info.size
     };
   }
 
@@ -107,7 +108,7 @@ export class TransformersModelLoader implements IModelLoader {
     }
 
     if (process.env.DEBUG_EMBEDDER) {
-      console.log('[TransformersModelLoader] Initializing transformers.js');
+      logger.log('MODEL-LOADER', 'Initializing transformers.js');
     }
 
     try {
@@ -122,12 +123,12 @@ export class TransformersModelLoader implements IModelLoader {
       this.transformers.env.allowRemoteModels = resolved.allowRemoteModels;
 
       if (process.env.DEBUG_EMBEDDER) {
-        console.log('[TransformersModelLoader] Transformers initialized with:');
-        console.log('  - Cache path:', this.transformers.env.localModelPath);
-        console.log('  - Allow remote:', this.transformers.env.allowRemoteModels);
+        logger.log('MODEL-LOADER', 'Transformers initialized with:');
+        logger.log('MODEL-LOADER', '  - Cache path:', this.transformers.env.localModelPath);
+        logger.log('MODEL-LOADER', '  - Allow remote:', this.transformers.env.allowRemoteModels);
       }
     } catch (error: any) {
-      console.error('[TransformersModelLoader] Failed to initialize transformers:', error);
+      logger.error('MODEL-LOADER', 'Failed to initialize transformers:', error);
       throw new Error(`Failed to initialize transformers: ${error.message}`);
     }
   }

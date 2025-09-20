@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
 import { PARSER_VERSIONS, getParserVersion } from './parserVersions';
+import { logger } from '../../shared/utils/logger';
 
 export interface FileStatus {
   path: string;
@@ -46,7 +47,7 @@ export function shouldReindex(filePath: string, fileRecord?: FileStatus): boolea
   
   // Parser upgraded
   if (!fileRecord.parser_version || fileRecord.parser_version < currentVersion) {
-    console.log(`Parser upgraded for ${ext}: v${fileRecord.parser_version} -> v${currentVersion}`);
+    logger.log('REINDEX', `Parser upgraded for ${ext}: v${fileRecord.parser_version} -> v${currentVersion}`);
     return true;
   }
   
@@ -65,12 +66,12 @@ export function shouldReindex(filePath: string, fileRecord?: FileStatus): boolea
 
 export async function checkForParserUpgrades(fileStatusTable: any, queue: string[], parentPort?: any): Promise<void> {
   if (!fileStatusTable) {
-    console.log('File status table not available, skipping parser upgrade check');
+    logger.log('REINDEX', 'File status table not available, skipping parser upgrade check');
     return;
   }
   
-  console.log('Checking for parser upgrades...');
-  console.log('Initial queue size:', queue.length);
+  logger.log('REINDEX', 'Checking for parser upgrades...');
+  logger.log('REINDEX', 'Initial queue size:', queue.length);
   
   const upgradeSummary: Record<string, number> = {};
   
@@ -101,7 +102,7 @@ export async function checkForParserUpgrades(fileStatusTable: any, queue: string
               error_message: `Parser upgraded to v${currentVersion}`
             }]);
           } catch (e) {
-            console.error(`Failed to update status for ${file.path}:`, e);
+            logger.error('REINDEX', `Failed to update status for ${file.path}:`, e);
           }
           
           // Add to front of queue for high priority
@@ -120,7 +121,7 @@ export async function checkForParserUpgrades(fileStatusTable: any, queue: string
       });
       
       if (failedDocs.length > 0) {
-        console.log(`Found ${failedDocs.length} failed .doc files to retry with new parser`);
+        logger.log('REINDEX', `Found ${failedDocs.length} failed .doc files to retry with new parser`);
         upgradeSummary['doc_retries'] = failedDocs.length;
         
         for (const file of failedDocs) {
@@ -133,7 +134,7 @@ export async function checkForParserUpgrades(fileStatusTable: any, queue: string
               error_message: 'Retrying with improved .doc parser'
             }]);
           } catch (e) {
-            console.error(`Failed to update status for ${file.path}:`, e);
+            logger.error('REINDEX', `Failed to update status for ${file.path}:`, e);
           }
           
           queue.unshift(file.path);
@@ -142,8 +143,8 @@ export async function checkForParserUpgrades(fileStatusTable: any, queue: string
     }
     
     if (Object.keys(upgradeSummary).length > 0) {
-      console.log('Parser upgrades detected:', upgradeSummary);
-      console.log('Queue size after parser upgrades:', queue.length);
+      logger.log('REINDEX', 'Parser upgrades detected:', upgradeSummary);
+      logger.log('REINDEX', 'Queue size after parser upgrades:', queue.length);
       
       // Notify parent thread if available
       if (parentPort) {
@@ -153,11 +154,11 @@ export async function checkForParserUpgrades(fileStatusTable: any, queue: string
         });
       }
     } else {
-      console.log('All files are using the latest parser versions');
-      console.log('Queue size after parser check:', queue.length);
+      logger.log('REINDEX', 'All files are using the latest parser versions');
+      logger.log('REINDEX', 'Queue size after parser check:', queue.length);
     }
   } catch (error) {
-    console.error('Error checking for parser upgrades:', error);
+    logger.error('REINDEX', 'Error checking for parser upgrades:', error);
   }
 }
 
@@ -166,7 +167,7 @@ export async function migrateExistingFiles(fileStatusTable: any): Promise<void> 
     return;
   }
   
-  console.log('Migrating existing files to include parser versions...');
+  logger.log('REINDEX', 'Migrating existing files to include parser versions...');
   
   try {
     const allFiles = await fileStatusTable.query().toArray();
@@ -199,14 +200,14 @@ export async function migrateExistingFiles(fileStatusTable: any): Promise<void> 
         }]);
         migratedCount++;
       } catch (e) {
-        console.error(`Failed to migrate ${file.path}:`, e);
+        logger.error('REINDEX', `Failed to migrate ${file.path}:`, e);
       }
     }
     
     if (migratedCount > 0) {
-      console.log(`Migrated ${migratedCount} files to include parser versions`);
+      logger.log('REINDEX', `Migrated ${migratedCount} files to include parser versions`);
     }
   } catch (error) {
-    console.error('Error migrating existing files:', error);
+    logger.error('REINDEX', 'Error migrating existing files:', error);
   }
 }

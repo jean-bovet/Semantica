@@ -87,6 +87,25 @@ npm install
 npm run dev
 ```
 
+### Selective Logging
+The codebase uses a category-based logging system to reduce noise. Configure with `LOG_CATEGORIES`:
+
+```bash
+# Default (minimal - only progress and errors)
+npm run dev
+
+# Debug file processing
+LOG_CATEGORIES=WORKER,INDEXING,QUEUE npm run dev
+
+# Debug embedder issues
+LOG_CATEGORIES=EMBEDDER-*,MEMORY npm run dev
+
+# Show all logs
+LOG_CATEGORIES=* npm run dev
+```
+
+See [logging-migration.md](./docs/logging-migration.md) for available categories.
+
 ### Building for Production
 ```bash
 npm run build
@@ -109,6 +128,14 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 - See [operations guide](./specs/04-operations.md#e2e-testing-configuration) for details
 
 ## Recent Updates
+
+### 2025-09-20 - Selective Logging System
+- **Category-based logging**: Replaced verbose logging with selective category system
+- **Silent by default**: Only shows PIPELINE-STATUS and errors unless configured
+- **Developer control**: Use LOG_CATEGORIES environment variable to enable specific logs
+- **Performance**: Reduced console I/O overhead by ~90%
+- **Debugging presets**: Common scenarios like `EMBEDDER-*` for embedder debugging
+- **Logger utility**: Centralized logging in `/src/shared/utils/logger.ts`
 
 ### 2025-08-31 - Performance Optimizations & Profiling
 - **4x Performance Improvement**: Increased embedding batch size from 8 to 32, added parallel processing

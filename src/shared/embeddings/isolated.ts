@@ -7,6 +7,7 @@ import { IPCMessageBuilder, MessageTypeGuards } from './IPCMessageProtocol';
 import { ProcessStateMachine, EmbedderState } from '../utils/ProcessStateMachine';
 import { createEmbedderEventEmitter, EmbedderEventHelpers } from './EmbedderEventEmitter';
 import { RetryExecutor, RetryStrategyFactory } from '../utils/RetryStrategy';
+import { logger } from '../utils/logger';
 
 export class IsolatedEmbedder implements IEmbedder {
   private processManager: ChildProcessManager | null = null;
@@ -58,7 +59,7 @@ export class IsolatedEmbedder implements IEmbedder {
    */
   private setupStateMachineEvents(): void {
     this.stateMachine.on('stateChange', (from, to, context) => {
-      console.log(`[ISOLATED] State: ${from} → ${to}${context.reason ? ` (${context.reason})` : ''}`);
+      logger.log('ISOLATED', `State: ${from} → ${to}${context.reason ? ` (${context.reason})` : ''}`);
 
       // Handle automatic restart on error if no operations are pending
       if (to === EmbedderState.Error && this.inflight.size === 0) {
@@ -68,7 +69,7 @@ export class IsolatedEmbedder implements IEmbedder {
             try {
               await this.restart();
             } catch (error) {
-              console.error('[ISOLATED] Auto-restart failed:', error);
+              logger.error('ISOLATED', 'Auto-restart failed:', error);
             }
           }
         }, 1000);
@@ -76,7 +77,7 @@ export class IsolatedEmbedder implements IEmbedder {
     });
 
     this.stateMachine.on('invalidTransition', (from, to, reason) => {
-      console.warn(`[ISOLATED] Invalid state transition: ${from} → ${to} (${reason})`);
+      logger.warn('ISOLATED', `Invalid state transition: ${from} → ${to} (${reason})`);
     });
   }
 
@@ -96,7 +97,7 @@ export class IsolatedEmbedder implements IEmbedder {
   }
 
   private async spawnChild(): Promise<void> {
-    console.log('[ISOLATED] Starting embedder spawn with ChildProcessManager...');
+    logger.log('ISOLATED', 'Starting embedder spawn with ChildProcessManager...');
 
     // Clean up existing process manager
     if (this.processManager) {
@@ -133,12 +134,12 @@ export class IsolatedEmbedder implements IEmbedder {
         const lines = data.split('\n');
         for (const line of lines) {
           if (line.trim()) {
-            console.log(`[EMBEDDER-OUT] ${line}`);
+            logger.log('CHILD-OUT', `[EMBEDDER] ${line}`);
           }
         }
       },
       onStderr: (data) => {
-        console.error(`[EMBEDDER-ERR] ${data}`);
+        logger.error('CHILD-ERR', `[EMBEDDER] ${data}`);
       }
     });
 
@@ -156,7 +157,7 @@ export class IsolatedEmbedder implements IEmbedder {
     });
 
     this.processManager.on('error', (err) => {
-      console.error('[ISOLATED] Embedder child error:', err);
+      logger.error('ISOLATED', 'Embedder child error:', err);
       this.stateMachine.transition(EmbedderState.Error, {
         reason: 'Process manager error',
         error: err
@@ -170,7 +171,7 @@ export class IsolatedEmbedder implements IEmbedder {
     });
 
     this.processManager.on('exit', (code, signal) => {
-      console.error(`[ISOLATED] Embedder child exited with code ${code}, signal ${signal}`);
+      logger.error('ISOLATED', `Embedder child exited with code ${code}, signal ${signal}`);
       this.events.emit('debug:process_exit', code, signal);
 
       if (!this.stateMachine.isShuttingDown()) {
@@ -200,7 +201,7 @@ export class IsolatedEmbedder implements IEmbedder {
           }
         }
       } else if (MessageTypeGuards.isInitErrorMessage(msg)) {
-        console.error('[ISOLATED] Embedder init failed:', msg.error);
+        logger.error('ISOLATED', 'Embedder init failed:', msg.error);
         this.stateMachine.transition(EmbedderState.Error, {
           reason: 'Embedder initialization failed',
           error: new Error(msg.error)
@@ -210,7 +211,7 @@ export class IsolatedEmbedder implements IEmbedder {
 
     // Start the process without waiting
     this.processManager.start().catch((error) => {
-      console.error('[ISOLATED] Failed to start child process:', error);
+      logger.error('ISOLATED', 'Failed to start child process:', error);
     });
 
     // Listen for IPC ready signal from child process
@@ -219,7 +220,7 @@ export class IsolatedEmbedder implements IEmbedder {
       if (this.processManager) {
         this.processManager.send(initMessage);
       } else {
-        console.error('[ISOLATED] Process manager not available when trying to send init message');
+        logger.error('ISOLATED', 'Process manager not available when trying to send init message');
       }
     });
 
@@ -234,7 +235,7 @@ export class IsolatedEmbedder implements IEmbedder {
             return this.waitForReady();
           })
           .catch((err) => {
-            console.error('[ISOLATED] Failed to spawn child:', err);
+            logger.error('ISOLATED', 'Failed to spawn child:', err);
             // Reset state on failure
             this.stateMachine.transition(EmbedderState.Error, {
               reason: 'Failed to spawn child process',
@@ -261,7 +262,7 @@ export class IsolatedEmbedder implements IEmbedder {
         this.stateMachine.off('stateChange', onStateChange);
         // For now, don't reject - just log the warning and continue
         // This is a temporary workaround until we fix the child process ready signaling
-        console.warn('[ISOLATED] Proceeding despite ready timeout - embedder may still work');
+        logger.warn('ISOLATED', 'Proceeding despite ready timeout - embedder may still work');
         resolve();
       }, 10000); // 10 second timeout (reduced)
 
@@ -321,7 +322,7 @@ export class IsolatedEmbedder implements IEmbedder {
         }
 
         if (checkResult.shouldRestart) {
-          console.log('[ISOLATED] Memory limit reached, restarting embedder:', checkResult.reason);
+          logger.log('ISOLATED', 'Memory limit reached, restarting embedder:', checkResult.reason);
           await this.restart();
           await this.ensureReady();
         }
@@ -536,7 +537,7 @@ let legacyInitPromise: Promise<void> | null = null;
  * @deprecated Use EmbedderFactory.createIsolatedEmbedder() instead
  */
 export async function embed(texts: string[], isQuery = false): Promise<number[][]> {
-  console.warn('[DEPRECATED] embed() function is deprecated. Use EmbedderFactory.createIsolatedEmbedder() instead.');
+  logger.warn('DEPRECATED', 'embed() function is deprecated. Use EmbedderFactory.createIsolatedEmbedder() instead.');
 
   // Use factory to create embedder if needed
   if (!legacyEmbedder && !legacyInitializing) {
@@ -574,7 +575,7 @@ export async function embed(texts: string[], isQuery = false): Promise<number[][
  * @deprecated Use embedder.checkMemoryAndRestart() directly instead
  */
 export async function checkEmbedderMemory(): Promise<boolean> {
-  console.warn('[DEPRECATED] checkEmbedderMemory() function is deprecated. Use embedder.checkMemoryAndRestart() directly instead.');
+  logger.warn('DEPRECATED', 'checkEmbedderMemory() function is deprecated. Use embedder.checkMemoryAndRestart() directly instead.');
 
   if (legacyEmbedder) {
     return legacyEmbedder.checkMemoryAndRestart();
@@ -586,7 +587,7 @@ export async function checkEmbedderMemory(): Promise<boolean> {
  * @deprecated Use embedder.shutdown() directly instead
  */
 export async function shutdownEmbedder(): Promise<void> {
-  console.warn('[DEPRECATED] shutdownEmbedder() function is deprecated. Use embedder.shutdown() directly instead.');
+  logger.warn('DEPRECATED', 'shutdownEmbedder() function is deprecated. Use embedder.shutdown() directly instead.');
 
   if (legacyEmbedder) {
     await legacyEmbedder.shutdown();

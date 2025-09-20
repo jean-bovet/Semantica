@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { logger } from './logger';
 
 /**
  * Possible states for an embedder process
@@ -275,15 +276,15 @@ export class ProcessStateMachine extends EventEmitter {
   private enableDebugLogging(): void {
     this.on('stateChange', (from, to, context) => {
       const reason = context.reason ? ` (${context.reason})` : '';
-      console.log(`[StateMachine] ${from} → ${to}${reason}`);
+      logger.log('STATE-MACHINE', `${from} → ${to}${reason}`);
     });
 
     this.on('invalidTransition', (from, to, reason) => {
-      console.warn(`[StateMachine] Invalid transition: ${from} → ${to} (${reason})`);
+      logger.warn('STATE-MACHINE', `Invalid transition: ${from} → ${to} (${reason})`);
     });
 
     this.on('error', (error) => {
-      console.error(`[StateMachine] Error:`, error);
+      logger.error('STATE-MACHINE', 'Error:', error);
     });
   }
 }

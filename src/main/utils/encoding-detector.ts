@@ -1,5 +1,6 @@
 import { detect } from 'chardet';
 import iconv from 'iconv-lite';
+import { logger } from '../../shared/utils/logger';
 
 /**
  * Detects the encoding of a buffer using multiple strategies:
@@ -78,7 +79,7 @@ export function detectEncoding(buffer: Buffer, filename?: string): string | null
   }
   
   if (filename) {
-    console.log(`[ENCODING] File: ${filename}, Detected: ${encoding}`);
+    logger.log('ENCODING', `File: ${filename}, Detected: ${encoding}`);
   }
   
   return encoding;
@@ -103,7 +104,7 @@ export function decodeBuffer(buffer: Buffer, encoding?: string | null, filename?
         return decoded;
       }
     } catch (error) {
-      console.warn(`[ENCODING] Failed to decode with ${finalEncoding}, trying fallbacks`, error);
+      logger.warn('ENCODING', `Failed to decode with ${finalEncoding}, trying fallbacks`, error);
     }
   }
   
@@ -114,7 +115,7 @@ export function decodeBuffer(buffer: Buffer, encoding?: string | null, filename?
       if (iconv.encodingExists(fallback)) {
         const decoded = iconv.decode(buffer, fallback);
         if (decoded && decoded.length > 0) {
-          console.log(`[ENCODING] Used fallback encoding: ${fallback}`);
+          logger.log('ENCODING', `Used fallback encoding: ${fallback}`);
           return decoded;
         }
       }

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { EmbedderState } from '../utils/ProcessStateMachine';
+import { logger } from '../utils/logger';
 
 /**
  * Memory usage information
@@ -327,7 +328,7 @@ export class EmbedderEventEmitter extends EventEmitter {
       const embedderId = args[0];
       const additionalInfo = args.slice(1);
 
-      console.log(`[EMBEDDER-EVENT] ${eventName} | ${embedderId}`,
+      logger.log('EMBEDDER-EVENT', `${eventName} | ${embedderId}`,
         additionalInfo.length > 0 ? additionalInfo : '');
     }
   }

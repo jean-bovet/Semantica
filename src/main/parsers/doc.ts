@@ -1,3 +1,4 @@
+import { logger } from '../../shared/utils/logger';
 const WordExtractor = require('word-extractor');
 const extractor = new WordExtractor();
 
@@ -32,7 +33,7 @@ export async function parseDoc(filePath: string): Promise<string> {
     
     return text;
   } catch (error: any) {
-    console.error(`Failed to parse .doc file ${filePath}:`, error.message);
+    logger.error('INDEXING', `Failed to parse .doc file ${filePath}:`, error.message);
     throw error; // Re-throw to be caught by the worker
   }
 }

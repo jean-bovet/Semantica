@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { logger } from './logger';
 
 /**
  * Dependencies that can be injected for testing
@@ -300,7 +301,7 @@ export class ChildProcessManager extends EventEmitter {
       const lines = output.split('\n');
       for (const line of lines) {
         if (line.trim()) {
-          console.log(`[CHILD-OUT] ${line}`);
+          logger.log('CHILD-OUT', line);
         }
       }
     });
@@ -309,7 +310,7 @@ export class ChildProcessManager extends EventEmitter {
     this.child.stderr?.on('data', (data) => {
       const output = data.toString();
       this.config.onStderr(output);
-      console.error(`[CHILD-ERR] ${output}`);
+      logger.error('CHILD-ERR', output);
     });
 
     // Handle IPC messages

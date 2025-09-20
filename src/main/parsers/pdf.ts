@@ -1,4 +1,5 @@
 import { promises as fsPromises } from 'fs';
+import { logger } from '../../shared/utils/logger';
 const pdfParse = require('pdf-parse');
 
 // Parser version - single source of truth (imported by parserVersions.ts)
@@ -16,7 +17,7 @@ export async function parsePdf(filePath: string): Promise<PDFPage[]> {
     // Check if file is actually a PDF
     const header = dataBuffer.toString('utf8', 0, Math.min(5, dataBuffer.length));
     if (!header.startsWith('%PDF')) {
-      console.warn(`File ${filePath} is not a valid PDF (header: ${header})`);
+      logger.warn('INDEXING', `File ${filePath} is not a valid PDF (header: ${header})`);
       throw new Error('Not a valid PDF file');
     }
     
@@ -29,7 +30,7 @@ export async function parsePdf(filePath: string): Promise<PDFPage[]> {
     // Check if we got any text
     if (!data.text || data.text.trim().length === 0) {
       // PDF might be scanned/image-based
-      console.warn(`PDF ${filePath} contains no extractable text (might be scanned/image-based)`);
+      logger.warn('INDEXING', `PDF ${filePath} contains no extractable text (might be scanned/image-based)`);
       throw new Error('PDF contains no extractable text');
     }
     
@@ -52,7 +53,7 @@ export async function parsePdf(filePath: string): Promise<PDFPage[]> {
     
     return pages;
   } catch (error: any) {
-    console.error(`Failed to parse PDF ${filePath}:`, error.message);
+    logger.error('INDEXING', `Failed to parse PDF ${filePath}:`, error.message);
     throw error; // Re-throw to be caught by handleFile
   }
 }

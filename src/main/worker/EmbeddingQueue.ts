@@ -1,4 +1,5 @@
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
+import { logger } from '../../shared/utils/logger';
 
 export interface QueuedChunk {
   text: string;
@@ -201,9 +202,9 @@ export class EmbeddingQueue {
       const texts = batch.map(chunk => chunk.text);
 
       // Generate embeddings
-      console.log(`[EmbeddingQueue] Batch ${batchId}: Starting embedding for ${texts.length} texts`);
+      logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Starting embedding for ${texts.length} texts`);
       const vectors = await this.embedderPool!.embed(texts, false);
-      console.log(`[EmbeddingQueue] Batch ${batchId}: Embedding completed successfully`);
+      logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Embedding completed successfully`);
 
       // Batch completed successfully - remove from tracking
       this.activeBatches.delete(batchId);
@@ -260,7 +261,7 @@ export class EmbeddingQueue {
       }
 
     } catch (error) {
-      console.error('[EmbeddingQueue] Batch processing failed:', error);
+      logger.error('EMBEDDING-QUEUE', 'Batch processing failed:', error);
 
       // Remove from active tracking since it failed
       this.activeBatches.delete(batchId);
@@ -286,7 +287,7 @@ export class EmbeddingQueue {
         this.queue.unshift(...batch);
       } else {
         // Max retries exceeded, mark chunks as failed
-        console.error(`[EmbeddingQueue] Max retries (${this.maxRetries}) exceeded for batch, dropping chunks`);
+        logger.error('EMBEDDING-QUEUE', `Max retries (${this.maxRetries}) exceeded for batch, dropping chunks`);
 
         // Update file trackers to reflect failed chunks
         for (const filePath of affectedFiles) {
@@ -404,7 +405,7 @@ export class EmbeddingQueue {
    * Handle embedder restart - recover any in-flight batches
    */
   onEmbedderRestart(embedderIndex: number) {
-    console.log(`[EmbeddingQueue] Handling embedder ${embedderIndex} restart, checking for lost batches...`);
+    logger.log('EMBEDDING-QUEUE', `Handling embedder ${embedderIndex} restart, checking for lost batches...`);
 
     // Find all batches that were being processed
     // Since we don't track which specific embedder is handling each batch,
@@ -419,13 +420,13 @@ export class EmbeddingQueue {
     }
 
     if (lostBatches.length > 0) {
-      console.log(`[EmbeddingQueue] Found ${lostBatches.length} potentially lost batches, recovering...`);
+      logger.log('EMBEDDING-QUEUE', `Found ${lostBatches.length} potentially lost batches, recovering...`);
 
       // Recover each lost batch
       for (const batchId of lostBatches) {
         const batchInfo = this.activeBatches.get(batchId);
         if (batchInfo) {
-          console.log(`[EmbeddingQueue] Recovering batch ${batchId} with ${batchInfo.chunks.length} chunks`);
+          logger.log('EMBEDDING-QUEUE', `Recovering batch ${batchId} with ${batchInfo.chunks.length} chunks`);
 
           // Re-queue the chunks at the front of the queue
           this.queue.unshift(...batchInfo.chunks);
@@ -438,7 +439,7 @@ export class EmbeddingQueue {
         }
       }
 
-      console.log(`[EmbeddingQueue] Recovery complete. processingBatches now: ${this.processingBatches}`);
+      logger.log('EMBEDDING-QUEUE', `Recovery complete. processingBatches now: ${this.processingBatches}`);
 
       // Restart processing if needed
       if (!this.isProcessing && this.queue.length > 0) {

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { logger } from '../../shared/utils/logger';
 
 // Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 1; // Version 1: Basic RTF stripping
@@ -26,7 +27,7 @@ export async function parseRtf(filePath: string): Promise<string> {
     
     return text;
   } catch (error) {
-    console.error(`Failed to parse RTF ${filePath}:`, error);
+    logger.error('INDEXING', `Failed to parse RTF ${filePath}:`, error);
     return '';
   }
 }

@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { shouldReindex } from './reindexManager';
+import { logger } from '../../shared/utils/logger';
 
 export interface FileStatus {
   path: string;
@@ -33,10 +34,10 @@ export async function initializeFileStatusTable(db: any): Promise<any> {
     // Verify it's a valid table by trying to query it
     try {
       await table.query().limit(1).toArray();
-      console.log('Opened existing file_status table');
+      logger.log('FILE-STATUS', 'Opened existing file_status table');
       return table;
     } catch (testError) {
-      console.log('file_status table exists but is not valid, recreating...', testError);
+      logger.log('FILE-STATUS', 'file_status table exists but is not valid, recreating...', testError);
       await db.dropTable('file_status');
       // Fall through to create new table
     }
@@ -57,7 +58,7 @@ export async function initializeFileStatusTable(db: any): Promise<any> {
   }];
   
   const table = await db.createTable('file_status', dummyData);
-  console.log('Created new file_status table');
+  logger.log('FILE-STATUS', 'Created new file_status table');
   
   // Try to clean up the dummy record (may fail but that's OK)
   try {
@@ -80,10 +81,10 @@ export async function loadFileStatusCache(fileStatusTable: any): Promise<Map<str
   try {
     const records = await fileStatusTable.query().toArray();
     const cache = new Map<string, FileStatus>(records.map((r: any) => [r.path, r]));
-    console.log(`Loaded ${cache.size} file status records into cache`);
+    logger.log('FILE-STATUS', `Loaded ${cache.size} file status records into cache`);
     return cache;
   } catch (e) {
-    console.error('Could not cache file status records:', e);
+    logger.error('FILE-STATUS', 'Could not cache file status records:', e);
     return new Map();
   }
 }
@@ -242,6 +243,6 @@ export async function updateFileStatus(
     // Add new record
     await fileStatusTable.add([record]);
   } catch (e) {
-    console.error(`Failed to update file status for ${filePath}:`, e);
+    logger.error('FILE-STATUS', `Failed to update file status for ${filePath}:`, e);
   }
 }

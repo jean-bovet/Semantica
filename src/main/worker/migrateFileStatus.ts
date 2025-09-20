@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getFileHash } from './fileStatusManager';
+import { logger } from '../../shared/utils/logger';
 
 /**
  * Migrate existing indexed files to file status table
@@ -12,17 +13,17 @@ export async function migrateIndexedFilesToStatus(
   fileHashes: Map<string, string>
 ): Promise<number> {
   if (!fileStatusTable || !documentsTable) {
-    console.log('Cannot migrate: tables not available');
+    logger.log('DATABASE', 'Cannot migrate: tables not available');
     return 0;
   }
   
-  console.log('Migrating indexed files to file status table...');
+  logger.log('DATABASE', 'Migrating indexed files to file status table...');
   
   try {
     // Get all existing file status records to avoid duplicates
     const existingStatuses = await fileStatusTable.query().toArray();
     const statusPaths = new Set(existingStatuses.map((s: any) => s.path));
-    console.log(`Found ${statusPaths.size} existing file status records`);
+    logger.log('DATABASE', `Found ${statusPaths.size} existing file status records`);
     
     // Get all unique paths from the documents table
     const allDocs = await documentsTable.query()
@@ -37,7 +38,7 @@ export async function migrateIndexedFilesToStatus(
       }
     });
     
-    console.log(`Found ${uniquePaths.size} indexed files without status records`);
+    logger.log('DATABASE', `Found ${uniquePaths.size} indexed files without status records`);
     
     // Create status records for indexed files
     const recordsToAdd: any[] = [];
@@ -80,11 +81,11 @@ export async function migrateIndexedFilesToStatus(
         // Add in batches to avoid memory issues
         if (recordsToAdd.length >= 100) {
           await fileStatusTable.add(recordsToAdd);
-          console.log(`Added ${recordsToAdd.length} file status records`);
+          logger.log('DATABASE', `Added ${recordsToAdd.length} file status records`);
           recordsToAdd.length = 0;
         }
       } catch (e) {
-        console.debug(`Could not create status for ${filePath}:`, e);
+        logger.log('DATABASE', `Could not create status for ${filePath}:`, e);
         skippedCount++;
       }
     }
@@ -92,15 +93,15 @@ export async function migrateIndexedFilesToStatus(
     // Add remaining records
     if (recordsToAdd.length > 0) {
       await fileStatusTable.add(recordsToAdd);
-      console.log(`Added final ${recordsToAdd.length} file status records`);
+      logger.log('DATABASE', `Added final ${recordsToAdd.length} file status records`);
     }
     
     const totalMigrated = uniquePaths.size - skippedCount;
-    console.log(`Migration complete: ${totalMigrated} records created, ${skippedCount} skipped`);
+    logger.log('DATABASE', `Migration complete: ${totalMigrated} records created, ${skippedCount} skipped`);
     
     return totalMigrated;
   } catch (error) {
-    console.error('Error during file status migration:', error);
+    logger.error('DATABASE', 'Error during file status migration:', error);
     return 0;
   }
 }
@@ -129,12 +130,12 @@ export async function cleanupOrphanedStatuses(fileStatusTable: any): Promise<num
     }
     
     if (deletedCount > 0) {
-      console.log(`Cleaned up ${deletedCount} orphaned file status records`);
+      logger.log('DATABASE', `Cleaned up ${deletedCount} orphaned file status records`);
     }
     
     return deletedCount;
   } catch (error) {
-    console.error('Error cleaning up orphaned statuses:', error);
+    logger.error('DATABASE', 'Error cleaning up orphaned statuses:', error);
     return 0;
   }
 }

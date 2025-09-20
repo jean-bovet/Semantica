@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { logger } from '../../shared/utils/logger';
 
 export interface ScanOptions {
   excludeBundles: boolean;
@@ -112,7 +113,7 @@ export function scanDirectory(rootDir: string, options: ScanOptions): ScanResult
     } catch (error) {
       // Ignore permission errors and continue scanning
       if ((error as any).code !== 'EACCES') {
-        console.error(`Error scanning directory ${dir}:`, error);
+        logger.error('WATCHER', `Error scanning directory ${dir}:`, error);
       }
     }
   };

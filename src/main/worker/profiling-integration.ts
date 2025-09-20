@@ -11,17 +11,18 @@
  */
 
 import { PerformanceProfiler } from './PerformanceProfiler';
+import { logger } from '../../shared/utils/logger';
 
 // Create profiler instance - only enabled if PROFILE env var is set
 export const profiler = new PerformanceProfiler(process.env.PROFILE === 'true');
 
 // Log profiling status
 if (profiler.isEnabled()) {
-  console.log('🔬 [PROFILING] Performance profiling is ENABLED');
-  console.log('🔬 [PROFILING] Report will be generated on shutdown');
+  logger.log('PROFILING', '🔬 Performance profiling is ENABLED');
+  logger.log('PROFILING', '🔬 Report will be generated on shutdown');
 } else {
-  console.log('[PROFILING] Performance profiling is DISABLED');
-  console.log('[PROFILING] To enable: PROFILE=true npm run dev');
+  logger.log('PROFILING', 'Performance profiling is DISABLED');
+  logger.log('PROFILING', 'To enable: PROFILE=true npm run dev');
 }
 
 /**

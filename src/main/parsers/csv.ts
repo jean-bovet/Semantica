@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import { parse } from 'csv-parse';
 import { detectEncoding } from '../utils/encoding-detector';
+import { logger } from '../../shared/utils/logger';
 
 // Parser version - increment when parser logic changes
 export const CSV_PARSER_VERSION = 1;
@@ -49,7 +50,7 @@ export async function parseCSV(filePath: string): Promise<string> {
       
       // Handle errors
       parser.on('error', function(err) {
-        console.error(`CSV parse error in ${filePath}:`, err.message);
+        logger.error('INDEXING', `CSV parse error in ${filePath}:`, err.message);
         // Don't reject, just log and continue with what we have
       });
       
@@ -58,10 +59,10 @@ export async function parseCSV(filePath: string): Promise<string> {
         const fullText = output.join('\n').trim();
         
         if (!fullText) {
-          console.log(`[CSV PARSER] No text content found in: ${filePath}`);
+          logger.log('INDEXING', `[CSV PARSER] No text content found in: ${filePath}`);
           resolve('');
         } else {
-          console.log(`[CSV PARSER] Successfully parsed: ${filePath} (${fullText.length} characters, ${output.length} rows)`);
+          logger.log('INDEXING', `[CSV PARSER] Successfully parsed: ${filePath} (${fullText.length} characters, ${output.length} rows)`);
           resolve(fullText);
         }
       });
@@ -72,7 +73,7 @@ export async function parseCSV(filePath: string): Promise<string> {
     });
     
   } catch (error) {
-    console.error(`Failed to parse CSV file ${filePath}:`, error);
+    logger.error('INDEXING', `Failed to parse CSV file ${filePath}:`, error);
     return '';
   }
 }
@@ -116,17 +117,17 @@ export async function parseTSV(filePath: string): Promise<string> {
       });
       
       parser.on('error', function(err) {
-        console.error(`TSV parse error in ${filePath}:`, err.message);
+        logger.error('INDEXING', `TSV parse error in ${filePath}:`, err.message);
       });
       
       parser.on('end', function() {
         const fullText = output.join('\n').trim();
         
         if (!fullText) {
-          console.log(`[TSV PARSER] No text content found in: ${filePath}`);
+          logger.log('INDEXING', `[TSV PARSER] No text content found in: ${filePath}`);
           resolve('');
         } else {
-          console.log(`[TSV PARSER] Successfully parsed: ${filePath} (${fullText.length} characters, ${output.length} rows)`);
+          logger.log('INDEXING', `[TSV PARSER] Successfully parsed: ${filePath} (${fullText.length} characters, ${output.length} rows)`);
           resolve(fullText);
         }
       });
@@ -136,7 +137,7 @@ export async function parseTSV(filePath: string): Promise<string> {
     });
     
   } catch (error) {
-    console.error(`Failed to parse TSV file ${filePath}:`, error);
+    logger.error('INDEXING', `Failed to parse TSV file ${filePath}:`, error);
     return '';
   }
 }

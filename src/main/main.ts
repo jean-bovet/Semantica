@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import { StartupCoordinator } from './startup/StartupCoordinator';
+import { logger } from '../shared/utils/logger';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -23,13 +24,13 @@ crashReporter.start({
 
 // Log where crash dumps are saved
 const crashDumpDir = app.getPath('crashDumps');
-console.log('Crash dumps will be saved to:', crashDumpDir);
+logger.log('STARTUP', 'Crash dumps will be saved to:', crashDumpDir);
 fs.mkdirSync(crashDumpDir, { recursive: true });
 
 // Override userData path if specified (for testing)
 if (process.env.USER_DATA_PATH) {
   app.setPath('userData', process.env.USER_DATA_PATH);
-  console.log('Using custom userData path:', process.env.USER_DATA_PATH);
+  logger.log('STARTUP', 'Using custom userData path:', process.env.USER_DATA_PATH);
 }
 
 // Ensure single instance (unless disabled for testing)
@@ -65,14 +66,14 @@ function spawnWorker() {
   worker.on('message', (msg: any) => {
     if (msg.type === 'ready') {
       workerReady = true;
-      console.log('Worker ready');
+      logger.log('WORKER', 'Worker ready');
       // Send initial progress with initialized flag
       sendToWorker('progress').then((progress: any) => {
         win?.webContents.send('indexer:progress', { ...progress, initialized: true });
       });
     } else if (msg.type === 'model:ready') {
       // Model is ready (either found or downloaded)
-      console.log('Model ready:', msg.payload);
+      logger.log('WORKER', 'Model ready:', msg.payload);
       win?.webContents.send('model:check:result', { exists: msg.payload.ready });
       if (msg.payload.ready) {
         win?.webContents.send('model:download:complete');
@@ -90,8 +91,9 @@ function spawnWorker() {
       win?.webContents.send('model:download:complete');
     } else if (msg.type === 'pipeline:status') {
       // Log pipeline status to main process console AND send to renderer console
-      console.log(msg.payload);
+      logger.log('PIPELINE-STATUS', msg.payload);
       // Also send to renderer process console (which shows in browser dev tools)
+      // Send to Electron dev console (leave as-is for browser console)
       win?.webContents.executeJavaScript(`console.log(${JSON.stringify(msg.payload)})`);
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
@@ -101,13 +103,13 @@ function spawnWorker() {
   });
   
   worker.on('error', (err) => {
-    console.error('Worker error:', err);
+    logger.error('WORKER', 'Worker error:', err);
   });
   
   worker.on('exit', (code) => {
     if (code !== 0 && code !== null) {
       // Only respawn on actual errors, not on intentional termination
-      console.error(`Worker stopped with exit code ${code}`);
+      logger.error('WORKER', `Worker stopped with exit code ${code}`);
       setTimeout(spawnWorker, 1000);
     }
   });
@@ -282,7 +284,7 @@ if (gotTheLock) {
   
   // Start the coordinated startup
   coordinator.coordinate().catch(err => {
-    console.error('Startup coordination failed:', err);
+    logger.error('STARTUP', 'Startup coordination failed:', err);
   });
   
   // Register all IPC handlers

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ParserKey, getDefaultFileTypes } from '../parsers/registry';
+import { logger } from '../../shared/utils/logger';
 
 // Auto-generate file types from parser registry
 export type FileTypes = Record<ParserKey, boolean>;
@@ -88,7 +89,7 @@ export class ConfigManager {
           if (config.settings.fileTypes[key as ParserKey] === undefined) {
             config.settings.fileTypes[key as ParserKey] = defaultEnabled;
             needsSave = true;
-            console.log(`Added new parser '${key}' to config with default value: ${defaultEnabled}`);
+            logger.log('STARTUP', `Added new parser '${key}' to config with default value: ${defaultEnabled}`);
           }
         }
         
@@ -97,7 +98,7 @@ export class ConfigManager {
           if (!(key in defaultFileTypes)) {
             delete config.settings.fileTypes[key as ParserKey];
             needsSave = true;
-            console.log(`Removed obsolete parser '${key}' from config`);
+            logger.log('STARTUP', `Removed obsolete parser '${key}' from config`);
           }
         }
         // Add bundle exclusion settings if missing
@@ -133,7 +134,7 @@ export class ConfigManager {
         return config;
       }
     } catch (error) {
-      console.error('Failed to load config, using defaults:', error);
+      logger.error('STARTUP', 'Failed to load config, using defaults:', error);
     }
     
     // Create default config
@@ -147,7 +148,7 @@ export class ConfigManager {
       config.lastUpdated = new Date().toISOString();
       fs.writeFileSync(this.configPath, JSON.stringify(config, null, 2));
     } catch (error) {
-      console.error('Failed to save config:', error);
+      logger.error('STARTUP', 'Failed to save config:', error);
     }
   }
 

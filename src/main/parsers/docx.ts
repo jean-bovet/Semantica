@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import fs from 'node:fs';
+import { logger } from '../../shared/utils/logger';
 
 // Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 1; // Version 1: Initial mammoth implementation
@@ -16,12 +17,12 @@ export async function parseDocx(filePath: string): Promise<string> {
       .trim();
     
     if (result.messages.length > 0) {
-      console.warn(`DOCX warnings for ${filePath}:`, result.messages);
+      logger.warn('INDEXING', `DOCX warnings for ${filePath}:`, result.messages);
     }
     
     return text;
   } catch (error) {
-    console.error(`Failed to parse DOCX ${filePath}:`, error);
+    logger.error('INDEXING', `Failed to parse DOCX ${filePath}:`, error);
     return '';
   }
 }
