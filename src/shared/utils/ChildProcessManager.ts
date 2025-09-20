@@ -29,6 +29,7 @@ export interface ChildProcessConfig {
  */
 export interface ChildProcessEvents {
   ready: () => void;
+  'ipc-ready': () => void;
   error: (error: Error) => void;
   exit: (code: number | null, signal: string | null) => void;
   message: (message: any) => void;
@@ -313,7 +314,9 @@ export class ChildProcessManager extends EventEmitter {
 
     // Handle IPC messages
     this.child.on('message', (msg: any) => {
-      if (msg?.type === 'ready') {
+      if (msg?.type === 'ipc-ready') {
+        this.emit('ipc-ready');
+      } else if (msg?.type === 'ready') {
         this.ready = true;
         this.emit('ready');
       } else if (msg?.type === 'init:err') {

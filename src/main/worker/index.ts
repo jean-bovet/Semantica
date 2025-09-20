@@ -316,6 +316,11 @@ async function initDB(dir: string, _userDataPath: string) {
         // Check for parser upgrades and queue files for re-indexing
         const reindexResult = await reindexService.checkForParserUpgrades();
         fileQueue.add(reindexResult.filesToReindex);
+
+        // Start processing if files were added
+        if (reindexResult.filesToReindex.length > 0) {
+          processQueue();
+        }
         
         // Notify parent if there were upgrades
         if (Object.keys(reindexResult.upgradeSummary).length > 0 && parentPort) {
@@ -435,11 +440,13 @@ async function initializeModel(userDataPath: string) {
     });
     
     try {
+      console.log('[WORKER] About to call embedderPool.initialize()');
       await embedderPool.initialize();
       console.log('[WORKER] Embedder pool initialized successfully');
 
       // Initialize the embedding queue with the pool
       const batchSize = settings?.embeddingBatchSize ?? 32;
+      console.log('[WORKER] Creating EmbeddingQueue with batch size:', batchSize);
       embeddingQueue = new EmbeddingQueue({
         maxQueueSize: 2000,
         batchSize,
@@ -451,6 +458,7 @@ async function initializeModel(userDataPath: string) {
           console.log(`[EMBEDDING] ✅ Completed: ${path.basename(filePath)}`);
         }
       });
+      console.log('[WORKER] About to call embeddingQueue.initialize()');
       // Initialize with batch processor that writes to database
       embeddingQueue.initialize(embedderPool, async (batch) => {
         // Extract file metadata from the first chunk
@@ -493,6 +501,8 @@ async function initializeModel(userDataPath: string) {
       throw new Error(`Failed to initialize embedder pool: ${error}`);
     }
   }
+
+  console.log('[WORKER] Model initialization completed successfully');
 }
 
 async function mergeRows(rows: any[]) {
@@ -1168,6 +1178,8 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     if (filesToIndex.length > 0) {
       console.log(`Adding ${filesToIndex.length} files to queue`);
       fileQueue.add(filesToIndex);
+      // Start processing if not already active
+      processQueue();
     } else {
       console.log('No new or modified files found');
     }
@@ -1213,6 +1225,8 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
       if (reindexService.shouldReindex(p, fileRecord)) {
         fileQueue.add(p);
         console.log(`[QUEUE] 📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
+        // Start processing if not already active
+        processQueue();
       }
     }
   });
@@ -1224,6 +1238,8 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     if (supported && !fileQueue.isProcessing(p)) {
       fileQueue.add(p);
       console.log(`[QUEUE] 📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
+      // Start processing if not already active
+      processQueue();
     }
   });
   
@@ -1246,20 +1262,35 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
   });
 }
 
+let isProcessingActive = false;
+
 async function processQueue() {
-  while (true) {
-    // Wait for model to be ready
-    if (!modelReady) {
-      await new Promise(r => setTimeout(r, 100));
-      continue;
-    }
-    
-    // Process the queue
+  console.log(`[PROCESS-QUEUE] Called - isProcessingActive: ${isProcessingActive}, modelReady: ${modelReady}`);
+
+  // Prevent multiple instances running
+  if (isProcessingActive) {
+    console.log(`[PROCESS-QUEUE] Already processing, skipping`);
+    return;
+  }
+
+  // Wait for model to be ready
+  if (!modelReady) {
+    console.log(`[PROCESS-QUEUE] Model not ready, skipping`);
+    return;
+  }
+
+  const queueStats = fileQueue.getStats();
+  console.log(`[PROCESS-QUEUE] Starting - Queue: ${queueStats.queued} files, Processing: ${queueStats.processing}`);
+
+  isProcessingActive = true;
+
+  try {
+    // Process the queue - this will continue until all files are processed
     await fileQueue.process(
       async (filePath) => {
         const maxConcurrent = fileQueue.getCurrentMaxConcurrent();
         console.log(`[INDEXING] 🔄 Processing: ${path.basename(filePath)} (${fileQueue.getProcessingFiles().length}/${maxConcurrent} concurrent)`);
-        
+
         try {
           await handleFile(filePath);
         } finally {
@@ -1268,15 +1299,10 @@ async function processQueue() {
       },
       () => process.memoryUsage().rss / 1024 / 1024 // Memory getter
     );
-    
-    // If paused, wait
-    if (paused) {
-      await new Promise(r => setTimeout(r, 100));
-      continue;
-    }
-    
-    // Wait before checking for new files
-    await new Promise(r => setTimeout(r, 1000));
+    console.log(`[PROCESS-QUEUE] Completed processing all files`);
+  } finally {
+    isProcessingActive = false;
+    console.log(`[PROCESS-QUEUE] Processing flag reset`);
   }
 }
 
@@ -1296,12 +1322,12 @@ parentPort!.on('message', async (msg: any) => {
         
         // Initialize model in background after worker is ready
         initializeModel(userDataPath).then(() => {
-          // Start processing queue only after model is ready
-          if (modelReady) {
-            processQueue();
-          } else {
-            console.error('[WORKER] Model not ready, cannot start processing');
-          }
+          // Start processing queue now that model is ready
+          console.log('[WORKER] Model initialization complete - starting queue processing');
+          processQueue();
+        }).catch((error) => {
+          console.error('[WORKER] Model initialization error:', error);
+          // Don't start processing if model initialization failed
         });
         break;
         
@@ -1367,9 +1393,19 @@ parentPort!.on('message', async (msg: any) => {
         
       case 'enqueue':
         const { paths } = msg.payload;
+        let filesAdded = 0;
         for (const p of paths) {
-          if (!fileQueue.isProcessing(p)) fileQueue.add(p);
+          if (!fileQueue.isProcessing(p)) {
+            fileQueue.add(p);
+            filesAdded++;
+          }
         }
+
+        // Start processing if files were added
+        if (filesAdded > 0) {
+          processQueue();
+        }
+
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: { success: true } });
         }

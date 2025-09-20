@@ -201,6 +201,6 @@ export class ConcurrentQueue {
    * Get the current concurrency limit (may be throttled)
    */
   getCurrentMaxConcurrent(): number {
-    return this.lastMaxConcurrent;
+    return this.lastMaxConcurrent === -1 ? this.maxConcurrent : this.lastMaxConcurrent;
   }
 }

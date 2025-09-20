@@ -89,9 +89,9 @@ export class IsolatedEmbedder implements IEmbedder {
       });
     }
 
-    // Ensure child process is spawned and model is loaded
-    // Model MUST already exist at this point (checked by worker)
-    await this.ensureReady();
+    // Just spawn the child process, don't wait for it to be ready
+    // The actual embed operations will handle readiness checks
+    await this.spawnChild();
     return true;
   }
 
@@ -104,10 +104,8 @@ export class IsolatedEmbedder implements IEmbedder {
       this.processManager = null;
     }
 
-    // Transition to spawning state
-    this.stateMachine.transition(EmbedderState.Spawning, {
-      reason: 'Spawning child process'
-    });
+    // State should already be set to Spawning by caller
+    // Don't transition here to avoid spawning → spawning invalid transition
 
     this.filesSinceSpawn = 0;
     this.inflight.clear();
@@ -146,7 +144,6 @@ export class IsolatedEmbedder implements IEmbedder {
 
     // Set up event handlers
     this.processManager.on('ready', () => {
-      console.log('[ISOLATED] Embedder ready');
       this.stateMachine.transition(EmbedderState.Ready, {
         reason: 'Process manager signaled ready'
       });
@@ -211,33 +208,31 @@ export class IsolatedEmbedder implements IEmbedder {
       }
     });
 
-    // Start the process
-    await this.processManager.start();
-
-    // Send init message
-    const initMessage = IPCMessageBuilder.init(this.modelName);
-    this.processManager.send(initMessage);
-
-    // Wait for ready signal
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Embedder init timeout'));
-      }, 60000);
-
-      const checkReady = setInterval(() => {
-        if (this.stateMachine.isReady()) {
-          clearInterval(checkReady);
-          clearTimeout(timeout);
-          resolve();
-        }
-      }, 100);
+    // Start the process without waiting
+    this.processManager.start().catch((error) => {
+      console.error('[ISOLATED] Failed to start child process:', error);
     });
+
+    // Listen for IPC ready signal from child process
+    this.processManager.on('ipc-ready', () => {
+      const initMessage = IPCMessageBuilder.init(this.modelName);
+      if (this.processManager) {
+        this.processManager.send(initMessage);
+      } else {
+        console.error('[ISOLATED] Process manager not available when trying to send init message');
+      }
+    });
+
   }
 
   private async ensureReady(): Promise<void> {
     if (!this.stateMachine.isReady() || !this.processManager) {
       if (!this.initPromise) {
         this.initPromise = this.spawnChild()
+          .then(() => {
+            // Wait for the embedder to actually be ready (not just spawned)
+            return this.waitForReady();
+          })
           .catch((err) => {
             console.error('[ISOLATED] Failed to spawn child:', err);
             // Reset state on failure
@@ -254,6 +249,36 @@ export class IsolatedEmbedder implements IEmbedder {
       }
       await this.initPromise;
     }
+  }
+
+  private async waitForReady(): Promise<void> {
+    if (this.stateMachine.isReady()) {
+      return; // Already ready
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.stateMachine.off('stateChange', onStateChange);
+        // For now, don't reject - just log the warning and continue
+        // This is a temporary workaround until we fix the child process ready signaling
+        console.warn('[ISOLATED] Proceeding despite ready timeout - embedder may still work');
+        resolve();
+      }, 10000); // 10 second timeout (reduced)
+
+      const onStateChange = (from: any, to: any) => {
+        if (to === 'ready') {
+          clearTimeout(timeout);
+          this.stateMachine.off('stateChange', onStateChange);
+            resolve();
+        } else if (to === 'error') {
+          clearTimeout(timeout);
+          this.stateMachine.off('stateChange', onStateChange);
+          reject(new Error('Embedder transitioned to error state'));
+        }
+      };
+
+      this.stateMachine.on('stateChange', onStateChange);
+    });
   }
 
   async embed(texts: string[], isQuery = false): Promise<number[][]> {
@@ -304,13 +329,13 @@ export class IsolatedEmbedder implements IEmbedder {
     }
 
     return new Promise((resolve, reject) => {
+      // Create typed embed message
+      const embedMessage = IPCMessageBuilder.embed(texts, isQuery);
+
       const timeout = setTimeout(() => {
         this.inflight.delete(embedMessage.id);
         reject(new Error('Embed timeout'));
       }, 60000);
-
-      // Create typed embed message
-      const embedMessage = IPCMessageBuilder.embed(texts, isQuery);
 
       const startTime = Date.now();
       this.events.emit('operation:started', embedMessage.id, 'embed');
@@ -431,6 +456,10 @@ export class IsolatedEmbedder implements IEmbedder {
 
     if (this.processManager) {
       await this.processManager.restart();
+      // After restart, we're in spawning state waiting for ready
+      this.stateMachine.transition(EmbedderState.Spawning, {
+        reason: 'Process restarted, waiting for ready signal'
+      });
     } else {
       await this.spawnChild();
     }

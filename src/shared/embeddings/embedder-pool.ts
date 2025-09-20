@@ -75,7 +75,8 @@ export class EmbedderPool {
       strategy: this.config.loadBalancingStrategy,
       healthChecker: async (embedder) => {
         const stats = embedder.getStats();
-        return stats.isReady;
+        // Only consider embedders healthy when they're ready to accept operations
+        return stats.state === 'ready';
       },
       retryAttempts: 3,
       retryDelay: 100
@@ -90,8 +91,10 @@ export class EmbedderPool {
       healthChecker: async (embedder) => {
         try {
           const stats = embedder.getStats();
-          return stats.isReady;
-        } catch {
+          // Only consider embedder healthy when it's ready to accept operations
+          return stats.state === 'ready';
+        } catch (error) {
+          console.error('[EmbedderPool] Health check error:', error);
           return false;
         }
       },
@@ -163,8 +166,44 @@ export class EmbedderPool {
 
     await Promise.all(initPromises);
 
-    // Start health monitoring
+    // Start health monitoring - it will mark embedders healthy when they're ready
     this.healthManager.start();
+
+    // Wait for all embedders to become ready
+    const maxWaitTime = 30000; // 30 seconds max wait
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      let readyCount = 0;
+
+      for (const [id, embedder] of this.embedders) {
+        const stats = embedder.getStats();
+        if (stats.state === 'ready') {
+          readyCount++;
+        }
+      }
+
+      if (readyCount === poolSize) {
+        break;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // Check if we timed out and mark ready embedders as healthy
+    let finalReadyCount = 0;
+    for (const [id, embedder] of this.embedders) {
+      const stats = embedder.getStats();
+      if (stats.state === 'ready') {
+        finalReadyCount++;
+        // Mark as healthy in load balancer
+        this.loadBalancer.markHealth(id, true);
+      }
+    }
+
+    if (finalReadyCount === 0) {
+      throw new Error(`No embedders became ready within ${maxWaitTime}ms`);
+    }
 
     console.log(`[EmbedderPool] Initialized ${poolSize} embedder processes`);
   }

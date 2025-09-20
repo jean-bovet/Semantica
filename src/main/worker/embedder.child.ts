@@ -142,6 +142,9 @@ process.on('message', async (msg: any) => {
   }
 });
 
+// Signal to parent that IPC is ready
+process.send?.({ type: 'ipc-ready' });
+
 // Handle parent disconnect
 process.on('disconnect', () => {
   process.exit(0);
