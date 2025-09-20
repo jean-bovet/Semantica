@@ -125,10 +125,12 @@ function spawnWorker() {
   fs.mkdirSync(modelsDir, { recursive: true });
   
   // Pass both paths to worker
-  worker.postMessage({ 
-    type: 'init', 
-    dbDir,
-    userDataPath
+  worker.postMessage({
+    type: 'init',
+    payload: {
+      dbDir,
+      userDataPath
+    }
   });
 }
 

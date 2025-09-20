@@ -266,7 +266,7 @@ export class IsolatedEmbedder implements IEmbedder {
         resolve();
       }, 10000); // 10 second timeout (reduced)
 
-      const onStateChange = (from: any, to: any) => {
+      const onStateChange = (_from: any, to: any) => {
         if (to === 'ready') {
           clearTimeout(timeout);
           this.stateMachine.off('stateChange', onStateChange);

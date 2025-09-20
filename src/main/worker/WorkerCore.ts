@@ -101,7 +101,7 @@ export class WorkerCore implements IWorkerCore {
     });
   }
 
-  async initializeSlow(userDataPath: string): Promise<void> {
+  async initializeSlow(_userDataPath: string): Promise<void> {
     logger.log('WORKER', 'Starting background initialization...');
     const startTime = Date.now();
 
