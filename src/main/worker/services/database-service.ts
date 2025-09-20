@@ -137,7 +137,7 @@ export class DatabaseService implements IDatabaseService {
     return [];
   }
 
-  async getStats(): Promise<{
+  async getStats(watchedFolders: string[] = []): Promise<{
     totalChunks: number;
     indexedFiles: number;
     folderStats: any[];
@@ -151,12 +151,26 @@ export class DatabaseService implements IDatabaseService {
         .select(['path'])
         .toArray();
 
-      const uniquePaths = new Set(allChunks.map((c: any) => c.path));
+      const uniquePaths = new Set<string>(allChunks.map((c: any) => c.path));
+
+      // Create folder stats from watched folders
+      const folderStats = watchedFolders.map(folder => {
+        // Count files belonging to each folder
+        const filesInFolder = Array.from(uniquePaths).filter(path =>
+          path.startsWith(folder)
+        );
+
+        return {
+          folder,
+          totalFiles: filesInFolder.length,
+          indexedFiles: filesInFolder.length
+        };
+      });
 
       return {
         totalChunks: allChunks.length,
         indexedFiles: uniquePaths.size,
-        folderStats: [] // Would need folder tracking to implement this
+        folderStats
       };
     } catch (error) {
       logger.error('DATABASE', 'Failed to get stats:', error);

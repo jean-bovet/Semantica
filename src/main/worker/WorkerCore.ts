@@ -189,7 +189,8 @@ export class WorkerCore implements IWorkerCore {
         return await this.search(payload.q, payload.k);
 
       case 'stats':
-        return await this.db.getStats();
+        const watchedFolders = this.config.getWatchedFolders();
+        return await this.db.getStats(watchedFolders);
 
       case 'getWatchedFolders':
         return this.config.getWatchedFolders();

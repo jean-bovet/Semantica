@@ -23,7 +23,7 @@ export interface IDatabaseService {
     parserVersion?: number
   ): Promise<void>;
   searchChunks(query: string, k: number): Promise<any[]>;
-  getStats(): Promise<{
+  getStats(watchedFolders?: string[]): Promise<{
     totalChunks: number;
     indexedFiles: number;
     folderStats: any[];
