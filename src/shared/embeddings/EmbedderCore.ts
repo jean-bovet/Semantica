@@ -38,14 +38,18 @@ export class EmbedderCore {
       return; // Already initialized with the same model
     }
 
-    console.log(`[EmbedderCore] Initializing with model: ${modelName}`);
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log(`[EmbedderCore] Initializing with model: ${modelName}`);
+    }
 
     // Load the model through abstraction
     this.pipeline = await this.modelLoader.loadModel(modelName);
     this.modelName = modelName;
     this.initialized = true;
 
-    console.log(`[EmbedderCore] Successfully initialized with model: ${modelName}`);
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log(`[EmbedderCore] Successfully initialized with model: ${modelName}`);
+    }
   }
 
   /**
@@ -139,7 +143,9 @@ export class EmbedderCore {
    * Shutdown the embedder core and cleanup resources
    */
   shutdown(): void {
-    console.log('[EmbedderCore] Shutting down');
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log('[EmbedderCore] Shutting down');
+    }
 
     this.queue.shutdown();
     this.initialized = false;

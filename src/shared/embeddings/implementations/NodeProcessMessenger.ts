@@ -52,7 +52,9 @@ export class NodeProcessMessenger implements IProcessMessenger {
    * Exit the process
    */
   exit(code: number): void {
-    console.log(`[NodeProcessMessenger] Exiting with code ${code}`);
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log(`[NodeProcessMessenger] Exiting with code ${code}`);
+    }
     this.process.exit(code);
   }
 

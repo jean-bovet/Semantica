@@ -37,11 +37,15 @@ export class TransformersModelLoader implements IModelLoader {
   async loadModel(name: string): Promise<IPipeline> {
     // Check if we already have this model loaded
     if (this.loadedPipelines.has(name)) {
-      console.log(`[TransformersModelLoader] Using cached pipeline for ${name}`);
+      if (process.env.DEBUG_EMBEDDER) {
+        console.log(`[TransformersModelLoader] Using cached pipeline for ${name}`);
+      }
       return this.loadedPipelines.get(name)!;
     }
 
-    console.log(`[TransformersModelLoader] Loading model: ${name}`);
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log(`[TransformersModelLoader] Loading model: ${name}`);
+    }
     await this.initTransformers();
 
     try {
@@ -55,7 +59,9 @@ export class TransformersModelLoader implements IModelLoader {
       );
 
       const loadTime = Date.now() - startTime;
-      console.log(`[TransformersModelLoader] Pipeline created in ${loadTime}ms`);
+      if (process.env.DEBUG_EMBEDDER) {
+        console.log(`[TransformersModelLoader] Pipeline created in ${loadTime}ms`);
+      }
 
       // Wrap in our interface
       const wrappedPipeline = new TransformersPipeline(pipeline);
@@ -100,7 +106,9 @@ export class TransformersModelLoader implements IModelLoader {
       return; // Already initialized
     }
 
-    console.log('[TransformersModelLoader] Initializing transformers.js');
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log('[TransformersModelLoader] Initializing transformers.js');
+    }
 
     try {
       // Dynamic import for ES module
@@ -113,9 +121,11 @@ export class TransformersModelLoader implements IModelLoader {
       this.transformers.env.cacheDir = resolved.cacheDir;
       this.transformers.env.allowRemoteModels = resolved.allowRemoteModels;
 
-      console.log('[TransformersModelLoader] Transformers initialized with:');
-      console.log('  - Cache path:', this.transformers.env.localModelPath);
-      console.log('  - Allow remote:', this.transformers.env.allowRemoteModels);
+      if (process.env.DEBUG_EMBEDDER) {
+        console.log('[TransformersModelLoader] Transformers initialized with:');
+        console.log('  - Cache path:', this.transformers.env.localModelPath);
+        console.log('  - Allow remote:', this.transformers.env.allowRemoteModels);
+      }
     } catch (error: any) {
       console.error('[TransformersModelLoader] Failed to initialize transformers:', error);
       throw new Error(`Failed to initialize transformers: ${error.message}`);

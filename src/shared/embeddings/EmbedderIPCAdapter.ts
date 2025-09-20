@@ -29,7 +29,7 @@ export class EmbedderIPCAdapter {
     // Handle model check requests
     this.router.on('check-model', async () => {
       try {
-        console.log('[IPCAdapter] Handling check-model request');
+        if (process.env.DEBUG_EMBEDDER) console.log('[IPCAdapter] Handling check-model request');
         const exists = await this.core.checkModel();
         const response = IPCMessageBuilder.modelStatus(exists);
         this.messenger.send(response);
@@ -49,15 +49,17 @@ export class EmbedderIPCAdapter {
 
       try {
         const modelName = msg.model || 'Xenova/multilingual-e5-small';
-        console.log(`[IPCAdapter] Initializing core with model: ${modelName}`);
+        if (process.env.DEBUG_EMBEDDER) console.log(`[IPCAdapter] Initializing core with model: ${modelName}`);
 
         await this.core.initialize(modelName);
 
         // Verify the model was loaded successfully
         const modelInfo = await this.core.getModelInfo(modelName);
         if (modelInfo.exists) {
-          console.log('[IPCAdapter] Model loaded successfully, size:',
-            modelInfo.size ? `${(modelInfo.size / 1024 / 1024).toFixed(2)} MB` : 'unknown');
+          if (process.env.DEBUG_EMBEDDER) {
+            console.log('[IPCAdapter] Model loaded successfully, size:',
+              modelInfo.size ? `${(modelInfo.size / 1024 / 1024).toFixed(2)} MB` : 'unknown');
+          }
           const response = IPCMessageBuilder.ready();
           this.messenger.send(response);
         } else {
@@ -78,11 +80,15 @@ export class EmbedderIPCAdapter {
       }
 
       try {
-        console.log(`[IPCAdapter] Processing embed request ${msg.id} for ${msg.texts.length} texts`);
+        if (process.env.DEBUG_EMBEDDER) {
+          console.log(`[IPCAdapter] Processing embed request ${msg.id} for ${msg.texts.length} texts`);
+        }
 
         const vectors = await this.core.embed(msg.texts, msg.isQuery || false);
 
-        console.log(`[IPCAdapter] Successfully embedded ${vectors.length} texts for request ${msg.id}`);
+        if (process.env.DEBUG_EMBEDDER) {
+          console.log(`[IPCAdapter] Successfully embedded ${vectors.length} texts for request ${msg.id}`);
+        }
         const response = IPCMessageBuilder.embedSuccess(msg.id, vectors);
         this.messenger.send(response);
       } catch (e: any) {
@@ -94,7 +100,7 @@ export class EmbedderIPCAdapter {
 
     // Handle shutdown requests
     this.router.on('shutdown', async () => {
-      console.log('[IPCAdapter] Received shutdown request');
+      if (process.env.DEBUG_EMBEDDER) console.log('[IPCAdapter] Received shutdown request');
       this.core.shutdown();
       this.messenger.exit(0);
     });
@@ -104,11 +110,11 @@ export class EmbedderIPCAdapter {
    * Start the IPC adapter and set up message handling
    */
   start(): void {
-    console.log('[IPCAdapter] Starting IPC adapter');
+    if (process.env.DEBUG_EMBEDDER) console.log('[IPCAdapter] Starting IPC adapter');
 
     // Set up message handling
     this.messenger.onMessage(async (msg) => {
-      console.log('[IPCAdapter] Received message:', msg?.type);
+      if (process.env.DEBUG_EMBEDDER) console.log('[IPCAdapter] Received message:', msg?.type);
 
       const handled = await this.router.route(msg);
       if (!handled) {
@@ -118,13 +124,13 @@ export class EmbedderIPCAdapter {
 
     // Handle parent process disconnect
     this.messenger.onDisconnect(() => {
-      console.log('[IPCAdapter] Parent disconnected, shutting down');
+      if (process.env.DEBUG_EMBEDDER) console.log('[IPCAdapter] Parent disconnected, shutting down');
       this.core.shutdown();
       this.messenger.exit(0);
     });
 
     // Signal that IPC is ready
-    console.log('[IPCAdapter] Signaling IPC ready');
+    if (process.env.DEBUG_EMBEDDER) console.log('[IPCAdapter] Signaling IPC ready');
     this.messenger.send({ type: 'ipc-ready' });
   }
 

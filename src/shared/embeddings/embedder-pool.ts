@@ -99,6 +99,7 @@ export class EmbedderPool {
         }
       },
       restartHandler: async (embedder, id) => {
+        // Keep this log as it indicates important state change
         console.log(`[EmbedderPool] Restarting embedder ${id}`);
         this.config.onEmbedderRestart(parseInt(id, 10));
         await embedder.restart();
@@ -114,16 +115,19 @@ export class EmbedderPool {
    */
   private setupHealthManagerEvents(): void {
     this.healthManager.on('restart', (id, attempt) => {
+      // Keep this log as it indicates important state change
       console.log(`[EmbedderPool] Health manager restarting embedder ${id}, attempt ${attempt}`);
       this.loadBalancer.markHealth(id, false);
     });
 
     this.healthManager.on('healthy', (id) => {
+      // Keep this log as it indicates important state change
       console.log(`[EmbedderPool] Embedder ${id} is now healthy`);
       this.loadBalancer.markHealth(id, true);
     });
 
     this.healthManager.on('unhealthy', (id) => {
+      // Keep this log as it indicates important state change
       console.log(`[EmbedderPool] Embedder ${id} is unhealthy`);
       this.loadBalancer.markHealth(id, false);
     });
@@ -205,7 +209,9 @@ export class EmbedderPool {
       throw new Error(`No embedders became ready within ${maxWaitTime}ms`);
     }
 
-    console.log(`[EmbedderPool] Initialized ${poolSize} embedder processes`);
+    if (process.env.DEBUG_EMBEDDER) {
+      console.log(`[EmbedderPool] Initialized ${poolSize} embedder processes`);
+    }
   }
   
   /**
@@ -223,14 +229,18 @@ export class EmbedderPool {
     }
 
     try {
-      console.log(`[EmbedderPool] Using embedder ${result.resourceId} for ${texts.length} texts`);
+      if (process.env.DEBUG_EMBEDDER) {
+        console.log(`[EmbedderPool] Using embedder ${result.resourceId} for ${texts.length} texts`);
+      }
 
       const vectors = await result.resource.embed(texts, isQuery);
 
       // Mark success for load balancer
       this.loadBalancer.markSuccess(result.resourceId!);
 
-      console.log(`[EmbedderPool] Embedding successful with embedder ${result.resourceId}`);
+      if (process.env.DEBUG_EMBEDDER) {
+        console.log(`[EmbedderPool] Embedding successful with embedder ${result.resourceId}`);
+      }
       return vectors;
     } catch (error: any) {
       console.error(`[EmbedderPool] Embedding failed with embedder ${result.resourceId}:`, error.message);
@@ -332,6 +342,7 @@ export class EmbedderPool {
       this.loadBalancer.removeResource(embedderId);
       this.healthManager.removeResource(embedderId);
 
+      // Keep this log as it indicates important state change
       console.log(`[EmbedderPool] Removed embedder ${embedderId} from pool`);
     }
   }

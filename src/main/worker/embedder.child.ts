@@ -28,5 +28,7 @@ const messenger = new NodeProcessMessenger(process);
 const adapter = new EmbedderIPCAdapter(core, messenger);
 
 // Start the embedder
-console.log('[EMBEDDER] Starting embedder child process');
+if (process.env.DEBUG_EMBEDDER) {
+  console.log('[EMBEDDER] Starting embedder child process');
+}
 adapter.start();
