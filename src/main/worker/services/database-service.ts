@@ -6,7 +6,6 @@
  */
 
 import * as lancedb from '@lancedb/lancedb';
-import * as fs from 'node:fs';
 import type { IDatabaseService } from '../types/interfaces';
 import type { FileStatus } from '../fileStatusManager';
 import { initializeFileStatusTable, updateFileStatus as updateFileStatusFunc } from '../fileStatusManager';

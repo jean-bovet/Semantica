@@ -82,58 +82,78 @@ describe('FileWatcherService', () => {
   });
 
   describe('File Events', () => {
-    test('should detect file additions', (done) => {
+    test('should detect file additions', async () => {
       const testFile = path.join(tempDir, 'test.txt');
-      
+
+      let addDetected = false;
       service.on('add', (filePath) => {
-        expect(filePath).toBe(testFile);
-        done();
+        if (filePath === testFile) {
+          addDetected = true;
+        }
       });
 
-      service.start([tempDir]).then(() => {
-        // Create file after watcher starts
-        setTimeout(() => {
-          fs.writeFileSync(testFile, 'test content');
-        }, 100);
-      });
+      await service.start([tempDir]);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Create file after watcher is ready
+      fs.writeFileSync(testFile, 'test content');
+
+      // Wait for add event
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      expect(addDetected).toBe(true);
     }, 5000);
 
-    test('should detect file changes', (done) => {
+    test('should detect file changes', async () => {
       const testFile = path.join(tempDir, 'change.txt');
-      
+
       // Create file before watching
       fs.writeFileSync(testFile, 'initial content');
-      
+
+      let changeDetected = false;
       service.on('change', (filePath) => {
-        expect(filePath).toBe(testFile);
-        done();
+        if (filePath === testFile) {
+          changeDetected = true;
+        }
       });
 
-      service.start([tempDir]).then(() => {
-        // Modify file after watcher starts
-        setTimeout(() => {
-          fs.appendFileSync(testFile, '\nmore content');
-        }, 100);
-      });
+      await service.start([tempDir]);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Modify file after watcher is ready
+      fs.appendFileSync(testFile, '\nmore content');
+
+      // Wait for change event
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      expect(changeDetected).toBe(true);
     }, 5000);
 
-    test('should detect file deletions', (done) => {
+    test('should detect file deletions', async () => {
       const testFile = path.join(tempDir, 'delete.txt');
-      
+
       // Create file before watching
       fs.writeFileSync(testFile, 'delete me');
-      
+
+      let deleteDetected = false;
       service.on('unlink', (filePath) => {
-        expect(filePath).toBe(testFile);
-        done();
+        if (filePath === testFile) {
+          deleteDetected = true;
+        }
       });
 
-      service.start([tempDir]).then(() => {
-        // Delete file after watcher starts
-        setTimeout(() => {
-          fs.unlinkSync(testFile);
-        }, 100);
-      });
+      await service.start([tempDir]);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Delete file after watcher is ready
+      if (fs.existsSync(testFile)) {
+        fs.unlinkSync(testFile);
+      }
+
+      // Wait for delete event
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      expect(deleteDetected).toBe(true);
     }, 5000);
 
     test('should handle multiple file operations', async () => {

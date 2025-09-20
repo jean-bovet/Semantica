@@ -11,7 +11,6 @@ import * as path from 'node:path';
 import type { IFileWatcherService } from '../types/interfaces';
 import type { FileStatus } from '../fileStatusManager';
 import { logger } from '../../../shared/utils/logger';
-import { getFileHash } from '../fileStatusManager';
 // File path utilities
 function shouldSkipPath(filePath: string, excludePatterns: string[]): boolean {
   // Check if path should be excluded based on patterns
@@ -50,7 +49,7 @@ export class FileWatcherService implements IFileWatcherService {
   async start(
     roots: string[],
     excludePatterns: string[] = [],
-    fileStatusCache?: Map<string, FileStatus>
+    _fileStatusCache?: Map<string, FileStatus>
   ): Promise<void> {
     logger.log('WATCHER', 'Starting file watcher...');
     const startTime = Date.now();

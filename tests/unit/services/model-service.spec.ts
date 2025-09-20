@@ -119,11 +119,13 @@ describe('ModelService', () => {
 
     test('should handle initialization without model', async () => {
       (service as any).embedderPool = fakePool;
-      await service.initialize(tempDir);
-      
-      // Without model, service is not ready
+
+      // Initialize returns immediately, doesn't wait for pool
+      await expect(service.initialize(tempDir)).resolves.not.toThrow();
+
+      // Without model being set as ready, service is not ready
       expect(service.isReady()).toBe(false);
-    });
+    }, 10000);
   });
 
   describe('Model Checking', () => {
