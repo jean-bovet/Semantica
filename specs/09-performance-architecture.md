@@ -356,6 +356,57 @@ Real-time performance metrics in the UI:
 - Embedder pool status
 - Throughput (files/minute)
 
+## Pipeline Status Display
+
+### Overview
+
+The pipeline status formatter provides real-time visualization of file processing state, showing files moving through PARSING → EMBEDDING → completion stages.
+
+### File Tracker Lifecycle
+
+To ensure accurate status display, file trackers are maintained throughout the entire processing lifecycle:
+
+```typescript
+// In EmbeddingQueue.ts
+class EmbeddingQueue {
+  private fileTrackers = new Map<string, FileTracker>();
+
+  // Trackers persist after embedding completion
+  // No automatic cleanup - trackers remain until explicitly removed
+
+  cleanupFileTracker(filePath: string): void {
+    this.fileTrackers.delete(filePath);
+  }
+}
+
+// In worker/index.ts handleFile()
+try {
+  // Process file...
+  await embeddingQueue.waitForCompletion(filePath);
+} finally {
+  // Explicit cleanup only after ALL processing complete
+  embeddingQueue.cleanupFileTracker(filePath);
+}
+```
+
+### Status Display Logic
+
+The PipelineStatusFormatter determines file status based on:
+1. **PARSING**: File in processingFiles array but no tracker or totalChunks = 0
+2. **EMBEDDING**: File has tracker with totalChunks > 0
+3. **Progress**: Shows (processedChunks / totalChunks) * 100%
+
+### Memory Indicator
+
+The "Memory: XXX/1500MB" indicator shows:
+- **Value**: RSS (Resident Set Size) of the entire Electron main process
+- **Source**: `process.memoryUsage().rss` called from worker thread
+- **Includes**: Both main thread and worker thread memory (they share the same process)
+- **Limit**: 1500MB - the total memory limit for the Electron main process
+- **Note**: Embedder processes are separate child processes with independent 300MB limits not included in this value
+
+**Important**: Worker threads in Node.js run within the same process as the main thread, sharing the same memory space but with isolated V8 contexts. Therefore, `process.memoryUsage().rss` returns the total RSS of the entire process, not just the worker thread's memory.
+
 ---
 
 *Previous: [08-startup-flow.md](./08-startup-flow.md) | Next: [10-future-roadmap.md](./10-future-roadmap.md)*
