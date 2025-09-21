@@ -389,7 +389,7 @@ export class WorkerCore implements IWorkerCore {
   }
 
   private startPipelineStatusReporting(): void {
-    // Send pipeline status every 10 seconds when there's activity
+    // Send pipeline status every 2 seconds when there's activity
     this.statusInterval = setInterval(() => {
       const fileStats = this.queue.getStats();
       const hasActivity = fileStats.queued > 0 || fileStats.processing > 0;
@@ -436,7 +436,7 @@ export class WorkerCore implements IWorkerCore {
         // Send to main process
         this.sendMessage('pipeline:status', pipelineStatus);
       }
-    }, 10000);
+    }, 2000);
   }
 
   // Simplified file processing (would need full implementation)

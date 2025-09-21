@@ -90,10 +90,8 @@ function spawnWorker() {
     } else if (msg.type === 'model:download:complete') {
       win?.webContents.send('model:download:complete');
     } else if (msg.type === 'pipeline:status') {
-      // Log pipeline status to main process console AND send to renderer console
-      logger.log('PIPELINE-STATUS', msg.payload);
-      // Also send to renderer process console (which shows in browser dev tools)
-      // Send to Electron dev console (leave as-is for browser console)
+      // Pipeline status is already logged by the worker's console.log
+      // Just send to renderer process console for browser dev tools
       win?.webContents.executeJavaScript(`console.log(${JSON.stringify(msg.payload)})`);
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
