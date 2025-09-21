@@ -15,6 +15,7 @@ import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurr
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
 import { PipelineStatusFormatter } from './PipelineStatusFormatter';
 import { logger } from '../../shared/utils/logger';
+import { StartupStage, type StageProgress } from '../startup/StartupStages';
 
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
@@ -30,6 +31,18 @@ if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
 
 // Create folder removal manager instance
 const folderRemovalManager = new FolderRemovalManager();
+
+// Helper to emit startup stage progress
+function emitStageProgress(stage: StartupStage, message?: string, progress?: number) {
+  const stageProgress: StageProgress = {
+    stage,
+    message,
+    progress,
+    timestamp: Date.now()
+  };
+  parentPort?.postMessage({ type: 'startup:stage', payload: stageProgress });
+  logger.log('STARTUP', `Stage: ${stage}${message ? ` - ${message}` : ''}${progress !== undefined ? ` (${progress}%)` : ''}`);
+}
 
 // Monitor memory usage
 let fileCount = 0;
@@ -224,9 +237,11 @@ async function downloadModel(userDataPath: string): Promise<void> {
 
 async function initDB(dir: string, _userDataPath: string) {
   try {
+    emitStageProgress(StartupStage.DB_INIT, 'Initializing config manager');
     // Initialize config manager
     configManager = new ConfigManager(dir);
-    
+
+    emitStageProgress(StartupStage.DB_INIT, 'Connecting to database');
     db = await lancedb.connect(dir);
     
     tbl = await db.openTable('chunks').catch(async () => {
@@ -258,7 +273,8 @@ async function initDB(dir: string, _userDataPath: string) {
     });
     
     logger.log('DATABASE', 'Database initialized');
-    
+
+    emitStageProgress(StartupStage.DB_INIT, 'Creating file status table');
     // Initialize file status table (optional - won't fail if it doesn't work)
     try {
       fileStatusTable = await initializeFileStatusTable(db);
@@ -268,6 +284,7 @@ async function initDB(dir: string, _userDataPath: string) {
     }
     
     // Load existing indexed files to prevent re-indexing
+    emitStageProgress(StartupStage.DB_LOAD, 'Loading existing indexed files');
     try {
       // Get all unique file paths from the index
       const allRows = await tbl.query()
@@ -283,6 +300,8 @@ async function initDB(dir: string, _userDataPath: string) {
         }
       });
       
+      let processed = 0;
+      const total = uniquePaths.size;
       for (const filePath of uniquePaths) {
         try {
           await fs.promises.access(filePath);
@@ -291,8 +310,14 @@ async function initDB(dir: string, _userDataPath: string) {
         } catch (_e) {
           // File doesn't exist, skip
         }
+        processed++;
+        // Report progress every 100 files or at the end
+        if (processed % 100 === 0 || processed === total) {
+          const progress = Math.round((processed / total) * 100);
+          emitStageProgress(StartupStage.DB_LOAD, `Loaded ${processed}/${total} files`, progress);
+        }
       }
-      
+
       logger.log('DATABASE', `Loaded ${fileHashes.size} existing indexed files`);
     } catch (_e) {
       logger.log('DATABASE', 'No existing files in index');
@@ -340,10 +365,12 @@ async function initDB(dir: string, _userDataPath: string) {
     const config = await configManager!.getConfig();
     const savedFolders = config.watchedFolders || [];
     if (savedFolders.length > 0) {
+      emitStageProgress(StartupStage.FOLDER_SCAN, `Scanning ${savedFolders.length} folder(s)`);
       logger.log('WATCHER', 'Auto-starting watch on saved folders:', savedFolders);
       await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
     } else {
       logger.log('WATCHER', 'No saved folders to watch');
+      emitStageProgress(StartupStage.FOLDER_SCAN, 'No folders to scan');
     }
     
     // Setup profiling if enabled
@@ -382,12 +409,14 @@ function startEmbedderHealthCheck() {
 // Separate function to check and download model after worker is ready
 async function initializeModel(userDataPath: string) {
   // Check and download model if needed (ONCE at startup)
+  emitStageProgress(StartupStage.MODEL_CHECK, 'Checking for ML model');
   logger.log('WORKER', 'Checking for ML model...');
-  
+
   modelReady = checkModelExists(userDataPath);
   logger.log('WORKER', 'Model check:', modelReady ? 'found' : 'not found');
   
   if (!modelReady) {
+    emitStageProgress(StartupStage.MODEL_DOWNLOAD, 'Downloading ML model');
     logger.log('WORKER', 'Model not found, downloading...');
     try {
       await downloadModel(userDataPath);
@@ -427,6 +456,7 @@ async function initializeModel(userDataPath: string) {
   if (!embedderPool) {
     const settings = configManager?.getSettings();
     const poolSize = settings?.embedderPoolSize ?? 2;
+    emitStageProgress(StartupStage.EMBEDDER_INIT, `Initializing ${poolSize} embedder processes`);
     logger.log('WORKER', `Initializing embedder pool with ${poolSize} processes`);
     
     embedderPool = new EmbedderPool({
@@ -444,6 +474,7 @@ async function initializeModel(userDataPath: string) {
     try {
       logger.log('WORKER', 'About to call embedderPool.initialize()');
       await embedderPool.initialize();
+      emitStageProgress(StartupStage.EMBEDDER_INIT, 'Embedder pool ready');
       logger.log('WORKER', 'Embedder pool initialized successfully');
 
       // Initialize the embedding queue with the pool
@@ -1312,14 +1343,16 @@ parentPort!.on('message', async (msg: any) => {
   try {
     switch (msg.type) {
       case 'init':
+        emitStageProgress(StartupStage.WORKER_SPAWN, 'Worker started');
         // Set user data path for embedder to use for model cache, with fallback for tests
         const userDataPath = msg.userDataPath || path.join(require('os').tmpdir(), 'semantica-test');
         process.env.USER_DATA_PATH = userDataPath;
-        
+
         // Also provide fallback for dbDir
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
-        
+
         await initDB(dbDir, userDataPath);
+        emitStageProgress(StartupStage.READY, 'Worker initialization complete');
         parentPort!.postMessage({ type: 'ready' });
         
         // Initialize model in background after worker is ready

@@ -6,6 +6,7 @@ import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import { StartupCoordinator } from './startup/StartupCoordinator';
 import { logger } from '../shared/utils/logger';
+import type { StageProgress } from './startup/StartupStages';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -56,6 +57,7 @@ let win: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
 let workerReady = false;
 const pendingCallbacks = new Map<string, (data: any) => void>();
+const stageProgressCallbacks = new Set<(progress: StageProgress) => void>();
 
 function spawnWorker() {
   worker?.terminate().catch(() => {});
@@ -71,6 +73,9 @@ function spawnWorker() {
       sendToWorker('progress').then((progress: any) => {
         win?.webContents.send('indexer:progress', { ...progress, initialized: true });
       });
+    } else if (msg.type === 'startup:stage') {
+      // Forward startup stage progress
+      stageProgressCallbacks.forEach(callback => callback(msg.payload));
     } else if (msg.type === 'model:ready') {
       // Model is ready (either found or downloaded)
       logger.log('WORKER', 'Model ready:', msg.payload);
@@ -266,7 +271,13 @@ if (gotTheLock) {
           });
         }
       }),
-      waitForStats: () => sendToWorker('stats')
+      waitForStats: () => sendToWorker('stats'),
+      onStageProgress: (callback) => {
+        stageProgressCallbacks.add(callback);
+      },
+      offStageProgress: (callback) => {
+        stageProgressCallbacks.delete(callback);
+      }
     },
     {
       showWindow: () => {
@@ -278,7 +289,8 @@ if (gotTheLock) {
       },
       notifyFilesLoaded: () => win?.webContents.send('files:loaded'),
       notifyReady: () => win?.webContents.send('app:ready'),
-      notifyError: (err) => win?.webContents.send('startup:error', err)
+      notifyError: (err) => win?.webContents.send('startup:error', err),
+      notifyStageProgress: (progress) => win?.webContents.send('startup:progress', progress)
     }
   );
   
