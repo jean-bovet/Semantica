@@ -55,6 +55,10 @@ const CATEGORIES = {
   'STARTUP': false,
   'MOCK': false,
   'DEPRECATED': false,
+
+  // Model Service
+  'MODEL': false,
+  'MODEL-STATE': false,
 };
 
 export type LogCategory = keyof typeof CATEGORIES;

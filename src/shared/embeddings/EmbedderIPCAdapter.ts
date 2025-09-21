@@ -86,9 +86,14 @@ export class EmbedderIPCAdapter {
 
         const vectors = await this.core.embed(msg.texts, msg.isQuery || false);
 
-        if (process.env.DEBUG_EMBEDDER) {
+        // Debug logging for empty vectors issue
+        if (!vectors || vectors.length === 0 || !vectors[0] || vectors[0].length === 0) {
+          console.error(`[IPCAdapter] WARNING: Empty vectors being sent! vectors: ${JSON.stringify(vectors?.slice(0, 1))}`);
+        } else if (process.env.DEBUG_EMBEDDER) {
           console.log(`[IPCAdapter] Successfully embedded ${vectors.length} texts for request ${msg.id}`);
+          console.log(`[IPCAdapter] Vector dimensions: ${vectors[0].length}, sample: ${JSON.stringify(vectors[0].slice(0, 3))}`);
         }
+
         const response = IPCMessageBuilder.embedSuccess(msg.id, vectors);
         this.messenger.send(response);
       } catch (e: any) {

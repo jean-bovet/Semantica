@@ -14,6 +14,7 @@ import { FileWatcherService } from './services/file-watcher-service';
 import { QueueService } from './services/queue-service';
 import { ConfigService } from './services/config-service';
 import { ModelService } from './services/model-service';
+import { ModelServiceState } from './types/model-service-state';
 import { logger } from '../../shared/utils/logger';
 import { FileScanner } from './fileScanner';
 import { ReindexOrchestrator } from './ReindexOrchestrator';
@@ -35,7 +36,6 @@ export class WorkerCore implements IWorkerCore {
   private statusInterval: NodeJS.Timeout | null = null;
   private status = {
     ready: false,
-    modelReady: false,
     filesLoaded: false
   };
 
@@ -119,7 +119,6 @@ export class WorkerCore implements IWorkerCore {
 
       // Check for model
       const modelExists = await this.model.checkModel();
-      this.status.modelReady = modelExists;
       this.sendMessage('model:ready', { ready: modelExists });
 
       // Start file watcher with cache
@@ -161,7 +160,6 @@ export class WorkerCore implements IWorkerCore {
 
       case 'downloadModel':
         await this.model.downloadModel();
-        this.status.modelReady = true;
         return { success: true };
 
       case 'watchStart':
@@ -244,7 +242,10 @@ export class WorkerCore implements IWorkerCore {
     modelReady: boolean;
     filesLoaded: boolean;
   } {
-    return { ...this.status };
+    return {
+      ...this.status,
+      modelReady: this.model.isReady()
+    };
   }
 
   // Private helper methods
@@ -307,7 +308,7 @@ export class WorkerCore implements IWorkerCore {
   }
 
   private async search(query: string, k: number): Promise<any[]> {
-    if (!this.status.modelReady) {
+    if (!this.model.isReady()) {
       return [];
     }
 
@@ -469,6 +470,13 @@ export class WorkerCore implements IWorkerCore {
 
       logger.log('WORKER', `Processing file: ${filePath}`);
 
+      // Check if model is ready before processing
+      if (!this.model.isReady()) {
+        const state = this.model.getState();
+        logger.warn('INDEXING', `⏭️ Skipped: ${path.basename(filePath)} - Model not ready (state: ${state})`);
+        return { success: false, error: `Model not ready (state: ${state})` };
+      }
+
       // Parse the file to extract text
       let text: string;
       try {
@@ -506,11 +514,34 @@ export class WorkerCore implements IWorkerCore {
 
       for (const chunk of chunks) {
         // Generate embedding for this chunk
-        const embedding = await this.model.embed([chunk.text], false);
+        const embeddings = await this.model.embed([chunk.text], false);
+
+        // Debug log the embedding result
+        logger.log('WORKER', `Embedding result type: ${typeof embeddings}, isArray: ${Array.isArray(embeddings)}, length: ${embeddings?.length}`);
+        if (embeddings && embeddings[0]) {
+          logger.log('WORKER', `First embedding type: ${typeof embeddings[0]}, isArray: ${Array.isArray(embeddings[0])}, length: ${embeddings[0]?.length}, sample values: ${JSON.stringify(embeddings[0]?.slice(0, 3))}`);
+        }
+
+        // Check if embedding was generated successfully
+        if (!embeddings || !embeddings[0] || embeddings[0].length === 0) {
+          logger.error('WORKER', `Failed to generate embedding for chunk in ${filePath}. Result: ${JSON.stringify(embeddings)}`);
+          throw new Error('Failed to generate embedding - empty result from model');
+        }
+
+        // Verify the embedding is a valid array of numbers
+        if (!Array.isArray(embeddings[0]) || typeof embeddings[0][0] !== 'number') {
+          logger.error('WORKER', `Invalid embedding format for ${filePath}. Type: ${typeof embeddings[0]}, First element: ${typeof embeddings[0][0]}`);
+          throw new Error('Invalid embedding format - expected array of numbers');
+        }
+
+        // Convert to regular array if it's a typed array
+        const vector = Array.isArray(embeddings[0])
+          ? embeddings[0]
+          : Array.from(embeddings[0]);
 
         // Store chunk with embedding in database
         const chunkData = {
-          vector: embedding[0],
+          vector: vector,
           text: chunk.text,
           path: filePath,
           offset: chunk.offset,

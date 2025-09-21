@@ -340,7 +340,8 @@ export class HealthManager<T> extends EventEmitter {
 }
 
 // TypeScript event emitter typing
-export interface HealthManager<_T> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export interface HealthManager<T> {
   on<K extends keyof HealthManagerEvents>(event: K, listener: HealthManagerEvents[K]): this;
   emit<K extends keyof HealthManagerEvents>(event: K, ...args: Parameters<HealthManagerEvents[K]>): boolean;
 }

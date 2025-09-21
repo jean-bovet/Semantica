@@ -102,6 +102,7 @@ describe('WorkerCore', () => {
     vi.mocked(mockModel.checkModel).mockResolvedValue(true);
     vi.mocked(mockModel.embed).mockResolvedValue([[0.1, 0.2, 0.3]]);
     vi.mocked(mockModel.initialize).mockResolvedValue(undefined);
+    vi.mocked(mockModel.isReady).mockReturnValue(true);
 
     vi.mocked(mockDb.loadFileStatusCache).mockResolvedValue(new Map());
     vi.mocked(mockDb.connect).mockResolvedValue(undefined);
@@ -164,6 +165,9 @@ describe('WorkerCore', () => {
       };
       vi.mocked(mockDb.getChunksTable).mockReturnValue(mockTable as any);
       vi.mocked(mockDb.updateFileStatus).mockResolvedValue(undefined);
+
+      // Set model as ready
+      (workerCore as any).status.modelReady = true;
 
       // Act - call private method through queue callback
       const processCallback = vi.mocked(mockQueue.setProcessCallback).mock.calls[0][0];
@@ -230,6 +234,9 @@ describe('WorkerCore', () => {
       vi.mocked(chunkText).mockReturnValue([]);
 
       vi.mocked(mockDb.updateFileStatus).mockResolvedValue(undefined);
+
+      // Set model as ready
+      (workerCore as any).status.modelReady = true;
 
       // Act
       const processCallback = vi.mocked(mockQueue.setProcessCallback).mock.calls[0][0];
@@ -326,6 +333,9 @@ describe('WorkerCore', () => {
 
       vi.mocked(mockDb.updateFileStatus).mockResolvedValue(undefined);
 
+      // Set model as ready
+      (workerCore as any).status.modelReady = true;
+
       // Act
       const processCallback = vi.mocked(mockQueue.setProcessCallback).mock.calls[0][0];
       await expect(processCallback(testFilePath)).rejects.toThrow('File is corrupted');
@@ -374,6 +384,9 @@ describe('WorkerCore', () => {
       };
       vi.mocked(mockDb.getChunksTable).mockReturnValue(mockTable as any);
       vi.mocked(mockDb.updateFileStatus).mockResolvedValue(undefined);
+
+      // Set model as ready
+      (workerCore as any).status.modelReady = true;
 
       // Act
       const processCallback = vi.mocked(mockQueue.setProcessCallback).mock.calls[0][0];
@@ -424,6 +437,9 @@ describe('WorkerCore', () => {
       vi.mocked(mockModel.embed).mockRejectedValue(new Error('Model not loaded'));
 
       vi.mocked(mockDb.updateFileStatus).mockResolvedValue(undefined);
+
+      // Set model as ready
+      (workerCore as any).status.modelReady = true;
 
       // Act
       const processCallback = vi.mocked(mockQueue.setProcessCallback).mock.calls[0][0];
@@ -685,6 +701,9 @@ describe('WorkerCore', () => {
       };
       vi.mocked(mockDb.getChunksTable).mockReturnValue(mockTable as any);
       vi.mocked(mockDb.updateFileStatus).mockResolvedValue(undefined);
+
+      // Set model as ready
+      (workerCore as any).status.modelReady = true;
 
       // Act
       const processCallback = vi.mocked(mockQueue.setProcessCallback).mock.calls[0][0];

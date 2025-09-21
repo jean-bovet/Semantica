@@ -195,6 +195,12 @@ export class IsolatedEmbedder implements IEmbedder {
         if (handler) {
           this.inflight.delete(msg.id);
           if (MessageTypeGuards.isEmbedSuccessMessage(msg)) {
+            // Debug logging for empty vectors issue
+            if (!msg.vectors || msg.vectors.length === 0 || !msg.vectors[0] || msg.vectors[0].length === 0) {
+              logger.error('ISOLATED', `Empty vectors received! vectors: ${JSON.stringify(msg.vectors)}`);
+            } else {
+              logger.log('ISOLATED', `Vectors received: count=${msg.vectors.length}, dimensions=${msg.vectors[0].length}`);
+            }
             handler.resolve(msg.vectors);
           } else {
             handler.reject(new Error(msg.error));
