@@ -20,6 +20,8 @@ import { ReindexOrchestrator } from './ReindexOrchestrator';
 import { PipelineStatusFormatter } from './PipelineStatusFormatter';
 import type { FileStatus } from './fileStatusManager';
 import { migrateIndexedFilesToStatus } from './migrateFileStatus';
+import { getParserForExtension } from '../parsers/registry';
+import { chunkText } from '../pipeline/chunker';
 
 export class WorkerCore implements IWorkerCore {
   private db: DatabaseService;
@@ -442,19 +444,92 @@ export class WorkerCore implements IWorkerCore {
     }, 2000);
   }
 
-  // Simplified file processing (would need full implementation)
+  // Process a file: parse, chunk, embed, and store
   private async processFileInternal(filePath: string): Promise<{ success: boolean; chunks?: any[]; error?: string; parserVersion?: number }> {
     try {
-      // This is a simplified placeholder - actual implementation would:
-      // 1. Read and parse the file based on extension
-      // 2. Create text chunks
-      // 3. Generate embeddings
-      // 4. Store in database
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+
+      // Find parser for this file extension
+      const parserEntry = getParserForExtension(ext);
+      if (!parserEntry) {
+        logger.log('INDEXING', `⏭️ Skipped: ${path.basename(filePath)} - No parser for .${ext}`);
+        return { success: false, error: `No parser for .${ext}` };
+      }
+
+      const [parserKey, parserDef] = parserEntry;
+
+      // Check if this file type is enabled
+      const fileTypes = this.config.getSettings().fileTypes || {};
+      const isTypeEnabled = fileTypes[parserKey as keyof typeof fileTypes] ?? false;
+
+      if (!isTypeEnabled) {
+        logger.log('INDEXING', `⏭️ Skipped: ${path.basename(filePath)} - File type disabled`);
+        return { success: false, error: 'File type disabled' };
+      }
+
       logger.log('WORKER', `Processing file: ${filePath}`);
 
-      // For now, just return success
-      return { success: true, chunks: [], parserVersion: 1 };
+      // Parse the file to extract text
+      let text: string;
+      try {
+        const parserModule = await parserDef.parser();
+        const parseResult = await parserModule(filePath);
+
+        // Handle PDF parser returning PDFPage[] instead of string
+        if (parserKey === 'pdf' && Array.isArray(parseResult)) {
+          // Concatenate all PDF pages into a single text string
+          text = parseResult.map((page: any) => page.text).join('\n\n');
+        } else if (typeof parseResult === 'string') {
+          text = parseResult;
+        } else {
+          throw new Error(`Parser returned unexpected type: ${typeof parseResult}`);
+        }
+      } catch (parseError: any) {
+        const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
+        logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - ${errorMsg}`);
+        return { success: false, error: errorMsg, parserVersion: parserDef.version };
+      }
+
+      // Create chunks from the text
+      const chunkSize = parserDef.chunkSize || 500;
+      const chunkOverlap = parserDef.chunkOverlap || 60;
+      const chunks = chunkText(text, chunkSize, chunkOverlap);
+
+      if (chunks.length === 0) {
+        logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - No text content extracted`);
+        return { success: false, error: 'No text content extracted', parserVersion: parserDef.version };
+      }
+
+      // Generate embeddings for each chunk
+      const table = this.db.getChunksTable();
+      const processedChunks: any[] = [];
+
+      for (const chunk of chunks) {
+        // Generate embedding for this chunk
+        const embedding = await this.model.embed([chunk.text], false);
+
+        // Store chunk with embedding in database
+        const chunkData = {
+          vector: embedding[0],
+          text: chunk.text,
+          path: filePath,
+          offset: chunk.offset,
+          chunk_index: processedChunks.length
+        };
+
+        await table.add([chunkData]);
+        processedChunks.push(chunkData);
+      }
+
+      logger.log('INDEXING', `✅ Success: ${path.basename(filePath)} - ${chunks.length} chunks created`);
+
+      return {
+        success: true,
+        chunks: processedChunks,
+        parserVersion: parserDef.version
+      };
     } catch (error) {
+      logger.error('WORKER', `Error processing file ${filePath}:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)

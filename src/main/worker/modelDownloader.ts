@@ -149,7 +149,7 @@ async function downloadFile(file: ModelFile, onProgress: (progress: DownloadProg
     if (fs.existsSync(file.localPath)) {
       try {
         fs.unlinkSync(file.localPath);
-      } catch (unlinkErr) {
+      } catch (_unlinkErr) {
         // Ignore cleanup errors
       }
     }
