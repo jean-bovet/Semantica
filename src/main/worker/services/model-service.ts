@@ -101,6 +101,7 @@ export class ModelService implements IModelService {
   }
 
   getEmbedderStats(): {
+    id: string;
     filesProcessed: number;
     memoryUsage: number;
     isHealthy: boolean;
@@ -111,9 +112,10 @@ export class ModelService implements IModelService {
 
     const stats = this.embedderPool.getStats();
     return stats.map((s: any) => ({
+      id: s.id,
       filesProcessed: s.filesProcessed || 0,
       memoryUsage: s.memoryUsage || 0,
-      isHealthy: s.state === 'ready'
+      isHealthy: s.isHealthy
     }));
   }
 

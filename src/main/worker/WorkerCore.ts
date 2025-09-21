@@ -407,6 +407,9 @@ export class WorkerCore implements IWorkerCore {
         // Get embedder stats from model service
         const embedderStats = this.model.getEmbedderStats();
 
+        // Get currently processing files
+        const processingFiles = this.queue.getProcessingFiles();
+
         // Format pipeline status with correct stats format
         const pipelineStatus = PipelineStatusFormatter.formatPipelineStatus({
           fileStats: {
@@ -417,14 +420,14 @@ export class WorkerCore implements IWorkerCore {
           },
           embeddingStats,
           embedderStats: embedderStats.map((s: any) => ({
-            id: 'embedder-' + Math.random().toString(36).substr(2, 9),
+            id: s.id,
             filesProcessed: s.filesProcessed,
             memoryUsage: s.memoryUsage,
             isHealthy: s.isHealthy,
             loadCount: 0,
             restartCount: 0
           })),
-          processingFiles: [],
+          processingFiles,
           fileTrackers: new Map(),
           maxConcurrent: 5
         });
