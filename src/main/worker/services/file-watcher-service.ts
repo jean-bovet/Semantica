@@ -72,7 +72,7 @@ export class FileWatcherService implements IFileWatcherService {
     }
 
     this.watcher = chokidar.watch(validRoots, {
-      ignoreInitial: true,
+      ignoreInitial: false,  // Process existing files when starting
       persistent: true,
       ignorePermissionErrors: true,
       awaitWriteFinish: {
