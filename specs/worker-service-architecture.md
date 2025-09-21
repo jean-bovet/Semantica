@@ -131,6 +131,94 @@ The refactoring was completed incrementally:
 | Startup time | 10+ sec | <1 sec | 90% reduction |
 | Cyclomatic complexity | High | Low | Significant reduction |
 
+## Pipeline Status Reporting
+
+### Overview
+The worker implements a real-time pipeline status reporting system that provides visibility into file processing and embedding operations. This system was temporarily lost during the refactoring from commit 67aac3b to d13fa48 but has been restored.
+
+### Implementation Details
+
+#### Status Reporting Flow
+1. **WorkerCore** runs a status interval every 2 seconds
+2. Collects stats from multiple services:
+   - **QueueService**: File queue stats and currently processing files
+   - **ModelService**: Embedder pool statistics with stable IDs
+3. Formats status using **PipelineStatusFormatter**
+4. Outputs directly via `console.log()` to bypass log filtering
+5. Also sends to main process for UI updates
+
+#### Critical Implementation Notes
+
+**IMPORTANT**: The pipeline status uses `console.log()` directly instead of the logger utility. This is intentional because:
+- Pipeline status should always be visible regardless of LOG_CATEGORIES setting
+- Direct console.log bypasses filtering by concurrently/electronmon in dev mode
+- This ensures the status shows up with `npm run dev`
+
+#### Status Format
+```
+[PIPELINE STATUS] 📊
+  Files: 8275 queued → 5/5 parsing → 48 completed ✅
+  Chunks: 0 queued → 0 batches processing
+  Embedders: Eembedder-abc123:idle Eembedder-def456:idle (0MB)
+  Processing: file1.pdf[12/45], document.docx[3/20]
+```
+
+#### Key Components
+
+**WorkerCore.startPipelineStatusReporting()**
+- Interval: 2000ms (2 seconds)
+- Only reports when there's activity (queued > 0 or processing > 0)
+- Must call `this.queue.getProcessingFiles()` for the Processing line to appear
+- Must use actual embedder IDs from `this.model.getEmbedderStats()`
+
+**ModelService.getEmbedderStats()**
+- MUST include the `id` field from embedderPool stats
+- Returns stable embedder IDs (not random)
+- Includes memory usage and health status
+
+**Common Issues and Solutions**
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| No pipeline status output | Status reporting not started | Ensure `startPipelineStatusReporting()` is called in WorkerCore.initialize() |
+| No logs with npm run dev | Using logger instead of console.log | Use `console.log(pipelineStatus)` directly |
+| Missing "Processing:" line | Empty processingFiles array | Call `this.queue.getProcessingFiles()` |
+| Changing embedder IDs | Generating random IDs | Use actual `id` from embedderPool.getStats() |
+| Duplicate status logs | Logging in both worker and main | Remove `logger.log()` in main.ts, keep only console.log in worker |
+
+### Debugging Pipeline Status
+
+To debug pipeline status issues:
+
+1. **Check if status is being generated**:
+   ```bash
+   grep -n "startPipelineStatusReporting" src/main/worker/WorkerCore.ts
+   # Should show it's called during initialization
+   ```
+
+2. **Verify direct console.log is used**:
+   ```bash
+   grep -n "console.log(pipelineStatus)" src/main/worker/WorkerCore.ts
+   # Must use console.log, not logger
+   ```
+
+3. **Check processing files are collected**:
+   ```bash
+   grep "getProcessingFiles()" src/main/worker/WorkerCore.ts
+   # Must call this method, not pass empty array
+   ```
+
+4. **Verify embedder IDs are preserved**:
+   ```bash
+   grep -A5 "getEmbedderStats" src/main/worker/services/model-service.ts
+   # Must include id: s.id in the return
+   ```
+
+### Historical Context
+- **Commit 67aac3b**: Original implementation in index.ts with 2-second interval
+- **Commit d13fa48**: Refactoring lost pipeline status (not moved to WorkerCore)
+- **Current**: Restored in WorkerCore with proper service integration
+
 ## Future Enhancements
 
 1. **Service Registry**: Dynamic service discovery and registration
