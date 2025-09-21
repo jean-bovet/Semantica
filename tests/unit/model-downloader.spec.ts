@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkMissingFiles, checkModelExists } from '../../src/main/worker/modelDownloader';
+import { checkMissingFiles, checkModelExists } from '../../src/main/services/ModelService';
 
 // Mock modules
 vi.mock('node:fs');
@@ -121,7 +121,7 @@ describe('Model Downloader', () => {
     // These tests focus on the basic structure and file checking
     
     it('should export downloadModelSequentially function', async () => {
-      const module = await import('../../src/main/worker/modelDownloader');
+      const module = await import('../../src/main/services/ModelService');
       expect(typeof module.downloadModelSequentially).toBe('function');
     });
     

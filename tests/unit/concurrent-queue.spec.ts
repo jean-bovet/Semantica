@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConcurrentQueue } from '../../src/main/worker/ConcurrentQueue';
+import { ConcurrentQueue } from '../../src/main/core/embedding/ConcurrentQueue';
 
 describe('ConcurrentQueue', () => {
   let queue: ConcurrentQueue;

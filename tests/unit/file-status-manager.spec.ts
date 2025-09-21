@@ -10,17 +10,17 @@ import {
   updateFileStatus,
   type FileStatus,
   type ScanResult
-} from '../../src/main/worker/fileStatusManager';
+} from '../../src/main/core/indexing/fileStatusManager';
 
 // Mock fs module
 vi.mock('node:fs');
 
 // Mock shouldReindex
-vi.mock('../../src/main/worker/reindexManager', () => ({
+vi.mock('../../src/main/core/reindex/reindexManager', () => ({
   shouldReindex: vi.fn()
 }));
 
-import { shouldReindex } from '../../src/main/worker/reindexManager';
+import { shouldReindex } from '../../src/main/core/reindex/reindexManager';
 
 describe('FileStatusManager', () => {
   beforeEach(() => {

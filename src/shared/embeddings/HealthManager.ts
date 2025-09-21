@@ -340,7 +340,7 @@ export class HealthManager<T> extends EventEmitter {
 }
 
 // TypeScript event emitter typing
-export interface HealthManager {
+export interface HealthManager<T> {
   on<K extends keyof HealthManagerEvents>(event: K, listener: HealthManagerEvents[K]): this;
   emit<K extends keyof HealthManagerEvents>(event: K, ...args: Parameters<HealthManagerEvents[K]>): boolean;
 }

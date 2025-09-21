@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { FileScanner } from '../../src/main/worker/FileScanner';
-import type { FileStatus, FileStats, CategorizeOptions, ScanConfig } from '../../src/main/worker/FileScanner';
+import { FileScanner } from '../../src/main/core/indexing/fileScanner';
+import type { FileStatus, FileStats, CategorizeOptions, ScanConfig } from '../../src/main/core/indexing/fileScanner';
 
 describe('FileScanner', () => {
   let scanner: FileScanner;

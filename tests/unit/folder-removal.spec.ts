@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { FolderRemovalManager } from '../../src/main/worker/FolderRemovalManager';
-import type { FolderStats } from '../../src/main/worker/FolderRemovalManager';
+import { FolderRemovalManager } from '../../src/main/core/reindex/FolderRemovalManager';
+import type { FolderStats } from '../../src/main/core/reindex/FolderRemovalManager';
 
 describe('FolderRemovalManager', () => {
   let manager: FolderRemovalManager;

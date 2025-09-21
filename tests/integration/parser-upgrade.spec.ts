@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { checkForParserUpgrades, migrateExistingFiles, shouldReindex, FileStatus } from '../../src/main/worker/reindexManager';
+import { checkForParserUpgrades, migrateExistingFiles, shouldReindex, FileStatus } from '../../src/main/core/reindex/reindexManager';
 import { PARSER_VERSIONS } from '../../src/main/worker/parserVersions';
 
 describe('Parser Version Upgrade Integration', () => {

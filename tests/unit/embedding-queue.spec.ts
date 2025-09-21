@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { EmbeddingQueue, ProcessedBatch } from '../../src/main/worker/EmbeddingQueue';
+import { EmbeddingQueue, ProcessedBatch } from '../../src/main/core/embedding/EmbeddingQueue';
 import { EmbedderPool } from '../../src/shared/embeddings/embedder-pool';
 
 // Mock the embedder pool to avoid spawning actual child processes in unit tests

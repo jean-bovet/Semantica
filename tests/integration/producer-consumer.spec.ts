@@ -4,9 +4,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import * as lancedb from '@lancedb/lancedb';
-import { EmbeddingQueue } from '../../src/main/worker/EmbeddingQueue';
+import { EmbeddingQueue } from '../../src/main/core/embedding/EmbeddingQueue';
 import { EmbedderPool } from '../../src/shared/embeddings/embedder-pool';
-import { ConcurrentQueue } from '../../src/main/worker/ConcurrentQueue';
+import { ConcurrentQueue } from '../../src/main/core/embedding/ConcurrentQueue';
 import { chunkText } from '../../src/main/pipeline/chunker';
 import { parseText } from '../../src/main/parsers/text';
 

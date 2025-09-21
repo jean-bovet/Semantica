@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { shouldReindex } from './reindexManager';
-import { logger } from '../../shared/utils/logger';
+import { shouldReindex } from '../reindex/reindexManager';
+import { logger } from '../../../shared/utils/logger';
 
 export interface FileStatus {
   path: string;

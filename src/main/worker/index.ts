@@ -2,18 +2,18 @@ import { parentPort } from 'node:worker_threads';
 import * as lancedb from '@lancedb/lancedb';
 import { getParserVersion } from './parserVersions';
 import { ReindexService } from '../services/ReindexService';
-import { ConcurrentQueue } from './ConcurrentQueue';
+import { ConcurrentQueue } from '../core/embedding/ConcurrentQueue';
 import {
   initializeFileStatusTable
-} from './fileStatusManager';
+} from '../core/indexing/fileStatusManager';
 import { migrateIndexedFilesToStatus } from './migrateFileStatus';
-import { ReindexOrchestrator } from './ReindexOrchestrator';
-import { FileScanner } from './fileScanner';
-import type { ScanConfig as FileScannerConfig } from './fileScanner';
-import { FolderRemovalManager } from './FolderRemovalManager';
+import { ReindexOrchestrator } from '../core/reindex/ReindexOrchestrator';
+import { FileScanner } from '../core/indexing/fileScanner';
+import type { ScanConfig as FileScannerConfig } from '../core/indexing/fileScanner';
+import { FolderRemovalManager } from '../core/reindex/FolderRemovalManager';
 import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurrency';
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
-import { PipelineStatusFormatter } from './PipelineStatusFormatter';
+import { PipelineStatusFormatter } from '../services/PipelineService';
 import { logger } from '../../shared/utils/logger';
 import { StartupStage, type StageProgress } from '../startup/StartupStages';
 
@@ -22,7 +22,7 @@ import { StartupStage, type StageProgress } from '../startup/StartupStages';
 if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
   // Use require for synchronous loading to ensure mocks are ready before any fetch calls
   try {
-    const { setupModelDownloadMocks } = require('./test-mocks/setupModelMocks');
+    const { setupModelDownloadMocks } = require('../../../tests/mocks/setupModelMocks');
     setupModelDownloadMocks();
   } catch (err) {
     logger.error('WORKER', 'Failed to load mock setup:', err);
@@ -144,14 +144,14 @@ try {
 }
 // Use isolated embedder for better memory management
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
-import { EmbeddingQueue } from './EmbeddingQueue';
+import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ConfigManager } from './config';
-import { downloadModelSequentially, checkModelExists as checkModelExistsNew } from './modelDownloader';
-import { scanDirectories, type ScanOptions } from './directoryScanner';
+import { downloadModelSequentially, checkModelExists as checkModelExistsNew } from '../services/ModelService';
+import { scanDirectories, type ScanOptions } from '../core/indexing/directoryScanner';
 
 let db: any = null;
 let tbl: any = null;
@@ -486,16 +486,16 @@ async function initializeModel(userDataPath: string) {
         maxQueueSize: 2000,
         batchSize,
         backpressureThreshold: 1000,
-        onProgress: (filePath, processed, total) => {
+        onProgress: (filePath: string, processed: number, total: number) => {
           logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
         },
-        onFileComplete: (filePath) => {
+        onFileComplete: (filePath: string) => {
           logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
         }
       });
       logger.log('WORKER', 'About to call embeddingQueue.initialize()');
       // Initialize with batch processor that writes to database
-      embeddingQueue.initialize(embedderPool, async (batch) => {
+      embeddingQueue.initialize(embedderPool, async (batch: any) => {
         // Extract file metadata from the first chunk
         const filePath = batch.chunks[0].metadata.filePath;
         const fileExt = path.extname(filePath).slice(1).toLowerCase();
@@ -505,7 +505,7 @@ async function initializeModel(userDataPath: string) {
         const mtime = stat.mtimeMs;
 
         // Create database rows
-        const rows = batch.chunks.map((chunk, idx) => {
+        const rows = batch.chunks.map((chunk: any, idx: number) => {
           const id = crypto.createHash('sha1')
             .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
             .digest('hex');

@@ -10,7 +10,7 @@
  * 3. Use the wrapped functions for profiling
  */
 
-import { PerformanceProfiler } from './PerformanceProfiler';
+import { PerformanceProfiler } from '../core/embedding/PerformanceProfiler';
 import { logger } from '../../shared/utils/logger';
 
 // Create profiler instance - only enabled if PROFILE env var is set

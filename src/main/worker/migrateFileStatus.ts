@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { getFileHash } from './fileStatusManager';
+import { getFileHash } from '../core/indexing/fileStatusManager';
 import { logger } from '../../shared/utils/logger';
 
 /**

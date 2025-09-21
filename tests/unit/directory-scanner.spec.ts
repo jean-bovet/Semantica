@@ -9,7 +9,7 @@ import {
   scanDirectory,
   scanDirectories,
   type ScanOptions
-} from '../../src/main/worker/directoryScanner';
+} from '../../src/main/core/indexing/directoryScanner';
 
 // Mock fs module
 vi.mock('node:fs');

@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import { migrateIndexedFilesToStatus, cleanupOrphanedStatuses } from '../../src/main/worker/migrateFileStatus';
-import { getFileHash } from '../../src/main/worker/fileStatusManager';
+import { getFileHash } from '../../src/main/core/indexing/fileStatusManager';
 
 // Mock fs module
 vi.mock('node:fs');
-vi.mock('../../src/main/worker/fileStatusManager', () => ({
+vi.mock('../../src/main/core/indexing/fileStatusManager', () => ({
   getFileHash: vi.fn()
 }));
 

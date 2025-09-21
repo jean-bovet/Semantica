@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PARSER_VERSIONS, getParserVersion, VERSION_HISTORY, getVersionHistory } from '../../src/main/worker/parserVersions';
-import { shouldReindex, FileStatus } from '../../src/main/worker/reindexManager';
+import { shouldReindex, FileStatus } from '../../src/main/core/reindex/reindexManager';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
 

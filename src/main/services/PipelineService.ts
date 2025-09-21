@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import type { FileTracker } from './EmbeddingQueue';
+import type { FileTracker } from '../core/embedding/EmbeddingQueue';
 
 export interface FileQueueStats {
   queued: number;

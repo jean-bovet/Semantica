@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { EmbeddingQueue } from '../../src/main/worker/EmbeddingQueue';
+import { EmbeddingQueue } from '../../src/main/core/embedding/EmbeddingQueue';
 import { EmbedderPool } from '../../src/shared/embeddings/embedder-pool';
 
 // Mock the embedder pool

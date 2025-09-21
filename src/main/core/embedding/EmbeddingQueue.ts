@@ -1,5 +1,5 @@
-import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
-import { logger } from '../../shared/utils/logger';
+import { EmbedderPool } from '../../../shared/embeddings/embedder-pool';
+import { logger } from '../../../shared/utils/logger';
 
 export interface QueuedChunk {
   text: string;

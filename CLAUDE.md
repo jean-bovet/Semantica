@@ -12,7 +12,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - **Multi-process design**: Main process, Worker thread, and Embedder child process
 - **Memory isolation**: Embedder process auto-restarts to prevent memory leaks
 - **Search-first UI**: Full-screen search with modal settings overlay
-- See [architecture.md](./specs/architecture.md) for complete details
+- See [architecture.md](./docs/specs/02-architecture.md) for complete details
 
 ### Technology Stack
 - **Frontend**: React, TypeScript, Tailwind CSS
@@ -23,11 +23,27 @@ Semantica is an Electron-based application that provides offline semantic search
 
 ## Important Guidelines
 
-### Documentation Standards
-**IMPORTANT**: Follow the documentation naming conventions defined in [documentation-standards.md](./specs/documentation-standards.md):
-- Use ALL CAPS for standard files: `README.md`, `CLAUDE.md`, `LICENSE.md`
-- Use lowercase-with-hyphens for all other docs: `architecture.md`, `testing-strategy.md`
-- Organize docs into `/specs/`, `/docs/`, and `/planning/` folders
+### Project Structure
+The codebase follows a domain-driven organization:
+```
+src/main/
+├── core/           # Core business logic
+│   ├── indexing/   # File scanning and status management
+│   ├── embedding/  # Embedding queue and processing
+│   └── reindex/    # Re-indexing and folder management
+├── services/       # Application services layer
+├── worker/         # Worker thread entry point
+├── parsers/        # File format parsers
+├── startup/        # Application startup coordination
+└── utils/          # Shared utilities
+```
+
+### Documentation Organization
+Documentation is organized under `/docs/`:
+- `/docs/specs/` - System specifications and architecture
+- `/docs/guides/` - How-to guides and tutorials
+- `/docs/analysis/` - Research and analysis documents
+- `/planning/` - Future plans and proposals
 
 ### Code Conventions
 1. **TypeScript**: Use strict typing, avoid `any`
@@ -45,13 +61,13 @@ Semantica is an Electron-based application that provides offline semantic search
 - Worker process limited to 1500MB RSS
 - Embedder process limited to 300MB external
 - Auto-restart after 200-500 files or memory threshold
-- See [memory-solution.md](./specs/memory-solution.md) for implementation
+- See [memory-solution.md](./docs/specs/memory-solution.md) for implementation
 
 ### Database Operations
 - LanceDB requires initialization with dummy data
 - File status tracked in separate table
 - Avoid complex WHERE clauses (not yet implemented)
-- See [troubleshooting.md](./specs/troubleshooting.md) for common issues
+- See [troubleshooting.md](./docs/specs/troubleshooting.md) for common issues
 
 ## Common Tasks
 
@@ -61,7 +77,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - Automatically starts indexing with current settings
 
 ### Adding File Parser Support
-1. Create parser in `/app/electron/parsers/`
+1. Create parser in `/src/main/parsers/`
 2. Export async function returning text string
 3. Register in `processFile()` function
 4. Add file extension to UI settings

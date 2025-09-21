@@ -1,8 +1,8 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
-import { PARSER_VERSIONS, getParserVersion } from './parserVersions';
-import { logger } from '../../shared/utils/logger';
+import { PARSER_VERSIONS, getParserVersion } from '../../worker/parserVersions';
+import { logger } from '../../../shared/utils/logger';
 
 export interface FileStatus {
   path: string;

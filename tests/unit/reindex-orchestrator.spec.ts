@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ReindexOrchestrator } from '../../src/main/worker/ReindexOrchestrator';
-import type { FileStatus, ReindexOptions } from '../../src/main/worker/ReindexOrchestrator';
+import { ReindexOrchestrator } from '../../src/main/core/reindex/ReindexOrchestrator';
+import type { FileStatus, ReindexOptions } from '../../src/main/core/reindex/ReindexOrchestrator';
 
 describe('ReindexOrchestrator', () => {
   let orchestrator: ReindexOrchestrator;

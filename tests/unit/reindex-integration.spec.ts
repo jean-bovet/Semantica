@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ReindexOrchestrator } from '../../src/main/worker/ReindexOrchestrator';
-import { FileScanner } from '../../src/main/worker/FileScanner';
-import type { FileStatus } from '../../src/main/worker/ReindexOrchestrator';
+import { ReindexOrchestrator } from '../../src/main/core/reindex/ReindexOrchestrator';
+import { FileScanner } from '../../src/main/core/indexing/fileScanner';
+import type { FileStatus } from '../../src/main/core/reindex/ReindexOrchestrator';
 
 describe('Reindex Integration', () => {
   let orchestrator: ReindexOrchestrator;

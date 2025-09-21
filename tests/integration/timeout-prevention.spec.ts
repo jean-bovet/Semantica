@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as lancedb from '@lancedb/lancedb';
-import { EmbeddingQueue } from '../../src/main/worker/EmbeddingQueue';
+import { EmbeddingQueue } from '../../src/main/core/embedding/EmbeddingQueue';
 import { EmbedderPool } from '../../src/shared/embeddings/embedder-pool';
 import { chunkText } from '../../src/main/pipeline/chunker';
 
