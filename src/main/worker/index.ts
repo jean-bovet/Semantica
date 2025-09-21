@@ -540,6 +540,9 @@ async function initializeModel(userDataPath: string) {
   }
 
   logger.log('WORKER', 'Model initialization completed successfully');
+
+  // NOW we're truly ready - database, model, and embedders are all initialized
+  emitStageProgress(StartupStage.READY, 'Worker initialization complete');
 }
 
 async function mergeRows(rows: any[]) {
@@ -1356,7 +1359,6 @@ parentPort!.on('message', async (msg: any) => {
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
 
         await initDB(dbDir, userDataPath);
-        emitStageProgress(StartupStage.READY, 'Worker initialization complete');
         parentPort!.postMessage({ type: 'ready' });
         
         // Initialize model in background after worker is ready

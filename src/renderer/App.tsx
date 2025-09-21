@@ -17,7 +17,7 @@ declare global {
 function App() {
   const [appReady, setAppReady] = useState(false);
   const [modelReady, setModelReady] = useState(false);
-  const [filesLoaded, setFilesLoaded] = useState(false);
+  const [_filesLoaded, setFilesLoaded] = useState(false);
   const [checkingModel, setCheckingModel] = useState(true);
   const [downloadingModel, setDownloadingModel] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -186,7 +186,7 @@ function App() {
         />
         
         {/* Simple loading overlay */}
-        {(checkingModel || downloadingModel || !modelReady || !filesLoaded) && (
+        {!appReady && (
           <div data-testid="loading-indicator" style={{
             position: 'fixed',
             top: 0,

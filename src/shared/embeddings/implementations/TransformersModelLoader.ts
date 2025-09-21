@@ -81,7 +81,7 @@ export class TransformersModelLoader implements IModelLoader {
   /**
    * Check if a model exists locally
    */
-  checkModelExists(name: string): boolean {
+  checkModelExists(_name: string): boolean {
     const modelInfo = this.pathResolver.getModelInfo();
     return modelInfo.exists;
   }
@@ -89,7 +89,7 @@ export class TransformersModelLoader implements IModelLoader {
   /**
    * Get information about a model
    */
-  getModelInfo(name: string): ModelInfo {
+  getModelInfo(_name: string): ModelInfo {
     const info = this.pathResolver.getModelInfo();
 
     return {

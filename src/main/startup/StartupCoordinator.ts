@@ -55,9 +55,6 @@ export class StartupCoordinator {
       // Wait for worker with stage-based timeout
       await this.waitForStage(StartupStage.READY);
 
-      // Compute stats before notifying
-      await this.sensors.waitForStats();
-
       // All ready - notify renderer
       this.actions.notifyFilesLoaded();
       this.actions.notifyReady();

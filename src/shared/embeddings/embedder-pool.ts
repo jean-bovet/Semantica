@@ -180,7 +180,7 @@ export class EmbedderPool {
     while (Date.now() - startTime < maxWaitTime) {
       let readyCount = 0;
 
-      for (const [id, embedder] of this.embedders) {
+      for (const [_id, embedder] of this.embedders) {
         const stats = embedder.getStats();
         if (stats.state === 'ready') {
           readyCount++;

@@ -48,10 +48,20 @@ The main process follows a strict initialization order to prevent IPC errors:
    - Wait for Electron to be fully initialized
    - Create BrowserWindow
 
-3. **Worker Thread Initialization**
-   - Spawn worker thread
-   - **CRITICAL**: Wait for worker to be ready (`waitForWorker()`)
-   - Worker must signal readiness before accepting IPC calls
+3. **Staged Worker Initialization (via StartupCoordinator)**
+   - Uses staged initialization with individual timeouts per stage
+   - Prevents single long operation from causing timeout
+   - Stages progress sequentially with progress reporting:
+     - `WORKER_SPAWN`: Worker thread created
+     - `DB_INIT`: Database connection and config initialization
+     - `DB_LOAD`: Loading existing indexed files (with progress %)
+     - `FOLDER_SCAN`: Scanning configured folders
+     - `MODEL_CHECK`: Verifying ML model exists
+     - `MODEL_DOWNLOAD`: Downloading model if needed
+     - `EMBEDDER_INIT`: Initializing embedder process pool
+     - `READY`: All systems operational
+   - **CRITICAL**: `app:ready` event sent only after ALL stages complete
+   - UI shows loading spinner until `app:ready` received
 
 4. **IPC Handler Registration**
    - Register all `ipcMain.handle()` handlers
@@ -89,7 +99,18 @@ The worker implements sequential model downloads for better UX and reliability:
 - Automatically restarts when memory thresholds exceeded
 - Build output: `dist/embedder.child.cjs`
 
-### 4. Renderer Process (`src/renderer/`)
+### 4. Startup Coordinator (`src/main/startup/StartupCoordinator.ts`)
+- Manages staged initialization sequence
+- Monitors progress of each startup stage
+- Implements per-stage timeouts (not cumulative)
+- Sends events to renderer for progress display
+- Key features:
+  - Each stage gets its own timeout window
+  - Progress events forwarded to UI
+  - Graceful error handling with specific stage failure info
+  - Ensures `app:ready` only sent when truly ready
+
+### 5. Renderer Process (`src/renderer/`)
 - React-based user interface with search-first design
 - Full-screen search view for maximum result visibility
 - Real-time search with debouncing
