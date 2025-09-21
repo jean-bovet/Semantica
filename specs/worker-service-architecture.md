@@ -57,6 +57,7 @@ The original `worker/index.ts` had grown to over 1,700 lines and exhibited sever
 - **Key Methods**: `initialize()`, `checkModel()`, `embed()`
 - **Dependencies**: EmbedderPool
 - **Testing Strategy**: Mock embedder for unit tests, real model for integration
+- **State Management**: Uses ModelServiceStateMachine for lifecycle control
 
 #### 6. WorkerCore
 - **Responsibility**: Orchestrating all services
@@ -87,6 +88,195 @@ initializeSlow() {
 ```
 
 This reduces perceived startup time from 10+ seconds to under 1 second.
+
+## ModelService State Machine
+
+### Overview
+
+The ModelService implements a state machine pattern to properly manage the complex lifecycle of ML model initialization and embedder pool management. This addresses race conditions and ensures operations only proceed when the service is truly ready.
+
+### Problem Statement
+
+The original refactored code had issues with service readiness checks:
+- Duplicate `isReady()` checks were preventing embedding operations
+- No clear visibility into the initialization progress
+- Boolean flags were insufficient for complex state transitions
+- Race conditions during embedder pool initialization
+
+### State Machine Design
+
+#### States
+
+```typescript
+enum ModelServiceState {
+  Uninitialized = 'uninitialized',    // Initial state
+  Checking = 'checking',              // Checking if model exists
+  ModelMissing = 'model_missing',     // Model not found, needs download
+  InitializingPool = 'initializing_pool', // Creating embedder pool
+  Ready = 'ready',                    // Ready for operations
+  Error = 'error'                     // Error state
+}
+```
+
+#### State Transitions
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized
+    Uninitialized --> Checking: initialize()
+    Checking --> ModelMissing: model not found
+    Checking --> InitializingPool: model exists
+    ModelMissing --> InitializingPool: model downloaded
+    InitializingPool --> Ready: pool created
+    InitializingPool --> Error: pool creation failed
+    Ready --> Error: runtime error
+    Error --> Checking: retry/recover
+    ModelMissing --> Error: download failed
+```
+
+#### Valid Transitions
+
+```typescript
+const MODEL_SERVICE_STATE_TRANSITIONS = {
+  [ModelServiceState.Uninitialized]: [ModelServiceState.Checking],
+  [ModelServiceState.Checking]: [ModelServiceState.ModelMissing, ModelServiceState.InitializingPool, ModelServiceState.Error],
+  [ModelServiceState.ModelMissing]: [ModelServiceState.InitializingPool, ModelServiceState.Error],
+  [ModelServiceState.InitializingPool]: [ModelServiceState.Ready, ModelServiceState.Error],
+  [ModelServiceState.Ready]: [ModelServiceState.Error],
+  [ModelServiceState.Error]: [ModelServiceState.Checking] // Recovery
+};
+```
+
+### Implementation
+
+#### ModelServiceStateMachine Class
+
+```typescript
+export class ModelServiceStateMachine extends EventEmitter {
+  private currentState: ModelServiceState = ModelServiceState.Uninitialized;
+  private stateHistory: Array<{ state: ModelServiceState; timestamp: number; context?: ModelServiceStateContext }> = [];
+
+  transition(to: ModelServiceState, context: Partial<ModelServiceStateContext> = {}): boolean {
+    const from = this.currentState;
+    const validTransitions = MODEL_SERVICE_STATE_TRANSITIONS[from];
+
+    if (!validTransitions.includes(to)) {
+      this.emit('invalidTransition', from, to, `No valid transition from ${from} to ${to}`);
+      return false;
+    }
+
+    this.currentState = to;
+    this.emit('stateChange', from, to, context);
+    return true;
+  }
+
+  isReady(): boolean {
+    return this.currentState === ModelServiceState.Ready;
+  }
+
+  canAcceptOperations(): boolean {
+    return this.currentState === ModelServiceState.Ready;
+  }
+}
+```
+
+#### Integration with ModelService
+
+```typescript
+export class ModelService {
+  private stateMachine: ModelServiceStateMachine;
+
+  constructor(userDataPath: string) {
+    this.stateMachine = new ModelServiceStateMachine({ enableLogging: true });
+  }
+
+  async initialize(): Promise<void> {
+    this.stateMachine.transition(ModelServiceState.Checking, { reason: 'Initialize called' });
+
+    const modelExists = checkModelExistsSync(this.userDataPath);
+    if (modelExists) {
+      await this.initializePool();
+    } else {
+      this.stateMachine.transition(ModelServiceState.ModelMissing, { reason: 'Model not found' });
+    }
+  }
+
+  async embed(texts: string[], isQuery: boolean = false): Promise<number[][]> {
+    if (!this.stateMachine.canAcceptOperations()) {
+      throw new Error(`Cannot embed: service not ready (state: ${this.stateMachine.getState()})`);
+    }
+    // ... embedding logic
+  }
+
+  isReady(): boolean {
+    return this.stateMachine.isReady();
+  }
+}
+```
+
+### Benefits Achieved
+
+#### 1. Fixed Race Conditions
+- Eliminated duplicate `isReady()` checks that were blocking embedding operations
+- Clear state progression prevents operations from starting too early
+
+#### 2. Better Error Handling
+- Invalid state transitions are caught and logged
+- Historical context available for debugging
+- Recovery paths defined for error states
+
+#### 3. Improved Observability
+- Real-time state transition logging with `[MODEL-STATE]` category
+- State history tracking with timestamps and context
+- Event-driven architecture for monitoring
+
+#### 4. Comprehensive Testing
+- 22 unit tests covering all state transitions
+- Invalid transition detection
+- Event emission verification
+- History and error recovery testing
+
+### Debugging State Machine Issues
+
+#### Common Issues and Solutions
+
+| Issue | Symptoms | Solution |
+|-------|----------|----------|
+| Operations blocked | `isReady()` returns false despite initialization | Check state with `getState()`, verify transition path |
+| Invalid transitions | `invalidTransition` events in logs | Review state transition rules, ensure proper flow |
+| State machine stuck | No progress beyond certain state | Check for missing transition calls in service logic |
+| Duplicate checks | Silent failures after "Processing file:" log | Remove redundant `isReady()` checks in calling code |
+
+#### Debugging Commands
+
+```bash
+# View state transitions in real-time
+LOG_CATEGORIES=MODEL-STATE npm run dev
+
+# Check current state in code
+console.log('Current state:', this.model.getState());
+
+# View state history
+console.log('History:', this.stateMachine.getHistory());
+
+# Test state transitions
+NODE_ENV=test npx vitest --run tests/unit/model-service-state-machine.spec.ts
+```
+
+### Historical Context
+
+- **Original Issue**: `text.trim is not a function` TypeError during PDF processing
+- **Root Cause**: Duplicate `isReady()` checks in WorkerCore.processFileInternal()
+- **Investigation**: Embedding debug logs never appeared, indicating code never reached embedding calls
+- **Solution**: Implemented proper state machine and removed redundant validation
+- **Verification**: All 22 state machine tests pass, embedding operations now proceed correctly
+
+### Future Enhancements
+
+1. **Automatic Recovery**: State machine could trigger automatic retries for certain error conditions
+2. **Progress Reporting**: More granular states for long-running operations like model downloads
+3. **Health Monitoring**: Integration with embedder health checks for state updates
+4. **Metrics Collection**: State duration tracking for performance optimization
 
 ## Benefits Achieved
 
