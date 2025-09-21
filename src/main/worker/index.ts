@@ -905,6 +905,12 @@ async function handleFileOriginal(filePath: string) {
     logger.error('INDEXING', `❌ Error: ${path.basename(filePath)} -`, error.message || error);
     // Track the error in the database
     await updateFileStatus(filePath, 'error', error.message || String(error));
+  } finally {
+    // Clean up the file tracker now that all processing is complete
+    // This ensures the file doesn't show as PARSING after embedding is done
+    if (embeddingQueue) {
+      embeddingQueue.cleanupFileTracker(filePath);
+    }
   }
 }
 

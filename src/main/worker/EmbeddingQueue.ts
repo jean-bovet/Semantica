@@ -242,10 +242,7 @@ export class EmbeddingQueue {
               delete tracker.completionPromise;
             }
 
-            // Clean up tracker after a delay
-            setTimeout(() => {
-              this.fileTrackers.delete(filePath);
-            }, 5000);
+            // Don't delete tracker here - will be cleaned up explicitly when file processing completes
           }
         }
       }
@@ -308,10 +305,7 @@ export class EmbeddingQueue {
                 delete tracker.completionPromise;
               }
 
-              // Clean up tracker after a delay
-              setTimeout(() => {
-                this.fileTrackers.delete(filePath);
-              }, 5000);
+              // Don't delete tracker here - will be cleaned up explicitly when file processing completes
             }
           }
         }
@@ -354,6 +348,14 @@ export class EmbeddingQueue {
     return new Promise((resolve, reject) => {
       tracker.completionPromise = { resolve, reject };
     });
+  }
+
+  /**
+   * Clean up file tracker after processing is complete
+   * This should be called when the file is completely done processing
+   */
+  cleanupFileTracker(filePath: string): void {
+    this.fileTrackers.delete(filePath);
   }
 
   /**
