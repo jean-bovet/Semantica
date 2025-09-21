@@ -75,22 +75,30 @@ The main process follows a strict initialization order to prevent IPC errors:
 **Important**: Never load the window content before registering IPC handlers. The renderer process may attempt to call handlers immediately upon load, causing errors if handlers aren't registered yet.
 
 ### 2. Worker Thread (`src/main/worker/index.ts`)
-- Owns the LanceDB instance
-- Manages file watching and indexing queue
-- Handles search queries
-- Monitors memory usage
-- Spawns and manages embedder child process
-- **Handles model downloads sequentially** (via `modelDownloader.ts`)
+- Entry point for the worker thread
+- Coordinates between core business logic and services
+- Manages lifecycle and initialization
 - Build output: `dist/worker.cjs`
 
-#### Model Download Strategy
-The worker implements sequential model downloads for better UX and reliability:
-- Downloads required files one at a time (config.json → tokenizer.json → model.onnx)
-- Checks for existing/corrupted files before downloading
-- Provides accurate progress tracking per file
-- Handles HTTP redirects (301, 302, 307, 308)
-- Cleans up partial files on failure
-- Total download: ~115MB across 5 files
+#### Core Business Logic (`src/main/core/`)
+Organized by domain:
+- **`indexing/`**: File scanning, status management, directory traversal
+  - `FileScanner.ts`: Manages file processing pipeline
+  - `fileStatusManager.ts`: Tracks file indexing status
+  - `directoryScanner.ts`: Traverses directories for files
+- **`embedding/`**: Embedding generation and queue management
+  - `EmbeddingQueue.ts`: Manages embedding work queue
+  - `ConcurrentQueue.ts`: Handles concurrent processing
+  - `PerformanceProfiler.ts`: Profiles performance metrics
+- **`reindex/`**: Re-indexing and folder management
+  - `reindexManager.ts`: Determines when files need re-indexing
+  - `ReindexOrchestrator.ts`: Coordinates re-indexing operations
+  - `FolderRemovalManager.ts`: Handles folder removal from index
+
+#### Application Services (`src/main/services/`)
+- `ModelService.ts`: Handles model downloads sequentially
+- `PipelineService.ts`: Formats pipeline status for monitoring
+- `ReindexService.ts`: High-level re-indexing operations
 
 ### 3. Embedder Child Process (`src/main/worker/embedder.child.ts`)
 - **Isolated process for memory safety**
@@ -99,14 +107,14 @@ The worker implements sequential model downloads for better UX and reliability:
 - Automatically restarts when memory thresholds exceeded
 - Build output: `dist/embedder.child.cjs`
 
-### 4. Startup Coordinator (`src/main/startup/StartupCoordinator.ts`)
-- Manages staged initialization sequence
-- Monitors progress of each startup stage
-- Implements per-stage timeouts (not cumulative)
-- Sends events to renderer for progress display
+### 4. Startup System (`src/main/startup/`)
+- `StartupCoordinator.ts`: Manages staged initialization
+- `StartupStages.ts`: Defines startup stages and progress
+- `telemetry.ts`: Collects startup metrics
 - Key features:
   - Each stage gets its own timeout window
   - Progress events forwarded to UI
+  - Telemetry for monitoring startup performance
   - Graceful error handling with specific stage failure info
   - Ensures `app:ready` only sent when truly ready
 

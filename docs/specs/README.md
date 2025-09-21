@@ -16,15 +16,19 @@ Welcome to the technical documentation for Semantica, an offline semantic search
 | [06-build-optimization.md](./06-build-optimization.md) | Build system, optimization, two-package architecture | ✅ Current |
 | [07-signing-distribution.md](./07-signing-distribution.md) | Code signing, notarization, distribution | ✅ Current |
 | [08-startup-flow.md](./08-startup-flow.md) | Detailed startup sequence and model download flow | ✅ Current |
-| [09-performance-architecture.md](./09-performance-architecture.md) | Performance optimization and profiling system | ✅ Current |
+| [09-auto-update-deployment.md](./09-auto-update-deployment.md) | Auto-update system and deployment | ✅ Current |
 | [10-release-process.md](./10-release-process.md) | Release management and versioning process | ✅ Current |
-| [11-embedding-queue-retry-mechanism.md](./11-embedding-queue-retry-mechanism.md) | Fault tolerance and retry logic for embedding processing | ✅ Current |
+| [11-performance-architecture.md](./11-performance-architecture.md) | Consolidated performance optimizations and profiling | ✅ Current |
+| [12-folder-structure.md](./12-folder-structure.md) | Code organization and domain-driven structure | ✅ Current |
+| [embedder-architecture.md](./embedder-architecture.md) | Detailed embedder system architecture | ✅ Current |
 
 ### Archived Documentation
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [archive/complete-specification-v2.md](./archive/complete-specification-v2.md) | Original comprehensive spec | 📦 Archived |
+| [archive/performance-architecture-old.md](./archive/performance-architecture-old.md) | Previous performance documentation | 📦 Archived |
+| [archive/transformers-memory-leak-analysis.md](./archive/transformers-memory-leak-analysis.md) | Historical memory leak investigation | 📦 Archived |
 
 ### Related Documentation
 
@@ -81,6 +85,13 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 | Encrypted files | Cannot index | Decrypt first | ❌ Won't fix |
 
 ## 🔄 Recent Updates
+
+### 2025-09-21
+- ✅ Refactored codebase to domain-driven structure
+- ✅ Consolidated performance documentation
+- ✅ Created folder structure documentation
+- ✅ Updated all specs to reflect new code organization
+- ✅ Archived outdated documentation
 
 ### 2025-09-03
 - ✅ Fixed E2E test failures with sequential execution configuration
