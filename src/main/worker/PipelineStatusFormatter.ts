@@ -32,182 +32,295 @@ export interface PipelineData {
   processingFiles: string[];
   fileTrackers: Map<string, FileTracker>;
   maxConcurrent: number;
+  optimalConcurrent: number;
 }
 
 /**
- * Formats pipeline status information for enhanced queue logging visualization
+ * Formats pipeline status information in a table format
  */
 export class PipelineStatusFormatter {
 
   /**
-   * Format complete pipeline status as multi-line output
+   * Format complete pipeline status as a table
    */
   static formatPipelineStatus(data: PipelineData): string {
-    const lines = [
-      '[ELEC] [PIPELINE STATUS] 📊'
-    ];
+    const lines: string[] = [];
 
-    // Add file processing status line
-    lines.push(this.formatFileStatus(data));
+    // Add a newline first to prevent logger indentation
+    lines.push('');
 
-    // Add chunk processing status line
-    lines.push(this.formatChunkStatus(data));
+    // Build the table
+    lines.push(this.formatTableHeader());
+    lines.push(this.formatTableSeparator());
 
-    // Add embedder status line (if embedders exist)
-    if (data.embedderStats.length > 0) {
-      lines.push(this.formatEmbedderStatus(data));
+    // Add rows for each slot - always show optimal number of slots
+    const slotsToShow = data.optimalConcurrent || data.maxConcurrent;
+    for (let i = 0; i < slotsToShow; i++) {
+      lines.push(this.formatSlotRow(i, data));
     }
 
-    // Add processing files line (if any files are being processed)
-    if (data.processingFiles.length > 0) {
-      lines.push(this.formatProcessingFiles(data));
-    }
+    lines.push(this.formatTableFooter());
+    lines.push(this.formatPipelineStats(data));
 
     return lines.join('\n');
   }
 
   /**
-   * Format file pipeline: queued → processing → completed status
+   * Format the table header
    */
-  private static formatFileStatus(data: PipelineData): string {
-    const { fileStats, maxConcurrent } = data;
-
-    let status = `  Files: ${fileStats.queued} queued → ${fileStats.processing}/${maxConcurrent} parsing`;
-
-    if (fileStats.completed > 0) {
-      status += ` → ${fileStats.completed} completed ✅`;
-    }
-
-    if (fileStats.failed > 0) {
-      status += ` ${fileStats.failed} failed ❌`;
-    }
-
-    return status;
+  private static formatTableHeader(): string {
+    return '┌─────────────────────────┬────────────┬────────────┬─────────┬──────────┬─────────────────────────────────────────────┐';
   }
 
   /**
-   * Format chunk/embedding pipeline status
+   * Format the column headers
    */
-  private static formatChunkStatus(data: PipelineData): string {
-    const { embeddingStats } = data;
-
-    let status = `  Chunks: ${embeddingStats.queueDepth} queued`;
-
-    if (embeddingStats.backpressureActive) {
-      status += ' ⚠️';
-    }
-
-    status += ` → ${embeddingStats.processingBatches} batches processing`;
-
-    // Calculate total embedded chunks from all completed files
-    let totalEmbedded = 0;
-    for (const tracker of data.fileTrackers.values()) {
-      totalEmbedded += tracker.processedChunks;
-    }
-
-    if (totalEmbedded > 0) {
-      status += ` → ${totalEmbedded.toLocaleString()} embedded`;
-    }
-
-    return status;
+  private static formatTableSeparator(): string {
+    return '│ File Slot               │ Status     │ Progress   │ Chunks  │ Embedder │ File Path                                   │\n' +
+           '├─────────────────────────┼────────────┼────────────┼─────────┼──────────┼─────────────────────────────────────────────┤';
   }
 
   /**
-   * Format embedder utilization status
+   * Format a single slot row
    */
-  private static formatEmbedderStatus(data: PipelineData): string {
-    const { embedderStats, fileTrackers } = data;
+  private static formatSlotRow(slotIndex: number, data: PipelineData): string {
+    const { processingFiles, fileTrackers, maxConcurrent } = data;
 
-    const embedderParts: string[] = [];
-
-    for (const embedder of embedderStats) {
-      // Find which file this embedder might be working on (heuristic)
-      const workingFile = this.guessEmbedderWorkingFile(embedder, fileTrackers);
-
-      if (workingFile) {
-        const tracker = fileTrackers.get(workingFile);
-        const progress = tracker ? `[${tracker.processedChunks}/${tracker.totalChunks}]` : '';
-        const shortName = this.shortenFileName(workingFile);
-        embedderParts.push(`E${embedder.id}:${shortName}${progress}`);
-      } else {
-        embedderParts.push(`E${embedder.id}:idle`);
-      }
+    // Check if this slot is disabled due to throttling
+    if (slotIndex >= maxConcurrent) {
+      return this.formatDisabledRow(slotIndex);
     }
 
-    // Add memory usage summary
-    const totalMemoryMB = embedderStats.reduce((sum, stat) => sum + Math.round(stat.memoryUsage / (1024 * 1024)), 0);
-    const memoryInfo = `(${totalMemoryMB}MB)`;
-
-    return `  Embedders: ${embedderParts.join(' ')} ${memoryInfo}`;
-  }
-
-  /**
-   * Format currently processing files with chunk progress
-   */
-  private static formatProcessingFiles(data: PipelineData): string {
-    const { processingFiles, fileTrackers } = data;
-
-    const fileParts: string[] = [];
-    const maxFiles = 3; // Limit display to 3 files to keep output manageable
-
-    for (let i = 0; i < Math.min(processingFiles.length, maxFiles); i++) {
-      const filePath = processingFiles[i];
+    // Check if this slot has an active file
+    if (slotIndex < processingFiles.length) {
+      const filePath = processingFiles[slotIndex];
       const tracker = fileTrackers.get(filePath);
-      const shortName = this.shortenFileName(filePath);
 
       if (tracker && tracker.totalChunks > 0) {
-        const progress = `[${tracker.processedChunks}/${tracker.totalChunks}]`;
-        fileParts.push(`${shortName}${progress}`);
+        // File is being embedded
+        return this.formatEmbeddingRow(slotIndex, filePath, tracker, data);
       } else {
-        fileParts.push(`${shortName}[parsing...]`);
+        // File is being parsed
+        return this.formatParsingRow(slotIndex, filePath);
+      }
+    } else {
+      // Slot is idle - show queued info for the first idle slot if there are queued files
+      const remainingQueued = data.fileStats.queued - processingFiles.length;
+      if (slotIndex === processingFiles.length && remainingQueued > 0) {
+        return this.formatQueuedRow(slotIndex, remainingQueued);
+      } else {
+        return this.formatEmptyRow(slotIndex);
       }
     }
-
-    let result = `  Processing: ${fileParts.join(', ')}`;
-
-    if (processingFiles.length > maxFiles) {
-      result += `... (+${processingFiles.length - maxFiles} more)`;
-    }
-
-    return result;
   }
 
   /**
-   * Heuristic to guess which file an embedder might be working on
-   * Based on round-robin pattern and recent activity
+   * Format a row for a file being embedded
    */
-  private static guessEmbedderWorkingFile(_embedder: EmbedderStats, fileTrackers: Map<string, FileTracker>): string | null {
-    // Simple heuristic: return the file with the most recent activity
-    // that has chunks being processed
-    let mostRecentFile: string | null = null;
-    let mostRecentTime = 0;
+  private static formatEmbeddingRow(slotIndex: number, filePath: string, tracker: FileTracker, data: PipelineData): string {
+    const progress = Math.round((tracker.processedChunks / tracker.totalChunks) * 100);
+    const progressBar = this.createProgressBar(progress, 20);
+    // Always show as EMBEDDING - completed files should be removed from processingFiles
+    const status = 'EMBEDDING';
+    const embedder = this.findEmbedderForFile(filePath, data);
+    const fileName = this.formatFileName(filePath, 45);
+    const chunksStr = `${tracker.processedChunks}/${tracker.totalChunks}`;
 
-    for (const [filePath, tracker] of fileTrackers.entries()) {
-      if (tracker.processedChunks < tracker.totalChunks && tracker.processedChunks > 0) {
-        if (tracker.startTime > mostRecentTime) {
-          mostRecentTime = tracker.startTime;
-          mostRecentFile = filePath;
-        }
-      }
-    }
-
-    return mostRecentFile;
+    return `│ [${slotIndex}] ${progressBar}│ ${this.padRight(status, 10)} │ ${this.padLeft(progress + '%', 10)} │ ${this.padRight(chunksStr, 7)} │ ${this.padCenter(embedder, 8)} │ ${this.padRight(fileName, 45)}│`;
   }
 
   /**
-   * Shorten file names for display while keeping them recognizable
+   * Format a row for a file being parsed
    */
-  private static shortenFileName(filePath: string): string {
+  private static formatParsingRow(slotIndex: number, filePath: string): string {
+    const progressBar = this.createProgressBar(0, 20);
+    const fileName = this.formatFileName(filePath, 45);
+
+    return `│ [${slotIndex}] ${progressBar}│ PARSING    │ 0%         │ -       │ -        │ ${this.padRight(fileName, 45)}│`;
+  }
+
+  /**
+   * Format a row showing queued files
+   */
+  private static formatQueuedRow(slotIndex: number, queueCount: number): string {
+    const progressBar = '░░░░░░░░░░░░░░░░░░░░';
+    const queueMsg = `(${queueCount.toLocaleString()} files waiting)`;
+
+    return `│ [${slotIndex}] ${progressBar}│ QUEUED     │ -          │ -       │ -        │ ${this.padRight(queueMsg, 45)}│`;
+  }
+
+  /**
+   * Format an empty row
+   */
+  private static formatEmptyRow(slotIndex: number): string {
+    const progressBar = '░░░░░░░░░░░░░░░░░░░░';
+
+    return `│ [${slotIndex}] ${progressBar}│ QUEUED     │ -          │ -       │ -        │ ${this.padRight('', 45)}│`;
+  }
+
+  /**
+   * Format an empty active row (shouldn't happen)
+   */
+  private static formatEmptyActiveRow(slotIndex: number): string {
+    const progressBar = '░░░░░░░░░░░░░░░░░░░░';
+
+    return `│ [${slotIndex}] ${progressBar}│ ACTIVE     │ -          │ -       │ -        │ ${this.padRight('(processing)', 45)}│`;
+  }
+
+  /**
+   * Format a disabled row (slot unavailable due to throttling)
+   */
+  private static formatDisabledRow(slotIndex: number): string {
+    const progressBar = '××××××××××××××××××××';
+
+    return `│ [${slotIndex}] ${progressBar}│ THROTTLED  │ -          │ -       │ -        │ ${this.padRight('(memory limit)', 45)}│`;
+  }
+
+  /**
+   * Format the table footer
+   */
+  private static formatTableFooter(): string {
+    return '└─────────────────────────┴────────────┴────────────┴─────────┴──────────┴─────────────────────────────────────────────┘';
+  }
+
+  /**
+   * Format the pipeline statistics line
+   */
+  private static formatPipelineStats(data: PipelineData): string {
+    const { fileStats, embeddingStats, embedderStats } = data;
+
+    const parts: string[] = [];
+
+    // Total files
+    parts.push(`Pipeline: ${fileStats.queued.toLocaleString()} total`);
+
+    // Processing status
+    if (fileStats.processing > 0) {
+      parts.push(`${fileStats.processing}/${data.maxConcurrent} active`);
+    }
+
+    // Completed files
+    if (fileStats.completed > 0) {
+      parts.push(`${fileStats.completed} done`);
+    }
+
+    // Failed files
+    if (fileStats.failed > 0) {
+      parts.push(`${fileStats.failed} failed`);
+    }
+
+    // Chunks
+    const totalEmbedded = this.calculateTotalEmbedded(data.fileTrackers);
+    parts.push(`${embeddingStats.queueDepth} chunks queued`);
+    if (totalEmbedded > 0) {
+      parts.push(`${totalEmbedded} embedded`);
+    }
+
+    // Embedders
+    if (embedderStats.length > 0) {
+      const totalMemoryMB = embedderStats.reduce((sum, stat) => sum + Math.round(stat.memoryUsage / (1024 * 1024)), 0);
+      parts.push(`${embedderStats.length} embedders @ ${totalMemoryMB}MB`);
+    }
+
+    // Backpressure
+    if (embeddingStats.backpressureActive) {
+      parts.push('Backpressure: ON');
+    }
+
+    // Memory usage (if we can get it from process)
+    const memUsage = process.memoryUsage();
+    const rssMB = Math.round(memUsage.rss / (1024 * 1024));
+    parts.push(`Memory: ${rssMB}/1500MB`);
+
+    return parts.join(' │ ');
+  }
+
+  /**
+   * Create a visual progress bar
+   */
+  private static createProgressBar(percentage: number, width: number): string {
+    const filled = Math.floor((percentage / 100) * width);
+    const empty = width - filled;
+
+    if (percentage === 100) {
+      return '█'.repeat(width);
+    } else if (percentage === 0) {
+      return '░'.repeat(width);
+    } else {
+      return '█'.repeat(filled) + '░'.repeat(empty);
+    }
+  }
+
+  /**
+   * Find which embedder is processing a file
+   */
+  private static findEmbedderForFile(filePath: string, data: PipelineData): string {
+    // This is a heuristic - in reality we'd need to track which embedder has which file
+    // For now, distribute files round-robin style
+    const processingIndex = data.processingFiles.indexOf(filePath);
+    if (processingIndex >= 0 && data.embedderStats.length > 0) {
+      const embedderIndex = processingIndex % data.embedderStats.length;
+      return `E${embedderIndex}`;
+    }
+    return '-';
+  }
+
+  /**
+   * Format a file name to fit in the column
+   */
+  private static formatFileName(filePath: string, maxWidth: number): string {
     const fileName = path.basename(filePath);
-    const name = path.parse(fileName).name;
 
-    // If name is short enough, return as-is
-    if (name.length <= 12) {
-      return name;
+    if (fileName.length <= maxWidth) {
+      return fileName;
     }
 
-    // For longer names, keep first 8 chars + last 4 chars
-    return `${name.substring(0, 8)}…${name.substring(name.length - 3)}`;
+    // Truncate with ellipsis
+    const extension = path.extname(fileName);
+    const nameWithoutExt = path.basename(fileName, extension);
+    const maxNameLength = maxWidth - extension.length - 3; // 3 for '...'
+
+    if (maxNameLength > 0) {
+      return nameWithoutExt.substring(0, maxNameLength) + '...' + extension;
+    }
+
+    return fileName.substring(0, maxWidth - 3) + '...';
   }
 
+  /**
+   * Calculate total embedded chunks
+   */
+  private static calculateTotalEmbedded(fileTrackers: Map<string, FileTracker>): number {
+    let total = 0;
+    for (const tracker of fileTrackers.values()) {
+      if (tracker.processedChunks === tracker.totalChunks && tracker.totalChunks > 0) {
+        total += tracker.processedChunks;
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Pad string to the right
+   */
+  private static padRight(str: string, width: number): string {
+    return str.padEnd(width, ' ');
+  }
+
+  /**
+   * Pad string to the left
+   */
+  private static padLeft(str: string, width: number): string {
+    return str.padStart(width, ' ');
+  }
+
+  /**
+   * Center string in width
+   */
+  private static padCenter(str: string, width: number): string {
+    const padding = Math.max(0, width - str.length);
+    const leftPad = Math.floor(padding / 2);
+    const rightPad = padding - leftPad;
+    return ' '.repeat(leftPad) + str + ' '.repeat(rightPad);
+  }
 }

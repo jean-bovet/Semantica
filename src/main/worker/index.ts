@@ -97,14 +97,12 @@ setInterval(async () => {
       embedderStats,
       processingFiles,
       fileTrackers,
-      maxConcurrent
+      maxConcurrent,
+      optimalConcurrent: concurrencySettings.optimal
     });
 
-    // Log to worker console (for terminal/logs)
-    // Pipeline status is always visible (doesn't need category check)
-    console.log(pipelineStatus);
-
-    // Send to main process for Electron dev console
+    // Send to main process for logging and Electron dev console
+    // The main process will handle logging with proper category filtering
     parentPort?.postMessage({
       type: 'pipeline:status',
       payload: pipelineStatus
