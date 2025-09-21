@@ -17,6 +17,7 @@ import { ModelService } from './services/model-service';
 import { logger } from '../../shared/utils/logger';
 import { FileScanner } from './fileScanner';
 import { ReindexOrchestrator } from './ReindexOrchestrator';
+import { PipelineStatusFormatter } from './PipelineStatusFormatter';
 import type { FileStatus } from './fileStatusManager';
 import { migrateIndexedFilesToStatus } from './migrateFileStatus';
 
@@ -29,6 +30,7 @@ export class WorkerCore implements IWorkerCore {
   private fileStatusCache: Map<string, FileStatus> = new Map();
   private scanner: FileScanner | null = null;
   private reindexOrchestrator: ReindexOrchestrator | null = null;
+  private statusInterval: NodeJS.Timeout | null = null;
   private status = {
     ready: false,
     modelReady: false,
@@ -66,7 +68,10 @@ export class WorkerCore implements IWorkerCore {
       // Signal ready
       this.status.ready = true;
       this.sendMessage('ready', {});
-      
+
+      // Start pipeline status reporting
+      this.startPipelineStatusReporting();
+
       const elapsed = Date.now() - startTime;
       logger.log('WORKER', `Worker ready in ${elapsed}ms`);
 
@@ -216,13 +221,19 @@ export class WorkerCore implements IWorkerCore {
 
   async shutdown(): Promise<void> {
     logger.log('WORKER', 'Shutting down...');
-    
+
+    // Stop status reporting
+    if (this.statusInterval) {
+      clearInterval(this.statusInterval);
+      this.statusInterval = null;
+    }
+
     // Stop services
     this.queue.clear();
     await this.watcher.stop();
     await this.model.shutdown();
     await this.db.disconnect();
-    
+
     logger.log('WORKER', 'Shutdown complete');
   }
 
@@ -375,6 +386,57 @@ export class WorkerCore implements IWorkerCore {
   private sendProgress(): void {
     const stats = this.queue.getStats();
     this.sendMessage('progress', stats);
+  }
+
+  private startPipelineStatusReporting(): void {
+    // Send pipeline status every 10 seconds when there's activity
+    this.statusInterval = setInterval(() => {
+      const fileStats = this.queue.getStats();
+      const hasActivity = fileStats.queued > 0 || fileStats.processing > 0;
+
+      if (hasActivity) {
+        // Get embedding queue stats (simplified for now)
+        const embeddingStats = {
+          queueDepth: 0,
+          processingBatches: 0,
+          isProcessing: false,
+          trackedFiles: 0,
+          backpressureActive: false
+        };
+
+        // Get embedder stats from model service
+        const embedderStats = this.model.getEmbedderStats();
+
+        // Format pipeline status with correct stats format
+        const pipelineStatus = PipelineStatusFormatter.formatPipelineStatus({
+          fileStats: {
+            queued: fileStats.queued,
+            processing: fileStats.processing,
+            completed: fileStats.done,
+            failed: fileStats.errors
+          },
+          embeddingStats,
+          embedderStats: embedderStats.map((s: any) => ({
+            id: 'embedder-' + Math.random().toString(36).substr(2, 9),
+            filesProcessed: s.filesProcessed,
+            memoryUsage: s.memoryUsage,
+            isHealthy: s.isHealthy,
+            loadCount: 0,
+            restartCount: 0
+          })),
+          processingFiles: [],
+          fileTrackers: new Map(),
+          maxConcurrent: 5
+        });
+
+        // Log to worker console (for terminal/logs)
+        // Pipeline status is always visible (doesn't need category check)
+        console.log(pipelineStatus);
+
+        // Send to main process
+        this.sendMessage('pipeline:status', pipelineStatus);
+      }
+    }, 10000);
   }
 
   // Simplified file processing (would need full implementation)
