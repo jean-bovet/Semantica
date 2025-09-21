@@ -15,6 +15,7 @@ declare global {
 }
 
 function App() {
+  const [appReady, setAppReady] = useState(false);
   const [modelReady, setModelReady] = useState(false);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [checkingModel, setCheckingModel] = useState(true);
@@ -33,12 +34,26 @@ function App() {
     initialized: false
   });
   
+  // Listen for app ready event
   useEffect(() => {
+    const handleAppReady = () => {
+      setAppReady(true);
+    };
+
+    window.api.on('app:ready', handleAppReady);
+
+    return () => {
+      window.api.off('app:ready', handleAppReady);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Only check model after app is ready (worker initialized)
+    if (!appReady) return;
+
     // Check if model exists and download if needed
     const initModel = async () => {
       try {
-        // Small delay to ensure worker is ready
-        await new Promise(resolve => setTimeout(resolve, 500));
         const result = await window.api.model.check();
         
         if (result && result.exists) {
@@ -78,25 +93,27 @@ function App() {
           };
         }
       } catch (_err) {
-        // Retry once
+        // Retry once after a delay
         setTimeout(async () => {
           try {
             const result = await window.api.model.check();
             if (result && result.exists) {
               setModelReady(true);
+              setCheckingModel(false);
             } else {
               setModelError('Failed to initialize. Please restart the app.');
+              setCheckingModel(false);
             }
           } catch (_retryErr) {
             setModelError('Failed to initialize AI model.');
+            setCheckingModel(false);
           }
-          setCheckingModel(false);
-        }, 1000);
+        }, 2000);
       }
     };
-    
+
     initModel();
-  }, []);
+  }, [appReady]); // Only run when appReady changes to true
   
   // Listen for files loaded event
   useEffect(() => {

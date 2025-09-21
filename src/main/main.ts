@@ -149,16 +149,7 @@ async function waitForWorker(timeout = 10000): Promise<void> {
 
 function sendToWorker(type: string, payload: any = {}): Promise<any> {
   return new Promise(async (resolve, reject) => {
-    // For model operations, ensure worker is ready first
-    if ((type === 'checkModel' || type === 'downloadModel') && !workerReady) {
-      try {
-        await waitForWorker();
-      } catch (err) {
-        reject(err);
-        return;
-      }
-    }
-    
+    // Don't wait for worker on model operations - coordinator handles this now
     if (!worker || !workerReady) {
       reject(new Error('Worker not ready'));
       return;

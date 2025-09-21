@@ -211,7 +211,8 @@ declare global {
 
 // Helper function to check if model exists (use new implementation)
 function checkModelExists(userDataPath: string): boolean {
-  return checkModelExistsNew(userDataPath);
+  const modelBasePath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
+  return checkModelExistsNew(modelBasePath);
 }
 
 // Helper function to download model (use new sequential downloader)
@@ -324,7 +325,10 @@ async function initDB(dir: string, _userDataPath: string) {
     }
     
     // Initialize ReindexService with the file status table
-    reindexService = new ReindexService(fileStatusTable, console);
+    reindexService = new ReindexService(fileStatusTable, {
+      log: (msg: string) => logger.log('REINDEX', msg),
+      error: (msg: string, error?: any) => logger.error('REINDEX', msg, error)
+    });
     
     // Migrate existing indexed files to file status table (one-time migration)
     if (fileStatusTable) {
@@ -1469,7 +1473,8 @@ parentPort!.on('message', async (msg: any) => {
           processing: queueStats.processing,
           done: fileHashes.size,
           errors: 0,
-          paused
+          paused,
+          initialized: true // Worker is initialized and ready
         };
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: progress });
