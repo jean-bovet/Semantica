@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { detectEncoding, decodeBuffer } from '../../src/main/utils/encoding-detector';
 import iconv from 'iconv-lite';
+import { logger } from '../../src/shared/utils/logger';
 
 describe('Encoding Detector Utility', () => {
   describe('detectEncoding', () => {
@@ -109,23 +110,24 @@ describe('Encoding Detector Utility', () => {
 
   describe('Logging', () => {
     it('should log filename when provided', () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const loggerSpy = vi.spyOn(logger, 'log');
       const buffer = Buffer.from('test');
-      
+
       detectEncoding(buffer, 'test.txt');
-      
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[ENCODING] File: test.txt'));
-      consoleSpy.mockRestore();
+
+      expect(loggerSpy).toHaveBeenCalledWith('ENCODING', expect.stringContaining('File: test.txt'));
+      loggerSpy.mockRestore();
     });
 
     it('should not log when filename not provided', () => {
-      const consoleSpy = vi.spyOn(console, 'log');
+      const loggerSpy = vi.spyOn(logger, 'log');
       const buffer = Buffer.from('test');
-      
+
       detectEncoding(buffer);
-      
-      expect(consoleSpy).not.toHaveBeenCalled();
-      consoleSpy.mockRestore();
+
+      // Should not log file info when no filename provided
+      expect(loggerSpy).not.toHaveBeenCalledWith('ENCODING', expect.stringContaining('File:'));
+      loggerSpy.mockRestore();
     });
   });
 });

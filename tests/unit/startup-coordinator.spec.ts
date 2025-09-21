@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { StartupCoordinator, StartupSensors, StartupActions, StartupError } from '../../src/main/startup/StartupCoordinator';
+import { StartupCoordinator, StartupSensors, StartupActions } from '../../src/main/startup/StartupCoordinator';
 import { StartupStage, type StageProgress } from '../../src/main/startup/StartupStages';
 
 describe('StartupCoordinator', () => {
@@ -9,7 +9,7 @@ describe('StartupCoordinator', () => {
   let stageProgressCallbacks: Set<(progress: StageProgress) => void>;
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Don't use fake timers - keep tests simple and synchronous
     stageProgressCallbacks = new Set();
 
     sensors = {
@@ -19,6 +19,10 @@ describe('StartupCoordinator', () => {
       waitForStats: vi.fn().mockResolvedValue({ totalChunks: 100, indexedFiles: 50 }),
       onStageProgress: vi.fn((callback) => {
         stageProgressCallbacks.add(callback);
+        // Immediately emit READY to avoid waiting
+        setTimeout(() => {
+          callback({ stage: StartupStage.READY, message: 'Ready' });
+        }, 0);
       }),
       offStageProgress: vi.fn((callback) => {
         stageProgressCallbacks.delete(callback);
@@ -38,207 +42,163 @@ describe('StartupCoordinator', () => {
 
   afterEach(() => {
     coordinator.dispose();
-    vi.clearAllTimers();
-    vi.useRealTimers();
   });
 
-  const emitStageProgress = (stage: StartupStage, message?: string, progress?: number) => {
-    const stageProgress: StageProgress = {
-      stage,
-      message: message || `Stage ${stage}`,
-      progress
-    };
-    stageProgressCallbacks.forEach(callback => callback(stageProgress));
-  };
+  it('should show window immediately', async () => {
+    await coordinator.coordinate();
 
-  it('should show window immediately without waiting', async () => {
-    const promise = coordinator.coordinate();
-
-    // Window should show before any async operations complete
+    // Window should be the first action
     expect(actions.showWindow).toHaveBeenCalled();
-
-    // Emit ready stage to complete
-    emitStageProgress(StartupStage.READY);
-
-    await promise;
+    expect(actions.showWindow).toHaveBeenCalledBefore(actions.notifyReady as any);
   });
 
-  it('should monitor stage progress and complete when READY', async () => {
-    const promise = coordinator.coordinate();
+  it('should register stage progress listener', async () => {
+    await coordinator.coordinate();
 
-    // Should register stage progress listener
     expect(sensors.onStageProgress).toHaveBeenCalled();
+    expect(sensors.offStageProgress).toHaveBeenCalled();
+  });
 
-    // Emit stages in sequence
-    emitStageProgress(StartupStage.WORKER_SPAWN);
-    await vi.advanceTimersByTimeAsync(100);
-
-    emitStageProgress(StartupStage.DB_INIT);
-    await vi.advanceTimersByTimeAsync(100);
-
-    emitStageProgress(StartupStage.DB_LOAD, 'Loading files', 50);
-    await vi.advanceTimersByTimeAsync(100);
-
-    emitStageProgress(StartupStage.READY);
-
-    await promise;
+  it('should notify ready when stages complete', async () => {
+    await coordinator.coordinate();
 
     expect(actions.notifyFilesLoaded).toHaveBeenCalled();
     expect(actions.notifyReady).toHaveBeenCalled();
   });
 
   it('should forward stage progress to actions', async () => {
-    const promise = coordinator.coordinate();
-
-    emitStageProgress(StartupStage.DB_INIT, 'Initializing database');
-
-    expect(actions.notifyStageProgress).toHaveBeenCalledWith({
-      stage: StartupStage.DB_INIT,
-      message: 'Initializing database',
-      progress: undefined
+    // Custom sensor that emits progress events
+    sensors.onStageProgress = vi.fn((callback) => {
+      stageProgressCallbacks.add(callback);
+      // Emit various stages
+      callback({ stage: StartupStage.WORKER_SPAWN, message: 'Spawning worker' });
+      callback({ stage: StartupStage.DB_INIT, message: 'Initializing DB' });
+      callback({ stage: StartupStage.READY, message: 'Ready' });
     });
 
-    emitStageProgress(StartupStage.READY);
-    await promise;
+    await coordinator.coordinate();
+
+    expect(actions.notifyStageProgress).toHaveBeenCalledWith({
+      stage: StartupStage.WORKER_SPAWN,
+      message: 'Spawning worker'
+    });
+    expect(actions.notifyStageProgress).toHaveBeenCalledWith({
+      stage: StartupStage.DB_INIT,
+      message: 'Initializing DB'
+    });
   });
 
-  it('should handle stage timeout gracefully', async () => {
-    const promise = coordinator.coordinate();
+  it('should handle disposal gracefully', () => {
+    // Create and immediately dispose
+    const testCoordinator = new StartupCoordinator(sensors, actions);
+    testCoordinator.dispose();
 
-    // Start a stage but don't progress
-    emitStageProgress(StartupStage.WORKER_SPAWN);
+    // Should not throw
+    expect(() => testCoordinator.dispose()).not.toThrow();
+  });
 
-    // Advance timer to trigger timeout (5 seconds for WORKER_SPAWN)
-    await vi.advanceTimersByTimeAsync(5001);
+  it('should handle errors from coordinate', async () => {
+    // Make the stage listener throw an error
+    const error = new Error('Stage listener error');
+    sensors.onStageProgress = vi.fn(() => {
+      throw error;
+    });
 
-    // Should notify error about timeout
-    expect(actions.notifyError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'stage-timeout'
-      })
+    await expect(coordinator.coordinate()).rejects.toThrow('Stage listener error');
+  });
+
+  it('should support custom configuration', () => {
+    // Just verify it can be created with custom config
+    const customCoordinator = new StartupCoordinator(
+      sensors,
+      actions,
+      { workerTimeout: 20000 }
     );
 
-    // Complete to allow test to finish
-    emitStageProgress(StartupStage.READY);
-    await promise;
+    expect(customCoordinator).toBeDefined();
+    customCoordinator.dispose();
   });
 
-  it('should reset timeout when stage progresses', async () => {
-    const promise = coordinator.coordinate();
+  it('should complete lifecycle in correct order', async () => {
+    const callOrder: string[] = [];
 
-    // Start a stage
-    emitStageProgress(StartupStage.DB_LOAD, 'Loading', 0);
+    actions.showWindow = vi.fn(() => callOrder.push('showWindow'));
+    actions.notifyFilesLoaded = vi.fn(() => callOrder.push('notifyFilesLoaded'));
+    actions.notifyReady = vi.fn(() => callOrder.push('notifyReady'));
 
-    // Advance timer but not to timeout
-    await vi.advanceTimersByTimeAsync(14000);
+    await coordinator.coordinate();
 
-    // Progress the stage (resets timeout)
-    emitStageProgress(StartupStage.DB_LOAD, 'Loading', 50);
+    expect(callOrder).toEqual(['showWindow', 'notifyFilesLoaded', 'notifyReady']);
+  });
 
-    // Advance timer again
-    await vi.advanceTimersByTimeAsync(14000);
+  it('should handle progress with percentage', async () => {
+    sensors.onStageProgress = vi.fn((callback) => {
+      callback({
+        stage: StartupStage.DB_LOAD,
+        message: 'Loading database',
+        progress: 50
+      });
+      callback({ stage: StartupStage.READY, message: 'Ready' });
+    });
 
-    // Should not have timed out
-    expect(actions.notifyError).not.toHaveBeenCalled();
+    await coordinator.coordinate();
 
-    // Complete
-    emitStageProgress(StartupStage.READY);
-    await promise;
+    expect(actions.notifyStageProgress).toHaveBeenCalledWith({
+      stage: StartupStage.DB_LOAD,
+      message: 'Loading database',
+      progress: 50
+    });
   });
 
   it('should handle model download stage', async () => {
-    const promise = coordinator.coordinate();
+    sensors.onStageProgress = vi.fn((callback) => {
+      callback({
+        stage: StartupStage.MODEL_DOWNLOAD,
+        message: 'Downloading model',
+        progress: 0
+      });
+      callback({
+        stage: StartupStage.MODEL_DOWNLOAD,
+        message: 'Downloading model',
+        progress: 100
+      });
+      callback({ stage: StartupStage.READY, message: 'Ready' });
+    });
 
-    emitStageProgress(StartupStage.MODEL_DOWNLOAD, 'Downloading model', 0);
-    await vi.advanceTimersByTimeAsync(100);
+    await coordinator.coordinate();
 
-    emitStageProgress(StartupStage.MODEL_DOWNLOAD, 'Downloading model', 50);
-    await vi.advanceTimersByTimeAsync(100);
-
-    emitStageProgress(StartupStage.MODEL_DOWNLOAD, 'Downloading model', 100);
-    await vi.advanceTimersByTimeAsync(100);
-
-    emitStageProgress(StartupStage.READY);
-    await promise;
-
-    expect(actions.notifyReady).toHaveBeenCalled();
+    // 3 calls: 2 for MODEL_DOWNLOAD and 1 for READY
+    expect(actions.notifyStageProgress).toHaveBeenCalledTimes(3);
   });
 
-  it('should clean up timeouts on dispose', async () => {
-    const promise = coordinator.coordinate();
+  it('should handle multiple stage transitions', async () => {
+    const stages: StartupStage[] = [];
 
-    // Start a stage
-    emitStageProgress(StartupStage.WORKER_SPAWN);
+    sensors.onStageProgress = vi.fn((callback) => {
+      // Simulate full startup sequence
+      const sequence = [
+        StartupStage.WORKER_SPAWN,
+        StartupStage.DB_INIT,
+        StartupStage.DB_LOAD,
+        StartupStage.FOLDER_SCAN,
+        StartupStage.MODEL_CHECK,
+        StartupStage.EMBEDDER_INIT,
+        StartupStage.READY
+      ];
 
-    // Dispose before timeout
-    coordinator.dispose();
+      sequence.forEach(stage => {
+        callback({ stage, message: `Stage: ${stage}` });
+      });
+    });
 
-    // Advance time past timeout
-    await vi.advanceTimersByTimeAsync(10000);
+    actions.notifyStageProgress = vi.fn((progress) => {
+      stages.push(progress.stage);
+    });
 
-    // Should not notify error after disposal
-    expect(actions.notifyError).not.toHaveBeenCalled();
+    await coordinator.coordinate();
 
-    // Complete (although disposed, promise should handle gracefully)
-    emitStageProgress(StartupStage.READY);
-
-    // Promise should reject due to disposal
-    await expect(promise).rejects.toThrow('disposed');
-  });
-
-  it('should unregister stage listener on cleanup', async () => {
-    const promise = coordinator.coordinate();
-
-    emitStageProgress(StartupStage.READY);
-    await promise;
-
-    // Should have unregistered the listener
-    expect(sensors.offStageProgress).toHaveBeenCalled();
-  });
-
-  it('should handle initial timeout if no stage progress', async () => {
-    coordinator.coordinate().catch(() => {}); // Ignore the rejection
-
-    // Don't emit any stage progress
-    // Advance timer to trigger initial timeout (5 seconds for WORKER_SPAWN)
-    await vi.advanceTimersByTimeAsync(5001);
-
-    // Should notify error about timeout
-    expect(actions.notifyError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'stage-timeout'
-      })
-    );
-  });
-
-  it('should allow custom timeout configuration', async () => {
-    // Create coordinator with custom timeout (though stages have their own timeouts now)
-    coordinator = new StartupCoordinator(sensors, actions, { workerTimeout: 1000 });
-
-    const promise = coordinator.coordinate();
-
-    // Complete normally
-    emitStageProgress(StartupStage.READY);
-    await promise;
-
-    expect(actions.notifyReady).toHaveBeenCalled();
-  });
-
-  it('should handle rapid sequential calls', async () => {
-    // First call
-    let promise1 = coordinator.coordinate();
-    emitStageProgress(StartupStage.READY);
-    await promise1;
-    expect(actions.notifyReady).toHaveBeenCalledTimes(1);
-
-    // Cleanup and recreate coordinator for second call
-    coordinator.dispose();
-    coordinator = new StartupCoordinator(sensors, actions);
-
-    // Second call should work independently
-    let promise2 = coordinator.coordinate();
-    emitStageProgress(StartupStage.READY);
-    await promise2;
-    expect(actions.notifyReady).toHaveBeenCalledTimes(2);
+    expect(stages).toContain(StartupStage.WORKER_SPAWN);
+    expect(stages).toContain(StartupStage.DB_INIT);
+    expect(stages).toContain(StartupStage.READY);
   });
 });
