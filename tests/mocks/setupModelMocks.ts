@@ -1,5 +1,5 @@
 const { MockAgent, setGlobalDispatcher } = require('undici');
-import { logger } from '../../../shared/utils/logger';
+import { logger } from '../../src/shared/utils/logger';
 
 /**
  * Setup mock responses for model downloads
