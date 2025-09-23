@@ -239,12 +239,15 @@ export class PipelineStatusFormatter {
    * Create a visual progress bar
    */
   private static createProgressBar(percentage: number, width: number): string {
-    const filled = Math.floor((percentage / 100) * width);
-    const empty = width - filled;
+    // Ensure percentage is within valid bounds
+    const safePercentage = Math.max(0, Math.min(100, percentage || 0));
 
-    if (percentage === 100) {
+    const filled = Math.floor((safePercentage / 100) * width);
+    const empty = Math.max(0, width - filled); // Ensure non-negative
+
+    if (safePercentage >= 100) {
       return '█'.repeat(width);
-    } else if (percentage === 0) {
+    } else if (safePercentage <= 0) {
       return '░'.repeat(width);
     } else {
       return '█'.repeat(filled) + '░'.repeat(empty);

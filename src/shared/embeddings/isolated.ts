@@ -479,9 +479,9 @@ export class IsolatedEmbedder implements IEmbedder {
       state: this.stateMachine.getState(),
       timeInCurrentState: this.stateMachine.getTimeInCurrentState(),
       memoryUsage: {
-        rss: Math.round(memoryUsage.rss / 1024 / 1024),
-        heapUsed: Math.round((memoryUsage as any).heapUsed / 1024 / 1024),
-        external: Math.round((memoryUsage as any).external / 1024 / 1024)
+        rss: memoryUsage.rss, // Keep in bytes for consistency
+        heapUsed: (memoryUsage as any).heapUsed,
+        external: (memoryUsage as any).external
       },
       stateHistory: stateMachineStats
     };

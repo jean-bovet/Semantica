@@ -465,4 +465,55 @@ describe('EmbedderPool', () => {
       });
     }, 15000);
   });
+
+  describe('Memory Reporting', () => {
+    it('should report memory usage in bytes', async () => {
+      const pool = new EmbedderPool({
+        poolSize: 2,
+        maxFilesBeforeRestart: 100
+      });
+
+      await pool.initialize();
+
+      const stats = pool.getStats();
+
+      expect(stats).toHaveLength(2);
+      stats.forEach(stat => {
+        expect(stat).toHaveProperty('memoryUsage');
+        // Memory should be in bytes (a reasonable range for a process)
+        // Even a minimal Node process uses at least a few MB
+        expect(stat.memoryUsage).toBeGreaterThan(1024 * 1024); // > 1MB
+        expect(stat.memoryUsage).toBeLessThan(10 * 1024 * 1024 * 1024); // < 10GB (sanity check)
+      });
+
+      await pool.shutdown();
+    });
+
+    it('should handle undefined memory gracefully', async () => {
+      const pool = new EmbedderPool({
+        poolSize: 1,
+        maxFilesBeforeRestart: 100
+      });
+
+      // Mock IsolatedEmbedder to return undefined memory
+      const originalGetStats = IsolatedEmbedder.prototype.getStats;
+      IsolatedEmbedder.prototype.getStats = vi.fn().mockReturnValue({
+        filesSinceSpawn: 0,
+        isReady: true,
+        state: 'ready',
+        memoryUsage: undefined
+      });
+
+      await pool.initialize();
+
+      const stats = pool.getStats();
+
+      expect(stats).toHaveLength(1);
+      expect(stats[0].memoryUsage).toBe(0); // Should default to 0
+
+      // Restore original method
+      IsolatedEmbedder.prototype.getStats = originalGetStats;
+      await pool.shutdown();
+    });
+  });
 });

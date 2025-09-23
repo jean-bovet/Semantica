@@ -292,7 +292,7 @@ export class EmbedderPool {
       stats.push({
         id,
         filesProcessed: embedderStat.filesSinceSpawn,
-        memoryUsage: embedderStat.memoryUsage?.rss || 0,
+        memoryUsage: embedderStat.memoryUsage?.rss || 0, // Already in bytes from isolated embedder
         isHealthy: healthStat?.isHealthy || false,
         loadCount: loadStat?.loadCount || 0,
         restartCount: healthStat?.restartCount || 0

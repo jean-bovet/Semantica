@@ -16,6 +16,7 @@ import { setupProfiling, profileHandleFile, recordEvent, profiler } from './prof
 import { PipelineStatusFormatter } from '../services/PipelineService';
 import { logger } from '../../shared/utils/logger';
 import { StartupStage, type StageProgress } from '../startup/StartupStages';
+import { shouldRestartEmbedder, bytesToMB } from '../utils/embedder-health';
 
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
@@ -114,14 +115,10 @@ setInterval(async () => {
     try {
       const stats = embedderPool.getStats();
       for (const stat of stats) {
-        // Proactive restart if processed too many files or using too much memory
-        // Only restart if we've actually processed some files (avoid restart loop at startup)
-        const shouldRestart = stat.filesProcessed > 0 && (
-                            stat.filesProcessed > 200 ||
-                            stat.memoryUsage > 1500); // Now in MB
-
-        if (shouldRestart) {
-          logger.log('MEMORY', `Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${Math.round(stat.memoryUsage)}MB)`);
+        // Use the extracted function for consistency with tests
+        if (shouldRestartEmbedder(stat.filesProcessed, stat.memoryUsage)) {
+          const memoryMB = bytesToMB(stat.memoryUsage);
+          logger.log('MEMORY', `Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${memoryMB}MB)`);
           await embedderPool.restartEmbedder(stat.id);
           recordEvent('embedderRestart'); // Track for profiling
         }
