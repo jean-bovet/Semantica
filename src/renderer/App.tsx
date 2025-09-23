@@ -15,7 +15,9 @@ declare global {
 }
 
 function App() {
-  const [appReady, setAppReady] = useState(false);
+  const [appReady, setAppReady] = useState(() =>
+    sessionStorage.getItem('appReady') === 'true'
+  );
   const [modelReady, setModelReady] = useState(false);
   const [_filesLoaded, setFilesLoaded] = useState(false);
   const [checkingModel, setCheckingModel] = useState(true);
@@ -38,6 +40,7 @@ function App() {
   useEffect(() => {
     const handleAppReady = () => {
       setAppReady(true);
+      sessionStorage.setItem('appReady', 'true');
     };
 
     window.api.on('app:ready', handleAppReady);
