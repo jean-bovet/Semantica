@@ -1,5 +1,7 @@
 import React from 'react';
 import './SettingsSidebar.css';
+import { FolderOpen, FileText, Search, RefreshCw, Info } from 'lucide-react';
+import Icon from '../Icon';
 
 export type SettingsSection = 'folders' | 'filetypes' | 'indexing' | 'updates' | 'about';
 
@@ -11,15 +13,15 @@ interface SettingsSidebarProps {
 interface SidebarItem {
   id: SettingsSection;
   label: string;
-  icon: string;
+  icon: React.ComponentType<any>;
 }
 
 const sidebarItems: SidebarItem[] = [
-  { id: 'folders', label: 'Folders', icon: '📁' },
-  { id: 'filetypes', label: 'File Types', icon: '📄' },
-  { id: 'indexing', label: 'Indexing', icon: '🔍' },
-  { id: 'updates', label: 'Updates', icon: '🔄' },
-  { id: 'about', label: 'About', icon: 'ℹ️' }
+  { id: 'folders', label: 'Folders', icon: FolderOpen },
+  { id: 'filetypes', label: 'File Types', icon: FileText },
+  { id: 'indexing', label: 'Indexing', icon: Search },
+  { id: 'updates', label: 'Updates', icon: RefreshCw },
+  { id: 'about', label: 'About', icon: Info }
 ];
 
 function SettingsSidebar({ activeSection, onSectionChange }: SettingsSidebarProps) {
@@ -32,7 +34,7 @@ function SettingsSidebar({ activeSection, onSectionChange }: SettingsSidebarProp
             className={`sidebar-item ${activeSection === item.id ? 'active' : ''}`}
             onClick={() => onSectionChange(item.id)}
           >
-            <span className="sidebar-icon">{item.icon}</span>
+            <span className="sidebar-icon"><Icon icon={item.icon} size={18} /></span>
             <span className="sidebar-label">{item.label}</span>
           </button>
         ))}

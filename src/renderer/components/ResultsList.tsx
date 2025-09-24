@@ -1,4 +1,6 @@
 import React from 'react';
+import { Check } from 'lucide-react';
+import Icon from './Icon';
 import './ResultsList.css';
 
 interface Result {
@@ -58,7 +60,7 @@ function ResultsList({
           >
             <div className="result-info">
               <span className="result-name">{fileResults[0].title || fileName}</span>
-              {isSelected && <span className="result-check">✓</span>}
+              {isSelected && <span className="result-check"><Icon icon={Check} size={14} /></span>}
               <span className="result-score">{(bestScore * 100).toFixed(0)}%</span>
             </div>
             

@@ -73,6 +73,7 @@
         "csv-parse": "^6.1.0",
         "electron-updater": "^6.6.2",
         "iconv-lite": "^0.7.0",
+        "lucide-react": "^0.544.0",
         "mammoth": "^1.10.0",
         "onnxruntime-node": "^1.22.0-rev",
         "pdf-parse": "^1.1.1",

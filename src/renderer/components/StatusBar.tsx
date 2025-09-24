@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getStatusText, isIndexerActive } from '../utils/statusHelpers';
+import { Folder } from 'lucide-react';
+import Icon from './Icon';
 import './StatusBar.css';
 
 interface StatusBarProps {
@@ -51,7 +53,7 @@ function StatusBar({ progress, onSettingsClick, onFileSearchClick }: StatusBarPr
     <div className={`status-bar ${isActive ? 'active' : ''}`} data-testid="status-bar">
       <div className="status-content">
         <div className="status-left">
-          <span className="status-stat">📁 {folderCount} folder{folderCount !== 1 ? 's' : ''}</span>
+          <span className="status-stat"><Icon icon={Folder} size={16} /> {folderCount} folder{folderCount !== 1 ? 's' : ''}</span>
           <span className="status-separator">|</span>
           <span className="status-stat">{stats.indexedFiles.toLocaleString()} files indexed</span>
           <span className="status-separator">|</span>

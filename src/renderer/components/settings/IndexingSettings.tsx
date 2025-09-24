@@ -1,4 +1,6 @@
 import React from 'react';
+import { Play, Pause, RefreshCw } from 'lucide-react';
+import Icon from '../Icon';
 
 interface IndexingSettingsProps {
   stats: {
@@ -75,14 +77,14 @@ function IndexingSettings({
           onClick={onPauseResume} 
           className={`secondary-button ${progress?.paused ? 'paused' : ''}`}
         >
-          {progress?.paused ? '▶️ Resume Indexing' : '⏸ Pause Indexing'}
+          {progress?.paused ? <><Icon icon={Play} size={16} /> Resume Indexing</> : <><Icon icon={Pause} size={16} /> Pause Indexing</>}
         </button>
         <button 
           onClick={onReindex} 
           className="secondary-button danger" 
           disabled={reindexing}
         >
-          {reindexing ? 'Re-indexing...' : '🔄 Re-index All Documents'}
+          {reindexing ? 'Re-indexing...' : <><Icon icon={RefreshCw} size={16} /> Re-index All Documents</>}
         </button>
       </div>
       

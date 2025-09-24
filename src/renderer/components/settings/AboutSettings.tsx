@@ -1,4 +1,6 @@
 import React from 'react';
+import { Lock } from 'lucide-react';
+import Icon from '../Icon';
 
 interface AboutSettingsProps {
   appVersion: string;
@@ -17,7 +19,7 @@ function AboutSettings({ appVersion }: AboutSettingsProps) {
       <div className="about-section">
         <h4>Privacy First</h4>
         <p>
-          🔒 All processing happens locally on your Mac. Your documents never leave your computer, 
+          <><Icon icon={Lock} size={16} /> All processing happens locally on your Mac. Your documents never leave your computer,</> 
           ensuring complete privacy and security of your data.
         </p>
       </div>

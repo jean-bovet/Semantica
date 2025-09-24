@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Check, X, AlertTriangle, Clock, Minus, HelpCircle } from 'lucide-react';
+import Icon from './Icon';
 import './FileSearchModal.css';
 
 interface FileSearchResult {
@@ -75,17 +77,17 @@ function FileSearchModal({ isOpen, onClose }: FileSearchModalProps) {
   const getStatusIcon = (status: FileSearchResult['status']) => {
     switch (status) {
       case 'indexed':
-        return '✓';
+        return <Icon icon={Check} size={16} />;
       case 'queued':
-        return '⏳';
+        return <Icon icon={Clock} size={16} />;
       case 'error':
-        return '✗';
+        return <Icon icon={X} size={16} />;
       case 'failed':
-        return '⚠';
+        return <Icon icon={AlertTriangle} size={16} />;
       case 'not_indexed':
-        return '—';
+        return <Icon icon={Minus} size={16} />;
       default:
-        return '?';
+        return <Icon icon={HelpCircle} size={16} />;
     }
   };
   

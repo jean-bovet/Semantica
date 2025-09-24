@@ -26,6 +26,9 @@
 .status-stat {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .status-separator {

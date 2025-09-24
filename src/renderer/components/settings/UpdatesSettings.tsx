@@ -1,4 +1,6 @@
 import React from 'react';
+import { RefreshCw } from 'lucide-react';
+import Icon from '../Icon';
 
 interface UpdatesSettingsProps {
   appVersion: string;
@@ -31,7 +33,7 @@ function UpdatesSettings({ appVersion, checkingUpdate, onCheckForUpdates }: Upda
           className="primary-button" 
           disabled={checkingUpdate}
         >
-          {checkingUpdate ? 'Checking...' : '🔄 Check for Updates'}
+          {checkingUpdate ? 'Checking...' : <><Icon icon={RefreshCw} size={16} /> Check for Updates</>}
         </button>
       </div>
       
