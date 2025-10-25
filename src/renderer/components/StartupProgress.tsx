@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import {
+  STARTUP_STEPS,
+  getStepStatus,
+  getStageMessage,
+  type StartupStage,
+  type StepStatus
+} from '../utils/StepperLogic';
 
-interface ModelDownloadProps {
+interface StartupProgressProps {
   onComplete: () => void;
 }
-
-type StartupStage = 'checking' | 'downloading' | 'initializing' | 'ready' | 'error';
 
 interface StartupStageMessage {
   stage: StartupStage;
@@ -17,7 +22,7 @@ interface StartupErrorMessage {
   message: string;
 }
 
-const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
+const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   const [stage, setStage] = useState<StartupStage>('checking');
   const [stageMessage, setStageMessage] = useState('Initializing...');
   const [progress, setProgress] = useState(0);
@@ -98,7 +103,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
     setStage('checking');
     setStageMessage('Retrying...');
     try {
-      await window.api.invoke('startup:retry');
+      await window.api.startup.retry();
     } catch (err) {
       console.error('Retry failed:', err);
     }
@@ -150,76 +155,81 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
     );
   }
 
-  // Checking/Initializing state
-  if (stage === 'checking' || stage === 'initializing') {
-    return (
-      <div className="fixed inset-0 bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4">
-            <div className="w-full h-full border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin"></div>
+  // Render step icon based on status
+  const renderStepIcon = (status: StepStatus) => {
+    switch (status) {
+      case 'completed':
+        return (
+          <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+            <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-          <p className="text-gray-400 text-sm">{stageMessage || 'Loading...'}</p>
-        </div>
-      </div>
-    );
-  }
+        );
+      case 'active':
+        return (
+          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
+            <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+        );
+      case 'pending':
+      default:
+        return (
+          <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+            <div className="w-3 h-3 rounded-full bg-gray-600"></div>
+          </div>
+        );
+    }
+  };
 
-  // Downloading state
-  if (stage === 'downloading') {
+  // Normal loading state (not error)
+  if (stage !== 'error') {
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
-        <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl p-10 max-w-lg w-full mx-4 shadow-2xl border border-gray-700">
-          <div className="flex items-center mb-6">
-            <div className="bg-blue-500/20 p-3 rounded-full mr-4">
-              <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-white">
-                Downloading Embedding Model
-              </h2>
-              <p className="text-gray-400 text-sm">
-                bge-m3 multilingual model
-              </p>
-            </div>
-          </div>
-
-          {currentFile && (
-            <div className="bg-gray-900/50 rounded-lg px-4 py-2 mb-4">
-              <p className="text-blue-400 text-sm font-mono">
-                {getFileName(currentFile)}
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-2 mb-6">
-            <div className="relative">
-              <div className="overflow-hidden h-4 bg-gray-700/50 rounded-full">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out shadow-lg shadow-blue-500/20"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-between text-sm">
-              <span className="text-white font-medium">{Math.round(progress)}%</span>
-              {bytesTotal > 0 && (
-                <span className="text-gray-400">
-                  {formatBytes(bytesLoaded)} / {formatBytes(bytesTotal)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-            <p className="text-blue-300 text-sm text-center">
-              <svg className="w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              This is a one-time download (~2GB)
+        <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl p-10 max-w-md w-full mx-4 shadow-2xl border border-gray-700">
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold text-white mb-2">
+              Initializing Semantica
+            </h2>
+            <p className="text-gray-400 text-sm">
+              {getStageMessage(stage, stageMessage)}
             </p>
+          </div>
+
+          <div className="space-y-4">
+            {STARTUP_STEPS.map((step, index) => {
+              const status = getStepStatus(stage, index, false);
+              const isLast = index === STARTUP_STEPS.length - 1;
+
+              return (
+                <div key={step.id} className="relative">
+                  <div className="flex items-center">
+                    {renderStepIcon(status)}
+                    <div className="ml-4 flex-1">
+                      <p className={`text-sm font-medium ${
+                        status === 'active' ? 'text-white' :
+                        status === 'completed' ? 'text-green-400' :
+                        status === 'error' ? 'text-red-400' :
+                        'text-gray-500'
+                      }`}>
+                        {step.label}
+                      </p>
+                    </div>
+                  </div>
+                  {!isLast && (
+                    <div className="ml-4 mt-2 mb-2 w-0.5 h-6 bg-gray-700"></div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -229,4 +239,4 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
   return null;
 };
 
-export default ModelDownload;
+export default StartupProgress;

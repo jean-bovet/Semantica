@@ -4,6 +4,7 @@ import SettingsView from './components/SettingsView';
 import StatusBar from './components/StatusBar';
 import Modal from './components/Modal';
 import FileSearchModal from './components/FileSearchModal';
+import StartupProgress from './components/StartupProgress';
 import { SearchProvider } from './contexts/SearchContext';
 import { normalizeProgress } from './utils/statusHelpers';
 import './App.css';
@@ -114,35 +115,9 @@ function App() {
           onClose={() => setShowFileSearch(false)}
         />
         
-        {/* Simple loading overlay */}
+        {/* Startup progress overlay */}
         {!appReady && (
-          <div data-testid="loading-indicator" style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999
-          }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                width: 40,
-                height: 40,
-                border: '3px solid #444',
-                borderTopColor: '#3B82F6',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-                margin: '0 auto 16px'
-              }} />
-              <p style={{ color: '#9CA3AF', fontSize: 14 }}>
-                Initializing...
-              </p>
-            </div>
-          </div>
+          <StartupProgress onComplete={() => setAppReady(true)} />
         )}
       </div>
     </SearchProvider>
