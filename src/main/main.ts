@@ -5,7 +5,13 @@ import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import { logger } from '../shared/utils/logger';
-import type { StartupStageMessage, StartupErrorMessage, DownloadProgressMessage } from '../ipc/startup-protocol';
+import {
+  isStartupStageMessage,
+  isStartupErrorMessage,
+  type StartupStageMessage,
+  type StartupErrorMessage,
+  type DownloadProgressMessage
+} from '../shared/types/startup';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -68,16 +74,15 @@ function spawnWorker() {
   worker = new Worker(path.join(__dirname, 'worker.cjs'));
 
   worker.on('message', (msg: any) => {
-    // Handle typed startup protocol messages
-    if (msg.channel === 'startup:stage') {
-      const stageMsg = msg as StartupStageMessage;
-      logger.log('STARTUP', `Stage: ${stageMsg.stage} - ${stageMsg.message || ''}`);
+    // Handle typed startup protocol messages with validation
+    if (isStartupStageMessage(msg)) {
+      logger.log('STARTUP', `Stage: ${msg.stage} - ${msg.message || ''}`);
 
       // Forward to renderer
-      win?.webContents.send('startup:stage', stageMsg);
+      win?.webContents.send('startup:stage', msg);
 
       // Clear timeout if we reach 'ready' stage
-      if (stageMsg.stage === 'ready') {
+      if (msg.stage === 'ready') {
         if (startupTimeout) {
           clearTimeout(startupTimeout);
           startupTimeout = null;
@@ -85,12 +90,11 @@ function spawnWorker() {
         startupRetries = 0; // Reset retry counter on success
         win?.webContents.send('app:ready');
       }
-    } else if (msg.channel === 'startup:error') {
-      const errorMsg = msg as StartupErrorMessage;
-      logger.error('STARTUP', `Error: ${errorMsg.code} - ${errorMsg.message}`);
+    } else if (isStartupErrorMessage(msg)) {
+      logger.error('STARTUP', `Error: ${msg.code} - ${msg.message}`);
 
       // Forward to renderer
-      win?.webContents.send('startup:error', errorMsg);
+      win?.webContents.send('startup:error', msg);
 
       // Clear timeout
       if (startupTimeout) {

@@ -5,17 +5,13 @@
  * startup progress indicator. All functions are side-effect free and easily testable.
  */
 
-export type StartupStage =
-  | 'worker_spawn'
-  | 'db_init'
-  | 'db_load'
-  | 'folder_scan'
-  | 'checking'
-  | 'downloading'
-  | 'initializing'
-  | 'ready'
-  | 'error';
+import {
+  type StartupStage,
+  STARTUP_STAGE_ORDER,
+  getStageIndex as getSharedStageIndex
+} from '../../shared/types/startup';
 
+export type { StartupStage };
 export type StepStatus = 'completed' | 'active' | 'pending' | 'error';
 
 export interface StepDefinition {
@@ -40,10 +36,10 @@ export const STARTUP_STEPS: StepDefinition[] = [
 
 /**
  * Get the index of a stage in the startup sequence
+ * Uses shared implementation for consistency
  */
 export function getStageIndex(stage: StartupStage): number {
-  if (stage === 'error') return -1;
-  return STARTUP_STEPS.findIndex(step => step.stage === stage);
+  return getSharedStageIndex(stage);
 }
 
 /**

@@ -16,12 +16,13 @@ import { OllamaService } from './OllamaService';
 import { OllamaClient } from './OllamaClient';
 import { OllamaEmbedder } from '../../shared/embeddings/implementations/OllamaEmbedder';
 import { logger } from '../../shared/utils/logger';
-import type {
-  StartupStageMessage,
-  StartupErrorMessage,
-  ErrorCode,
-  DownloadProgressMessage,
-} from '../../ipc/startup-protocol';
+import {
+  type StartupStage,
+  type StartupErrorCode,
+  createStageMessage,
+  createErrorMessage,
+  createDownloadProgressMessage,
+} from '../../shared/types/startup';
 
 // Helper to log with category
 const log = (message: string, ...args: any[]) => logger.log('WORKER-STARTUP', message, ...args);
@@ -158,16 +159,10 @@ export class WorkerStartup {
   /**
    * Emit stage change event to main process
    */
-  private emitStage(stage: string, message: string, progress?: number) {
+  private emitStage(stage: StartupStage, message: string, progress?: number) {
     if (!parentPort) return;
 
-    const stageMessage: StartupStageMessage = {
-      channel: 'startup:stage',
-      stage: stage as any,
-      message,
-      progress,
-    };
-
+    const stageMessage = createStageMessage(stage, message, progress);
     parentPort.postMessage(stageMessage);
     this.logToBuffer('STARTUP-STAGE', `${stage}: ${message}`);
   }
@@ -183,13 +178,12 @@ export class WorkerStartup {
   }) {
     if (!parentPort) return;
 
-    const progressMessage: DownloadProgressMessage = {
-      channel: 'model:download:progress',
-      file: progress.file,
-      progress: progress.progress,
-      loaded: progress.loaded,
-      total: progress.total,
-    };
+    const progressMessage = createDownloadProgressMessage(
+      progress.file,
+      progress.progress,
+      progress.loaded,
+      progress.total
+    );
 
     parentPort.postMessage(progressMessage);
   }
@@ -197,16 +191,10 @@ export class WorkerStartup {
   /**
    * Emit error event to main process
    */
-  private emitError(code: ErrorCode, message: string, details?: any) {
+  private emitError(code: StartupErrorCode, message: string, details?: unknown) {
     if (!parentPort) return;
 
-    const errorMessage: StartupErrorMessage = {
-      channel: 'startup:error',
-      code,
-      message,
-      details,
-    };
-
+    const errorMessage = createErrorMessage(code, message, details);
     parentPort.postMessage(errorMessage);
     this.logToBuffer('STARTUP-ERROR', `${code}: ${message}`);
   }

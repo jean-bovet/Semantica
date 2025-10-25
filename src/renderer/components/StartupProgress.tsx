@@ -6,21 +6,11 @@ import {
   type StartupStage,
   type StepStatus
 } from '../utils/StepperLogic';
+import type { StartupStageMessage, StartupErrorMessage } from '../../shared/types/startup';
 import './StartupProgress.css';
 
 interface StartupProgressProps {
   onComplete: () => void;
-}
-
-interface StartupStageMessage {
-  stage: StartupStage;
-  message?: string;
-  progress?: number;
-}
-
-interface StartupErrorMessage {
-  code: string;
-  message: string;
 }
 
 const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {

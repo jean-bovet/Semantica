@@ -15,7 +15,10 @@ import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurr
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
 import { PipelineStatusFormatter } from '../services/PipelineService';
 import { logger } from '../../shared/utils/logger';
-import { StartupStage, type StageProgress } from '../startup/StartupStages';
+import {
+  type StartupStage,
+  createStageMessage
+} from '../../shared/types/startup';
 import { shouldRestartEmbedder, bytesToMB } from '../utils/embedder-health';
 
 // Load mock setup if in test mode with mocks enabled
@@ -35,13 +38,8 @@ const folderRemovalManager = new FolderRemovalManager();
 
 // Helper to emit startup stage progress
 function emitStageProgress(stage: StartupStage, message?: string, progress?: number) {
-  // Use the same format as WorkerStartup.ts for consistency
-  const stageMessage = {
-    channel: 'startup:stage',
-    stage,
-    message,
-    progress
-  };
+  // Use type-safe message builder for consistency
+  const stageMessage = createStageMessage(stage, message, progress);
   parentPort?.postMessage(stageMessage);
   logger.log('STARTUP', `Stage: ${stage}${message ? ` - ${message}` : ''}${progress !== undefined ? ` (${progress}%)` : ''}`);
 }
@@ -197,11 +195,11 @@ declare global {
 
 async function initDB(dir: string, _userDataPath: string) {
   try {
-    emitStageProgress(StartupStage.DB_INIT, 'Initializing config manager');
+    emitStageProgress('db_init', 'Initializing config manager');
     // Initialize config manager
     configManager = new ConfigManager(dir);
 
-    emitStageProgress(StartupStage.DB_INIT, 'Connecting to database');
+    emitStageProgress('db_init', 'Connecting to database');
     db = await lancedb.connect(dir);
     
     tbl = await db.openTable('chunks').catch(async () => {
@@ -234,7 +232,7 @@ async function initDB(dir: string, _userDataPath: string) {
     
     logger.log('DATABASE', 'Database initialized');
 
-    emitStageProgress(StartupStage.DB_INIT, 'Creating file status table');
+    emitStageProgress('db_init', 'Creating file status table');
     // Initialize file status table (optional - won't fail if it doesn't work)
     try {
       fileStatusTable = await initializeFileStatusTable(db);
@@ -242,9 +240,9 @@ async function initDB(dir: string, _userDataPath: string) {
       logger.error('FILE-STATUS', 'Failed to initialize file status table:', e);
       fileStatusTable = null;
     }
-    
+
     // Load existing indexed files to prevent re-indexing
-    emitStageProgress(StartupStage.DB_LOAD, 'Loading existing indexed files');
+    emitStageProgress('db_load', 'Loading existing indexed files');
     try {
       // Get all unique file paths from the index
       const allRows = await tbl.query()
@@ -274,7 +272,7 @@ async function initDB(dir: string, _userDataPath: string) {
         // Report progress every 100 files or at the end
         if (processed % 100 === 0 || processed === total) {
           const progress = Math.round((processed / total) * 100);
-          emitStageProgress(StartupStage.DB_LOAD, `Loaded ${processed}/${total} files`, progress);
+          emitStageProgress('db_load', `Loaded ${processed}/${total} files`, progress);
         }
       }
 
@@ -328,12 +326,12 @@ async function initDB(dir: string, _userDataPath: string) {
     const config = await configManager!.getConfig();
     const savedFolders = config.watchedFolders || [];
     if (savedFolders.length > 0) {
-      emitStageProgress(StartupStage.FOLDER_SCAN, `Scanning ${savedFolders.length} folder(s)`);
+      emitStageProgress('folder_scan', `Scanning ${savedFolders.length} folder(s)`);
       logger.log('WATCHER', 'Auto-starting watch on saved folders:', savedFolders);
       await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
     } else {
       logger.log('WATCHER', 'No saved folders to watch');
-      emitStageProgress(StartupStage.FOLDER_SCAN, 'No folders to scan');
+      emitStageProgress('folder_scan', 'No folders to scan');
     }
     
     // Setup profiling if enabled
@@ -1165,7 +1163,7 @@ parentPort!.on('message', async (msg: any) => {
   try {
     switch (msg.type) {
       case 'init':
-        emitStageProgress(StartupStage.WORKER_SPAWN, 'Worker started');
+        emitStageProgress('worker_spawn', 'Worker started');
         // Set user data path for embedder to use for model cache, with fallback for tests
         const userDataPath = msg.userDataPath || path.join(require('os').tmpdir(), 'semantica-test');
         process.env.USER_DATA_PATH = userDataPath;
