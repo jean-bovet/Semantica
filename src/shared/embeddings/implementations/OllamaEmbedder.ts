@@ -7,7 +7,7 @@
  */
 
 import { IEmbedder, EmbedderConfig } from '../IEmbedder';
-import { OllamaClient, OllamaClientError } from '../../../main/services/OllamaClient';
+import { OllamaClient, OllamaClientError } from '../../../main/worker/OllamaClient';
 import { logger } from '../../utils/logger';
 
 // Helper to log with category

@@ -3,7 +3,7 @@ import { EmbedderConfig } from './IEmbedder';
 import { ModelPathResolver } from './ModelPathResolver';
 import { ProcessMemoryMonitor } from '../utils/ProcessMemoryMonitor';
 import { OllamaEmbedder, OllamaEmbedderConfig } from './implementations/OllamaEmbedder';
-import { OllamaClient } from '../../main/services/OllamaClient';
+import { OllamaClient } from '../../main/worker/OllamaClient';
 
 /**
  * Configuration for creating embedders

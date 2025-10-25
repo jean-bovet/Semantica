@@ -4,43 +4,54 @@ interface ModelDownloadProps {
   onComplete: () => void;
 }
 
+type StartupStage = 'checking' | 'downloading' | 'initializing' | 'ready' | 'error';
+
+interface StartupStageMessage {
+  stage: StartupStage;
+  message?: string;
+  progress?: number;
+}
+
+interface StartupErrorMessage {
+  code: string;
+  message: string;
+}
+
 const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
-  const [isChecking, setIsChecking] = useState(true);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [stage, setStage] = useState<StartupStage>('checking');
+  const [stageMessage, setStageMessage] = useState('Initializing...');
   const [progress, setProgress] = useState(0);
   const [currentFile, setCurrentFile] = useState('');
   const [bytesLoaded, setBytesLoaded] = useState(0);
   const [bytesTotal, setBytesTotal] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<StartupErrorMessage | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    
-    const initializeModel = async () => {
-      try {
-        setIsChecking(true);
-        const result = await window.api.model.check();
-        
-        if (!mounted) return;
-        
-        if (result && result.exists) {
-          // Model exists, proceed to main app
-          onComplete();
-        } else {
-          // Need to download model
-          setIsChecking(false);
-          setIsDownloading(true);
-          await window.api.model.download();
-        }
-      } catch (err: any) {
-        if (mounted) {
-          setError(err.message || 'Failed to initialize model');
-          setIsChecking(false);
-        }
+
+    // Listen for startup stage events
+    const handleStage = (_: any, data: StartupStageMessage) => {
+      if (!mounted) return;
+      setStage(data.stage);
+      setStageMessage(data.message || '');
+      if (data.progress !== undefined) {
+        setProgress(data.progress);
+      }
+
+      // Complete when ready
+      if (data.stage === 'ready') {
+        onComplete();
       }
     };
-    
-    // Listen for download progress
+
+    // Listen for startup errors
+    const handleError = (_: any, data: StartupErrorMessage) => {
+      if (!mounted) return;
+      setStage('error');
+      setError(data);
+    };
+
+    // Listen for download progress (for file details)
     const handleProgress = (_: any, data: any) => {
       if (!mounted) return;
       setProgress(data.progress || 0);
@@ -48,26 +59,27 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
       setBytesLoaded(data.loaded || 0);
       setBytesTotal(data.total || 0);
     };
-    
-    const handleComplete = () => {
+
+    // Listen for app:ready as backup
+    const handleReady = () => {
       if (!mounted) return;
-      setIsDownloading(false);
       onComplete();
     };
-    
+
+    window.api.on('startup:stage', handleStage);
+    window.api.on('startup:error', handleError);
     window.api.on('model:download:progress', handleProgress);
-    window.api.on('model:download:complete', handleComplete);
-    
-    // Start the process
-    initializeModel();
-    
+    window.api.on('app:ready', handleReady);
+
     return () => {
       mounted = false;
+      window.api.off('startup:stage', handleStage);
+      window.api.off('startup:error', handleError);
       window.api.off('model:download:progress', handleProgress);
-      window.api.off('model:download:complete', handleComplete);
+      window.api.off('app:ready', handleReady);
     };
-  }, []); // Empty deps - only run once
-  
+  }, [onComplete]);
+
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -75,13 +87,27 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
-  
+
   const getFileName = (path: string): string => {
     const parts = path.split('/');
     return parts[parts.length - 1] || path;
   };
-  
+
+  const handleRetry = async () => {
+    setError(null);
+    setStage('checking');
+    setStageMessage('Retrying...');
+    try {
+      await window.api.invoke('startup:retry');
+    } catch (err) {
+      console.error('Retry failed:', err);
+    }
+  };
+
+  // Error state
   if (error) {
+    const isOllamaNotFound = error.code === 'OLLAMA_NOT_FOUND';
+
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
         <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl p-10 max-w-md w-full mx-4 shadow-2xl border border-gray-700">
@@ -92,35 +118,54 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
               </svg>
             </div>
             <h2 className="text-xl font-semibold text-white">
-              Initialization Error
+              {isOllamaNotFound ? 'Ollama Required' : 'Initialization Error'}
             </h2>
           </div>
-          <p className="text-gray-300 mb-8 leading-relaxed">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
-          >
-            Retry
-          </button>
+          <p className="text-gray-300 mb-8 leading-relaxed">{error.message}</p>
+          {isOllamaNotFound ? (
+            <div className="space-y-3">
+              <button
+                onClick={() => window.open('https://ollama.com/download')}
+                className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                Open Ollama Website
+              </button>
+              <button
+                onClick={handleRetry}
+                className="w-full px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-all duration-200"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleRetry}
+              className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
+              Retry
+            </button>
+          )}
         </div>
       </div>
     );
   }
-  
-  if (isChecking) {
+
+  // Checking/Initializing state
+  if (stage === 'checking' || stage === 'initializing') {
     return (
       <div className="fixed inset-0 bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 mx-auto mb-4">
             <div className="w-full h-full border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin"></div>
           </div>
-          <p className="text-gray-400 text-sm">Loading...</p>
+          <p className="text-gray-400 text-sm">{stageMessage || 'Loading...'}</p>
         </div>
       </div>
     );
   }
-  
-  if (isDownloading) {
+
+  // Downloading state
+  if (stage === 'downloading') {
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
         <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl p-10 max-w-lg w-full mx-4 shadow-2xl border border-gray-700">
@@ -139,7 +184,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
               </p>
             </div>
           </div>
-          
+
           {currentFile && (
             <div className="bg-gray-900/50 rounded-lg px-4 py-2 mb-4">
               <p className="text-blue-400 text-sm font-mono">
@@ -147,7 +192,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
               </p>
             </div>
           )}
-          
+
           <div className="space-y-2 mb-6">
             <div className="relative">
               <div className="overflow-hidden h-4 bg-gray-700/50 rounded-full">
@@ -157,7 +202,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
                 />
               </div>
             </div>
-            
+
             <div className="flex justify-between text-sm">
               <span className="text-white font-medium">{Math.round(progress)}%</span>
               {bytesTotal > 0 && (
@@ -167,7 +212,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
               )}
             </div>
           </div>
-          
+
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
             <p className="text-blue-300 text-sm text-center">
               <svg className="w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -180,7 +225,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
       </div>
     );
   }
-  
+
   return null;
 };
 

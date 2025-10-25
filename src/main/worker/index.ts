@@ -128,14 +128,14 @@ try {
 // Use isolated embedder for better memory management
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
 import { OllamaEmbedder } from '../../shared/embeddings/implementations/OllamaEmbedder';
-import { OllamaClient } from '../services/OllamaClient';
+import { OllamaClient } from './OllamaClient'; // Now in worker directory
 import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
+import { WorkerStartup } from './WorkerStartup'; // New state machine
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ConfigManager } from './config';
-import { downloadModelSequentially, checkModelExists as checkModelExistsNew } from '../services/ModelService';
 import { scanDirectories, type ScanOptions } from '../core/indexing/directoryScanner';
 
 let db: any = null;
@@ -149,6 +149,7 @@ let configManager: ConfigManager | null = null;
 let embedderPool: EmbedderPool | null = null;
 let ollamaEmbedder: OllamaEmbedder | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
+let workerStartup: WorkerStartup | null = null; // New startup state machine
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
@@ -191,33 +192,6 @@ const folderStats = new Map<string, FolderStats>();
 // Track if we've sent the files:loaded message
 declare global {
   var filesLoadedSent: boolean | undefined;
-}
-
-// Helper function to check if model exists (use new implementation)
-function checkModelExists(userDataPath: string): boolean {
-  const modelBasePath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
-  return checkModelExistsNew(modelBasePath);
-}
-
-// Helper function to download model (use new sequential downloader)
-async function downloadModel(userDataPath: string): Promise<void> {
-  try {
-    // Use the new sequential downloader
-    await downloadModelSequentially(userDataPath);
-    
-    // Now that files are downloaded, we still need to initialize transformers.js
-    // with the correct paths so the embedder child process can use them
-    const transformers = await import('@xenova/transformers');
-  
-    // Set the model cache path for transformers.js
-    const modelCachePath = path.join(userDataPath, 'models');
-    transformers.env.localModelPath = modelCachePath;
-    transformers.env.cacheDir = modelCachePath;
-    transformers.env.allowRemoteModels = false; // Disable remote downloads since we already have the files
-  } catch (err) {
-    logger.error('WORKER', 'Model download failed:', err);
-    throw err;
-  }
 }
 
 async function initDB(dir: string, _userDataPath: string) {
@@ -377,57 +351,6 @@ let healthCheckInterval: NodeJS.Timeout | null = null;
 function startEmbedderHealthCheck() {
   // Ollama manages its own health, so no periodic health checks needed
   // (Legacy health check code for EmbedderPool removed)
-}
-
-// Separate function to check and download model after worker is ready
-async function initializeModel(userDataPath: string) {
-  // Check and download model if needed (ONCE at startup)
-  emitStageProgress(StartupStage.MODEL_CHECK, 'Checking for ML model');
-  logger.log('WORKER', 'Checking for ML model...');
-
-  modelReady = checkModelExists(userDataPath);
-  logger.log('WORKER', 'Model check:', modelReady ? 'found' : 'not found');
-  
-  if (!modelReady) {
-    emitStageProgress(StartupStage.MODEL_DOWNLOAD, 'Downloading ML model');
-    logger.log('WORKER', 'Model not found, downloading...');
-    try {
-      await downloadModel(userDataPath);
-      modelReady = true;
-      logger.log('WORKER', '========== MODEL DOWNLOAD COMPLETE ==========');
-      
-      // In test mode with mocks, add a delay before sending complete
-      // This allows the test to see the last file name in the UI
-      if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
-        logger.log('WORKER', 'Test mode: waiting 2 seconds before sending complete');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      
-      // Send download complete notification
-      if (parentPort) {
-        logger.log('WORKER', 'Sending model:download:complete message');
-        parentPort.postMessage({ type: 'model:download:complete' });
-      }
-    } catch (error) {
-      logger.error('WORKER', '========== MODEL DOWNLOAD FAILED ==========');
-      logger.error('WORKER', 'Error:', error);
-      modelReady = false;
-    }
-  } else {
-    logger.log('WORKER', '========== MODEL FOUND, SKIPPING DOWNLOAD ==========');
-  }
-  
-  // Send model ready status (legacy, not used anymore with Ollama)
-  if (parentPort) {
-    parentPort.postMessage({
-      type: 'model:ready',
-      payload: { ready: true } // Always true now, model check happens in main process
-    });
-  }
-
-  // Embedder will be initialized later by explicit message from main process
-  emitStageProgress(StartupStage.EMBEDDER_INIT, 'Waiting for embedder initialization signal');
-  logger.log('WORKER', 'Worker ready, waiting for embedder initialization...');
 }
 
 async function mergeRows(rows: any[]) {
@@ -1251,16 +1174,84 @@ parentPort!.on('message', async (msg: any) => {
 
         await initDB(dbDir, userDataPath);
         parentPort!.postMessage({ type: 'ready' });
-        
-        // Initialize model in background after worker is ready
-        initializeModel(userDataPath).then(() => {
-          // Start processing queue now that model is ready
-          logger.log('WORKER', 'Model initialization complete - starting queue processing');
-          processQueue();
-        }).catch((error) => {
-          logger.error('WORKER', 'Model initialization error:', error);
-          // Don't start processing if model initialization failed
-        });
+
+        // Auto-start: Initialize embedder using WorkerStartup state machine
+        (async () => {
+          try {
+            workerStartup = new WorkerStartup();
+            const settings = configManager?.getSettings();
+
+            // This handles: Ollama check → model download → embedder init
+            ollamaEmbedder = await workerStartup.initialize(settings);
+
+            if (!ollamaEmbedder) {
+              logger.error('WORKER', 'Startup failed - no embedder created');
+              return;
+            }
+
+            // Create embedding queue with batch processor
+            const batchSize = settings?.embeddingBatchSize ?? 32;
+            embeddingQueue = new EmbeddingQueue({
+              maxQueueSize: 2000,
+              batchSize,
+              backpressureThreshold: 1000,
+              onProgress: (filePath: string, processed: number, total: number) => {
+                logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
+              },
+              onFileComplete: (filePath: string) => {
+                logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
+              }
+            });
+
+            // Initialize with batch processor
+            embeddingQueue.initialize(ollamaEmbedder, async (batch: any) => {
+              // Extract file metadata from the first chunk
+              const filePath = batch.chunks[0].metadata.filePath;
+              const fileExt = path.extname(filePath).slice(1).toLowerCase();
+
+              // Get file stats
+              const stat = await fs.promises.stat(filePath);
+              const mtime = stat.mtimeMs;
+
+              // Create database rows
+              const rows = batch.chunks.map((chunk: any, idx: number) => {
+                const id = crypto.createHash('sha1')
+                  .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+                  .digest('hex');
+
+                return {
+                  id,
+                  path: filePath,
+                  mtime,
+                  page: chunk.metadata.page || 0,
+                  offset: chunk.metadata.offset,
+                  text: chunk.text,
+                  vector: batch.vectors[idx],
+                  type: fileExt,
+                  title: path.basename(filePath)
+                };
+              });
+
+              // Write to database
+              await mergeRows(rows);
+            });
+
+            logger.log('WORKER', 'Embedding queue initialized');
+            modelReady = true; // Mark as ready for legacy code
+
+            // Notify that files are loaded (for StartupCoordinator)
+            if (!global.filesLoadedSent && parentPort) {
+              logger.log('WORKER', 'Sending files:loaded event');
+              parentPort.postMessage({ type: 'files:loaded' });
+              global.filesLoadedSent = true;
+            }
+
+            // Start processing any queued files
+            processQueue();
+          } catch (error) {
+            logger.error('WORKER', 'Startup initialization failed:', error);
+          }
+        })();
         break;
         
       case 'checkModel':
@@ -1309,98 +1300,71 @@ parentPort!.on('message', async (msg: any) => {
         }
         break;
 
-      case 'initializeEmbedder':
-        // Initialize the Ollama embedder after model is confirmed ready by main process
-        logger.log('WORKER', 'Received initializeEmbedder signal - model is ready');
+      case 'startup:retry':
+        // Retry initialization after error
+        logger.log('WORKER', 'Retrying startup sequence...');
+        (async () => {
+          try {
+            workerStartup = new WorkerStartup();
+            const settings = configManager?.getSettings();
+            ollamaEmbedder = await workerStartup.initialize(settings);
 
-        try {
-          const settings = configManager?.getSettings();
-          emitStageProgress(StartupStage.EMBEDDER_INIT, 'Initializing Ollama embedder');
-
-          // Create Ollama client and embedder
-          const ollamaClient = new OllamaClient();
-          ollamaEmbedder = new OllamaEmbedder({
-            modelName: 'bge-m3',
-            batchSize: settings?.embeddingBatchSize ?? 32,
-            client: ollamaClient,
-            keepAlive: '2m',
-            normalizeVectors: true
-          });
-
-          // Initialize embedder (should succeed since model exists)
-          const initialized = await ollamaEmbedder.initialize();
-
-          if (!initialized) {
-            throw new Error('Failed to initialize embedder after model confirmation');
-          }
-
-          logger.log('WORKER', 'Ollama embedder initialized successfully');
-
-          // Create embedding queue
-          const batchSize = settings?.embeddingBatchSize ?? 32;
-          embeddingQueue = new EmbeddingQueue({
-            maxQueueSize: 2000,
-            batchSize,
-            backpressureThreshold: 1000,
-            onProgress: (filePath: string, processed: number, total: number) => {
-              logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
-            },
-            onFileComplete: (filePath: string) => {
-              logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
+            if (!ollamaEmbedder) {
+              logger.error('WORKER', 'Startup retry failed - no embedder created');
+              return;
             }
-          });
 
-          // Initialize with batch processor
-          embeddingQueue.initialize(ollamaEmbedder, async (batch: any) => {
-            // Extract file metadata from the first chunk
-            const filePath = batch.chunks[0].metadata.filePath;
-            const fileExt = path.extname(filePath).slice(1).toLowerCase();
-
-            // Get file stats
-            const stat = await fs.promises.stat(filePath);
-            const mtime = stat.mtimeMs;
-
-            // Create database rows
-            const rows = batch.chunks.map((chunk: any, idx: number) => {
-              const id = crypto.createHash('sha1')
-                .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
-                .digest('hex');
-
-              return {
-                id,
-                path: filePath,
-                mtime,
-                page: chunk.metadata.page || 0,
-                offset: chunk.metadata.offset,
-                text: chunk.text,
-                vector: batch.vectors[idx],
-                type: fileExt,
-                title: path.basename(filePath)
-              };
+            // Recreate embedding queue
+            const batchSize = settings?.embeddingBatchSize ?? 32;
+            embeddingQueue = new EmbeddingQueue({
+              maxQueueSize: 2000,
+              batchSize,
+              backpressureThreshold: 1000
             });
 
-            // Write to database
-            await mergeRows(rows);
-          });
+            embeddingQueue.initialize(ollamaEmbedder, async (batch: any) => {
+              const filePath = batch.chunks[0].metadata.filePath;
+              const fileExt = path.extname(filePath).slice(1).toLowerCase();
+              const stat = await fs.promises.stat(filePath);
+              const mtime = stat.mtimeMs;
 
-          logger.log('WORKER', 'Embedding queue initialized');
-          emitStageProgress(StartupStage.READY, 'Worker fully initialized');
-
-          // Reply with success
-          if (msg.id) {
-            parentPort!.postMessage({
-              id: msg.id,
-              payload: { success: true }
+              const rows = batch.chunks.map((chunk: any, idx: number) => {
+                const id = crypto.createHash('sha1')
+                  .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+                  .digest('hex');
+                return {
+                  id,
+                  path: filePath,
+                  mtime,
+                  page: chunk.metadata.page || 0,
+                  offset: chunk.metadata.offset,
+                  text: chunk.text,
+                  vector: batch.vectors[idx],
+                  type: fileExt,
+                  title: path.basename(filePath)
+                };
+              });
+              await mergeRows(rows);
             });
+
+            modelReady = true;
+            logger.log('WORKER', 'Startup retry successful');
+            processQueue();
+          } catch (error) {
+            logger.error('WORKER', 'Startup retry failed:', error);
           }
-        } catch (error) {
-          logger.error('WORKER', 'Failed to initialize embedder:', error);
-          if (msg.id) {
-            parentPort!.postMessage({
-              id: msg.id,
-              error: String(error)
-            });
-          }
+        })();
+        break;
+
+      case 'diagnostics:getLogs':
+        // Return diagnostic logs from ring buffer
+        if (workerStartup && msg.id) {
+          const logs = workerStartup.getLogs();
+          parentPort!.postMessage({
+            channel: 'diagnostics:logs',
+            id: msg.id,
+            logs
+          });
         }
         break;
 

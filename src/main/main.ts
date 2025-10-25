@@ -4,10 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
-import { StartupCoordinator } from './startup/StartupCoordinator';
 import { logger } from '../shared/utils/logger';
-import type { StageProgress } from './startup/StartupStages';
-import { OllamaService } from './services/OllamaService';
+import type { StartupStageMessage, StartupErrorMessage, DownloadProgressMessage } from '../ipc/startup-protocol';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -58,8 +56,10 @@ let win: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
 let workerReady = false;
 const pendingCallbacks = new Map<string, (data: any) => void>();
-const stageProgressCallbacks = new Set<(progress: StageProgress) => void>();
-let ollamaService: OllamaService | null = null;
+let startupTimeout: NodeJS.Timeout | null = null;
+let startupRetries = 0;
+const MAX_STARTUP_RETRIES = 3;
+const STARTUP_TIMEOUT_MS = 60000; // 60 seconds
 
 function spawnWorker() {
   worker?.terminate().catch(() => {});
@@ -68,39 +68,57 @@ function spawnWorker() {
   worker = new Worker(path.join(__dirname, 'worker.cjs'));
 
   worker.on('message', (msg: any) => {
-    if (msg.type === 'ready') {
-      workerReady = true;
-      logger.log('WORKER', 'Worker ready');
-      // Send initial progress with initialized flag
-      sendToWorker('progress').then((progress: any) => {
-        win?.webContents.send('indexer:progress', { ...progress, initialized: true });
-      });
-    } else if (msg.type === 'startup:stage') {
-      // Forward startup stage progress
-      stageProgressCallbacks.forEach(callback => callback(msg.payload));
-    } else if (msg.type === 'model:ready') {
-      // Model is ready (either found or downloaded)
-      logger.log('WORKER', 'Model ready:', msg.payload);
-      win?.webContents.send('model:check:result', { exists: msg.payload.ready });
-      if (msg.payload.ready) {
-        win?.webContents.send('model:download:complete');
+    // Handle typed startup protocol messages
+    if (msg.channel === 'startup:stage') {
+      const stageMsg = msg as StartupStageMessage;
+      logger.log('STARTUP', `Stage: ${stageMsg.stage} - ${stageMsg.message || ''}`);
+
+      // Forward to renderer
+      win?.webContents.send('startup:stage', stageMsg);
+
+      // Clear timeout if we reach 'ready' stage
+      if (stageMsg.stage === 'ready') {
+        if (startupTimeout) {
+          clearTimeout(startupTimeout);
+          startupTimeout = null;
+        }
+        startupRetries = 0; // Reset retry counter on success
+        win?.webContents.send('app:ready');
       }
+    } else if (msg.channel === 'startup:error') {
+      const errorMsg = msg as StartupErrorMessage;
+      logger.error('STARTUP', `Error: ${errorMsg.code} - ${errorMsg.message}`);
+
+      // Forward to renderer
+      win?.webContents.send('startup:error', errorMsg);
+
+      // Clear timeout
+      if (startupTimeout) {
+        clearTimeout(startupTimeout);
+        startupTimeout = null;
+      }
+    } else if (msg.channel === 'model:download:progress') {
+      const progressMsg = msg as DownloadProgressMessage;
+      // Forward to renderer for UI
+      win?.webContents.send('model:download:progress', {
+        file: progressMsg.file,
+        progress: progressMsg.progress,
+        loaded: progressMsg.loaded,
+        total: progressMsg.total
+      });
+    } else if (msg.type === 'ready') {
+      workerReady = true;
+      logger.log('WORKER', 'Worker ready - starting initialization');
+      // Worker will auto-start initialization
     } else if (msg.type === 'files:loaded') {
       // Existing files have been loaded from database
       win?.webContents.send('files:loaded');
     } else if (msg.type === 'progress') {
       win?.webContents.send('indexer:progress', { ...msg.payload, initialized: true });
-    } else if (msg.type === 'model:check:result') {
-      win?.webContents.send('model:check:result', msg.payload);
-    } else if (msg.type === 'model:download:progress') {
-      win?.webContents.send('model:download:progress', msg.payload);
-    } else if (msg.type === 'model:download:complete') {
-      win?.webContents.send('model:download:complete');
     } else if (msg.type === 'pipeline:status') {
       // Log pipeline status to main process console AND send to renderer console
       logger.log('PIPELINE-STATUS', msg.payload);
       // Also send to renderer process console (which shows in browser dev tools)
-      // Send to Electron dev console (leave as-is for browser console)
       win?.webContents.executeJavaScript(`console.log(${JSON.stringify(msg.payload)})`);
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
@@ -117,36 +135,55 @@ function spawnWorker() {
     if (code !== 0 && code !== null) {
       // Only respawn on actual errors, not on intentional termination
       logger.error('WORKER', `Worker stopped with exit code ${code}`);
-      setTimeout(spawnWorker, 1000);
+
+      // Handle retry logic with limit
+      if (startupRetries < MAX_STARTUP_RETRIES) {
+        startupRetries++;
+        logger.log('WORKER', `Retrying worker spawn (attempt ${startupRetries}/${MAX_STARTUP_RETRIES})...`);
+        setTimeout(spawnWorker, 1000);
+      } else {
+        logger.error('WORKER', 'Max retries exceeded, not respawning');
+        win?.webContents.send('startup:error', {
+          channel: 'startup:error',
+          code: 'STARTUP_TIMEOUT',
+          message: 'Worker failed to start after multiple attempts'
+        });
+      }
     }
   });
-  
+
+  // Setup startup timeout supervision
+  startupTimeout = setTimeout(() => {
+    logger.error('STARTUP', 'Startup timeout exceeded');
+    if (startupRetries < MAX_STARTUP_RETRIES) {
+      startupRetries++;
+      logger.log('STARTUP', `Retrying startup (attempt ${startupRetries}/${MAX_STARTUP_RETRIES})...`);
+      worker?.postMessage({ type: 'startup:retry' });
+    } else {
+      win?.webContents.send('startup:error', {
+        channel: 'startup:error',
+        code: 'STARTUP_TIMEOUT',
+        message: 'Startup exceeded timeout limit'
+      });
+    }
+  }, STARTUP_TIMEOUT_MS);
+
   // Get userData path with fallback for test environments
   const userDataPath = app.getPath('userData') || path.join(require('os').tmpdir(), 'semantica-test')
-  
+
   const dbDir = path.join(userDataPath, 'data');
   fs.mkdirSync(dbDir, { recursive: true });
-  
+
   // Create models directory for ML models
   const modelsDir = path.join(userDataPath, 'models');
   fs.mkdirSync(modelsDir, { recursive: true });
-  
+
   // Pass both paths to worker
-  worker.postMessage({ 
-    type: 'init', 
+  worker.postMessage({
+    type: 'init',
     dbDir,
     userDataPath
   });
-}
-
-async function waitForWorker(timeout = 10000): Promise<void> {
-  const startTime = Date.now();
-  while (!workerReady) {
-    if (Date.now() - startTime > timeout) {
-      throw new Error('Worker initialization timeout');
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
 }
 
 function sendToWorker(type: string, payload: any = {}): Promise<any> {
@@ -184,7 +221,7 @@ if (gotTheLock) {
       website: 'https://github.com/jean-bovet/Semantica',
       iconPath: path.join(__dirname, '../../build/icon.png')
     });
-    
+
     win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -198,16 +235,23 @@ if (gotTheLock) {
     titleBarStyle: 'hiddenInset',
     vibrancy: 'sidebar'
   });
-  
+
   mainWindow = win;
-  
+
   const isDev = process.env.NODE_ENV !== 'production';
-  
+
+  // Load UI immediately
+  if (isDev) {
+    win?.loadURL('http://localhost:5173');
+  } else {
+    win?.loadFile(path.join(__dirname, 'index.html'));
+  }
+
   // Configure auto-updater logging
   autoUpdater.logger = log;
   (autoUpdater.logger as any).transports.file.level = 'info';
   log.info('App starting...');
-  
+
   // Force update checking in dev mode if UPDATE_URL is set
   const updateUrl = process.env.UPDATE_URL || process.env.ELECTRON_UPDATER_URL;
   if (updateUrl) {
@@ -218,8 +262,8 @@ if (gotTheLock) {
       url: updateUrl
     });
   }
-  
-  
+
+
   // Handle update downloaded event - prompt for restart
   autoUpdater.on('update-downloaded', (info) => {
     log.info('Update downloaded:', info);
@@ -235,150 +279,24 @@ if (gotTheLock) {
       }
     });
   });
-  
+
   autoUpdater.on('error', (error) => {
     log.error('Update error:', error);
   });
 
-  // Initialize Ollama service (check installation and auto-start server)
-  ollamaService = new OllamaService({ autoStart: true, defaultModel: 'bge-m3' });
-
-  logger.log('STARTUP', 'Checking Ollama setup...');
-  const ollamaStatus = await ollamaService.ensureReady();
-
-  if (!ollamaStatus.installed) {
-    logger.error('STARTUP', 'Ollama is not installed');
-    dialog.showMessageBox(win!, {
-      type: 'error',
-      title: 'Ollama Required',
-      message: 'Ollama is required but not installed',
-      detail: 'Semantica requires Ollama to generate embeddings for semantic search.\n\nPlease install Ollama from: https://ollama.com/download',
-      buttons: ['Open Ollama Website', 'Quit'],
-      defaultId: 0
-    }).then((result) => {
-      if (result.response === 0) {
-        shell.openExternal('https://ollama.com/download');
-      }
-      app.quit();
-    });
-    return;
-  }
-
-  if (!ollamaStatus.running) {
-    logger.error('STARTUP', 'Ollama server failed to start');
-    dialog.showMessageBox(win!, {
-      type: 'error',
-      title: 'Ollama Not Running',
-      message: 'Failed to start Ollama server',
-      detail: 'Please start Ollama manually by running:\n\nollama serve',
-      buttons: ['OK'],
-      defaultId: 0
-    }).then(() => {
-      app.quit();
-    });
-    return;
-  }
-
-  logger.log('STARTUP', 'Ollama server ready, checking for model...');
-
-  // Check if model exists, download if needed (BEFORE spawning worker)
-  const hasModel = await ollamaService.getClient().hasModel('bge-m3');
-
-  if (!hasModel) {
-    logger.log('STARTUP', 'Model bge-m3 not found, downloading...');
-
-    // Notify renderer to show download UI
-    win?.webContents.send('model:download:start');
-
-    const downloaded = await ollamaService.ensureModelDownloaded('bge-m3', (progress) => {
-      // Send progress to renderer
-      win?.webContents.send('model:download:progress', progress);
-      logger.log('STARTUP', `Model download: ${progress.progress}% - ${progress.status}`);
-    });
-
-    if (!downloaded) {
-      logger.error('STARTUP', 'Failed to download model');
-      dialog.showMessageBox(win!, {
-        type: 'error',
-        title: 'Model Download Failed',
-        message: 'Failed to download bge-m3 model',
-        detail: 'Please check your internet connection and try again.\n\nYou can also manually download with:\n\nollama pull bge-m3',
-        buttons: ['OK'],
-        defaultId: 0
-      }).then(() => {
-        app.quit();
-      });
-      return;
-    }
-
-    // Notify renderer download is complete
-    win?.webContents.send('model:download:complete');
-    logger.log('STARTUP', 'Model download complete');
-  } else {
-    logger.log('STARTUP', 'Model bge-m3 already exists');
-  }
-
-  // NOW spawn worker (model is guaranteed to exist)
-  logger.log('STARTUP', 'Starting worker with model ready...');
+  // Spawn worker - it will handle all initialization (Ollama, model, embedder)
+  logger.log('STARTUP', 'Spawning worker...');
   spawnWorker();
-
-  // Wait for worker to be ready, then initialize embedder
-  await waitForWorker();
-  logger.log('STARTUP', 'Worker ready, initializing embedder...');
-  await sendToWorker('initializeEmbedder');
-  logger.log('STARTUP', 'Embedder initialized, startup complete');
-
-  // Use StartupCoordinator to manage the startup sequence
-  const coordinator = new StartupCoordinator(
-    {
-      waitForWorker: () => Promise.resolve(), // Already waited above
-      waitForModel: () => Promise.resolve(), // Model already confirmed ready
-      waitForFiles: () => new Promise<void>(resolve => {
-        const handler = () => {
-          win?.webContents.off('ipc-message', checkFilesLoaded);
-          resolve();
-        };
-        const checkFilesLoaded = (_: any, channel: string) => {
-          if (channel === 'files:loaded') handler();
-        };
-        win?.webContents.on('ipc-message', checkFilesLoaded);
-        // Also check if files:loaded was already sent
-        if (worker && workerReady) {
-          sendToWorker('progress').then((progress: any) => {
-            if (progress.initialized) handler();
-          });
-        }
-      }),
-      waitForStats: () => sendToWorker('stats'),
-      onStageProgress: (callback) => {
-        stageProgressCallbacks.add(callback);
-      },
-      offStageProgress: (callback) => {
-        stageProgressCallbacks.delete(callback);
-      }
-    },
-    {
-      showWindow: () => {
-        if (isDev) {
-          win?.loadURL('http://localhost:5173');
-        } else {
-          win?.loadFile(path.join(__dirname, 'index.html'));
-        }
-      },
-      notifyFilesLoaded: () => win?.webContents.send('files:loaded'),
-      notifyReady: () => win?.webContents.send('app:ready'),
-      notifyError: (err) => win?.webContents.send('startup:error', err),
-      notifyStageProgress: (progress) => win?.webContents.send('startup:progress', progress)
-    }
-  );
-  
-  // Start the coordinated startup
-  coordinator.coordinate().catch(err => {
-    logger.error('STARTUP', 'Startup coordination failed:', err);
-  });
   
   // Register all IPC handlers
-  // Note: model:check and model:download removed - model management now happens in startup sequence
+
+  // Startup retry handler
+  ipcMain.handle('startup:retry', async () => {
+    logger.log('STARTUP', 'Retry requested from renderer');
+    startupRetries = 0; // Reset retry counter
+    worker?.postMessage({ type: 'startup:retry' });
+    return { success: true };
+  });
 
   ipcMain.handle('updater:check', async () => {
     log.info('Manual update check triggered from settings');

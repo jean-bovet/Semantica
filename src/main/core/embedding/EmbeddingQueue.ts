@@ -1,4 +1,5 @@
 import { EmbedderPool } from '../../../shared/embeddings/embedder-pool';
+import type { IEmbedder } from '../../../shared/embeddings/IEmbedder';
 import { logger } from '../../../shared/utils/logger';
 
 export interface QueuedChunk {
@@ -52,7 +53,7 @@ export class EmbeddingQueue {
   private backpressureThreshold: number;
   private isProcessing = false;
   private fileTrackers = new Map<string, FileTracker>();
-  private embedderPool: EmbedderPool | null = null;
+  private embedder: IEmbedder | null = null;
   private onProgress?: (filePath: string, processed: number, total: number) => void;
   private onFileComplete?: (filePath: string) => void;
   private onBatchProcessed?: (count: number) => void;
@@ -75,11 +76,15 @@ export class EmbeddingQueue {
   }
 
   /**
-   * Initialize the queue with an embedder pool
+   * Initialize the queue with an embedder
    */
-  initialize(embedderPool: EmbedderPool, batchProcessor?: BatchProcessor) {
-    this.embedderPool = embedderPool;
-    this.maxConcurrentBatches = embedderPool.getPoolSize();
+  initialize(
+    embedder: IEmbedder,
+    batchProcessor?: BatchProcessor,
+    maxConcurrentBatches = 1
+  ) {
+    this.embedder = embedder;
+    this.maxConcurrentBatches = maxConcurrentBatches;
     this.batchProcessor = batchProcessor;
   }
 
@@ -145,7 +150,7 @@ export class EmbeddingQueue {
    * Start the consumer loop
    */
   private async startProcessing() {
-    if (this.isProcessing || !this.embedderPool) {
+    if (this.isProcessing || !this.embedder) {
       return;
     }
 
@@ -203,7 +208,7 @@ export class EmbeddingQueue {
 
       // Generate embeddings
       logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Starting embedding for ${texts.length} texts`);
-      const vectors = await this.embedderPool!.embed(texts, false);
+      const vectors = await this.embedder!.embed(texts, false);
       logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Embedding completed successfully`);
 
       // Batch completed successfully - remove from tracking
