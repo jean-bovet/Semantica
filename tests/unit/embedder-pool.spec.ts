@@ -486,7 +486,7 @@ describe('EmbedderPool', () => {
         expect(stat.memoryUsage).toBeLessThan(10 * 1024 * 1024 * 1024); // < 10GB (sanity check)
       });
 
-      await pool.shutdown();
+      await pool.dispose();
     });
 
     it('should handle undefined memory gracefully', async () => {
@@ -513,7 +513,7 @@ describe('EmbedderPool', () => {
 
       // Restore original method
       IsolatedEmbedder.prototype.getStats = originalGetStats;
-      await pool.shutdown();
+      await pool.dispose();
     });
   });
 });
