@@ -9,8 +9,8 @@ Semantica is an Electron-based application that provides offline semantic search
 ## Key Technical Context
 
 ### Architecture
-- **Multi-process design**: Main process, Worker thread, and Embedder child process
-- **Memory isolation**: Embedder process auto-restarts to prevent memory leaks
+- **Multi-process design**: Main process and Worker thread
+- **Ollama integration**: Uses external Ollama server for embeddings (process isolation, memory management)
 - **Search-first UI**: Full-screen search with modal settings overlay
 - See [architecture.md](./docs/specs/02-architecture.md) for complete details
 
@@ -18,7 +18,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - **Frontend**: React, TypeScript, Tailwind CSS
 - **Backend**: Electron, Node.js Worker Threads
 - **Database**: LanceDB for vector storage
-- **ML Model**: Xenova/multilingual-e5-small for embeddings
+- **ML Model**: Ollama with bge-m3 for embeddings (replaces Xenova/transformers + ONNX)
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
 
 ## Important Guidelines
@@ -59,9 +59,9 @@ Documentation is organized under `/docs/`:
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
-- Embedder process limited to 300MB external
-- Auto-restart after 200-500 files or memory threshold
-- See [memory-solution.md](./docs/specs/memory-solution.md) for implementation
+- Ollama manages its own memory externally (no manual restarts needed)
+- Reduced memory footprint: 3-6× improvement over previous ONNX implementation
+- See [memory-solution.md](./docs/specs/memory-solution.md) for legacy implementation
 
 ### Database Operations
 - LanceDB requires initialization with dummy data
@@ -144,6 +144,18 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 - See [operations guide](./specs/04-operations.md#e2e-testing-configuration) for details
 
 ## Recent Updates
+
+### 2025-10-25 - Ollama Migration
+- **Architecture simplification**: Migrated from HuggingFace Transformers + ONNX Runtime to Ollama
+- **Memory improvement**: 3-6× reduction in memory footprint using quantized GGUF models
+- **Process isolation**: Ollama runs as external service, eliminating child process complexity
+- **Model upgrade**: Now using bge-m3 (multilingual) via Ollama instead of Xenova/multilingual-e5-small
+- **Auto-management**: Ollama handles model lifecycle, memory management, and auto-scaling
+- **Stability improvements**: No more embedder child process crashes or manual restarts
+- **Codebase simplification**: Removed ~1000 lines of child process management code
+- **Dependencies removed**: `@xenova/transformers`, `onnxruntime-node` (binary dependencies)
+- **Setup requirement**: Ollama must be installed and running (auto-detected and started on macOS)
+- **Legacy code**: Old transformer-based implementation files retained temporarily for reference
 
 ### 2025-09-20 - Selective Logging System
 - **Category-based logging**: Replaced verbose logging with selective category system

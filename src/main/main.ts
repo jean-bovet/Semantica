@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, crashReporter } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, crashReporter, Notification } from 'electron';
 import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -7,6 +7,7 @@ import log from 'electron-log';
 import { StartupCoordinator } from './startup/StartupCoordinator';
 import { logger } from '../shared/utils/logger';
 import type { StageProgress } from './startup/StartupStages';
+import { OllamaService } from './services/OllamaService';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -58,6 +59,7 @@ let mainWindow: BrowserWindow | null = null;
 let workerReady = false;
 const pendingCallbacks = new Map<string, (data: any) => void>();
 const stageProgressCallbacks = new Set<(progress: StageProgress) => void>();
+let ollamaService: OllamaService | null = null;
 
 function spawnWorker() {
   worker?.terminate().catch(() => {});
@@ -237,15 +239,100 @@ if (gotTheLock) {
   autoUpdater.on('error', (error) => {
     log.error('Update error:', error);
   });
-  
-  // Spawn worker asynchronously (don't block on it)
+
+  // Initialize Ollama service (check installation and auto-start server)
+  ollamaService = new OllamaService({ autoStart: true, defaultModel: 'bge-m3' });
+
+  logger.log('STARTUP', 'Checking Ollama setup...');
+  const ollamaStatus = await ollamaService.ensureReady();
+
+  if (!ollamaStatus.installed) {
+    logger.error('STARTUP', 'Ollama is not installed');
+    dialog.showMessageBox(win!, {
+      type: 'error',
+      title: 'Ollama Required',
+      message: 'Ollama is required but not installed',
+      detail: 'Semantica requires Ollama to generate embeddings for semantic search.\n\nPlease install Ollama from: https://ollama.com/download',
+      buttons: ['Open Ollama Website', 'Quit'],
+      defaultId: 0
+    }).then((result) => {
+      if (result.response === 0) {
+        shell.openExternal('https://ollama.com/download');
+      }
+      app.quit();
+    });
+    return;
+  }
+
+  if (!ollamaStatus.running) {
+    logger.error('STARTUP', 'Ollama server failed to start');
+    dialog.showMessageBox(win!, {
+      type: 'error',
+      title: 'Ollama Not Running',
+      message: 'Failed to start Ollama server',
+      detail: 'Please start Ollama manually by running:\n\nollama serve',
+      buttons: ['OK'],
+      defaultId: 0
+    }).then(() => {
+      app.quit();
+    });
+    return;
+  }
+
+  logger.log('STARTUP', 'Ollama server ready, checking for model...');
+
+  // Check if model exists, download if needed (BEFORE spawning worker)
+  const hasModel = await ollamaService.getClient().hasModel('bge-m3');
+
+  if (!hasModel) {
+    logger.log('STARTUP', 'Model bge-m3 not found, downloading...');
+
+    // Notify renderer to show download UI
+    win?.webContents.send('model:download:start');
+
+    const downloaded = await ollamaService.ensureModelDownloaded('bge-m3', (progress) => {
+      // Send progress to renderer
+      win?.webContents.send('model:download:progress', progress);
+      logger.log('STARTUP', `Model download: ${progress.progress}% - ${progress.status}`);
+    });
+
+    if (!downloaded) {
+      logger.error('STARTUP', 'Failed to download model');
+      dialog.showMessageBox(win!, {
+        type: 'error',
+        title: 'Model Download Failed',
+        message: 'Failed to download bge-m3 model',
+        detail: 'Please check your internet connection and try again.\n\nYou can also manually download with:\n\nollama pull bge-m3',
+        buttons: ['OK'],
+        defaultId: 0
+      }).then(() => {
+        app.quit();
+      });
+      return;
+    }
+
+    // Notify renderer download is complete
+    win?.webContents.send('model:download:complete');
+    logger.log('STARTUP', 'Model download complete');
+  } else {
+    logger.log('STARTUP', 'Model bge-m3 already exists');
+  }
+
+  // NOW spawn worker (model is guaranteed to exist)
+  logger.log('STARTUP', 'Starting worker with model ready...');
   spawnWorker();
-  
+
+  // Wait for worker to be ready, then initialize embedder
+  await waitForWorker();
+  logger.log('STARTUP', 'Worker ready, initializing embedder...');
+  await sendToWorker('initializeEmbedder');
+  logger.log('STARTUP', 'Embedder initialized, startup complete');
+
   // Use StartupCoordinator to manage the startup sequence
   const coordinator = new StartupCoordinator(
     {
-      waitForWorker: () => waitForWorker(),
-      waitForModel: () => sendToWorker('checkModel'),
+      waitForWorker: () => Promise.resolve(), // Already waited above
+      waitForModel: () => Promise.resolve(), // Model already confirmed ready
       waitForFiles: () => new Promise<void>(resolve => {
         const handler = () => {
           win?.webContents.off('ipc-message', checkFilesLoaded);
@@ -291,14 +378,8 @@ if (gotTheLock) {
   });
   
   // Register all IPC handlers
-  ipcMain.handle('model:check', async () => {
-    return sendToWorker('checkModel');
-  });
-  
-  ipcMain.handle('model:download', async () => {
-    return sendToWorker('downloadModel');
-  });
-  
+  // Note: model:check and model:download removed - model management now happens in startup sequence
+
   ipcMain.handle('updater:check', async () => {
     log.info('Manual update check triggered from settings');
     try {

@@ -132,10 +132,10 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
             </div>
             <div>
               <h2 className="text-xl font-semibold text-white">
-                Downloading AI Model
+                Downloading Embedding Model
               </h2>
               <p className="text-gray-400 text-sm">
-                First-time setup
+                bge-m3 multilingual model
               </p>
             </div>
           </div>
@@ -173,7 +173,7 @@ const ModelDownload: React.FC<ModelDownloadProps> = ({ onComplete }) => {
               <svg className="w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              This is a one-time download (~100MB)
+              This is a one-time download (~2GB)
             </p>
           </div>
         </div>

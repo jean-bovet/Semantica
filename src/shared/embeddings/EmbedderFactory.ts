@@ -2,26 +2,33 @@ import { IsolatedEmbedder } from './isolated';
 import { EmbedderConfig } from './IEmbedder';
 import { ModelPathResolver } from './ModelPathResolver';
 import { ProcessMemoryMonitor } from '../utils/ProcessMemoryMonitor';
+import { OllamaEmbedder, OllamaEmbedderConfig } from './implementations/OllamaEmbedder';
+import { OllamaClient } from '../../main/services/OllamaClient';
 
 /**
  * Configuration for creating embedders
  */
 export interface EmbedderFactoryConfig extends EmbedderConfig {
-  // Process management
+  // Process management (legacy - for old IsolatedEmbedder)
   childScriptPath?: string;
   nodeArgs?: string[];
   spawnTimeout?: number;
   maxRestarts?: number;
   restartDelay?: number;
 
-  // Environment
+  // Environment (legacy - for old transformers)
   userDataPath?: string;
   transformersCache?: string;
   nodeEnv?: string;
 
-  // Memory monitoring
+  // Memory monitoring (legacy - Ollama manages its own memory)
   memoryCheckInterval?: number;
   memoryWarningThreshold?: number;
+
+  // Ollama-specific configuration
+  ollamaClient?: OllamaClient;
+  ollamaKeepAlive?: string;
+  normalizeVectors?: boolean;
 
   // Logging
   enableVerboseLogging?: boolean;
@@ -31,7 +38,7 @@ export interface EmbedderFactoryConfig extends EmbedderConfig {
 /**
  * Types of embedders that can be created
  */
-export type EmbedderType = 'isolated' | 'pool' | 'mock';
+export type EmbedderType = 'ollama' | 'isolated' | 'pool' | 'mock';
 
 /**
  * Factory for creating configured embedder instances with consistent settings
@@ -43,13 +50,17 @@ export class EmbedderFactory {
 
   constructor(config: EmbedderFactoryConfig = {}) {
     this.config = {
-      // Default embedder config
-      modelName: 'Xenova/multilingual-e5-small',
+      // Default embedder config - now optimized for Ollama
+      modelName: 'bge-m3', // Ollama model (was: 'Xenova/multilingual-e5-small')
       maxFilesBeforeRestart: 5000,
       maxMemoryMB: 1500,
       batchSize: 32,
 
-      // Default factory config
+      // Ollama defaults
+      ollamaKeepAlive: '2m',
+      normalizeVectors: true,
+
+      // Default factory config (legacy for IsolatedEmbedder)
       spawnTimeout: 60000,
       maxRestarts: 5,
       restartDelay: 2000,
@@ -65,19 +76,44 @@ export class EmbedderFactory {
       ...config
     };
 
-    // Initialize path resolver with factory config
-    this.pathResolver = new ModelPathResolver(this.config.modelName, {
-      transformersCache: this.config.transformersCache,
-      userDataPath: this.config.userDataPath,
-      nodeEnv: this.config.nodeEnv
-    });
+    // Initialize path resolver with factory config (legacy for IsolatedEmbedder)
+    this.pathResolver = new ModelPathResolver(
+      this.config.modelName.startsWith('Xenova/') ? this.config.modelName : 'Xenova/multilingual-e5-small',
+      {
+        transformersCache: this.config.transformersCache,
+        userDataPath: this.config.userDataPath,
+        nodeEnv: this.config.nodeEnv
+      }
+    );
 
-    // Initialize memory monitor
+    // Initialize memory monitor (legacy for IsolatedEmbedder)
     this.memoryMonitor = ProcessMemoryMonitor.forEmbedder(this.config.maxMemoryMB!);
   }
 
   /**
+   * Create an Ollama embedder instance (recommended)
+   */
+  createOllamaEmbedder(): OllamaEmbedder {
+    const embedderConfig: OllamaEmbedderConfig = {
+      modelName: this.config.modelName,
+      batchSize: this.config.batchSize,
+      client: this.config.ollamaClient,
+      keepAlive: this.config.ollamaKeepAlive,
+      normalizeVectors: this.config.normalizeVectors
+    };
+
+    const embedder = new OllamaEmbedder(embedderConfig);
+
+    if (this.config.enableVerboseLogging) {
+      this.log(`Created Ollama embedder with model: ${this.config.modelName}`);
+    }
+
+    return embedder;
+  }
+
+  /**
    * Create an isolated embedder instance
+   * @deprecated Use createOllamaEmbedder() instead for better performance and stability
    */
   createIsolatedEmbedder(): IsolatedEmbedder {
     const embedderConfig: EmbedderConfig = {
@@ -101,6 +137,7 @@ export class EmbedderFactory {
 
   /**
    * Create multiple isolated embedder instances
+   * @deprecated Ollama handles concurrency internally - use createOllamaEmbedder() instead
    */
   createEmbedderPool(poolSize: number): IsolatedEmbedder[] {
     if (poolSize <= 0) {
@@ -206,7 +243,29 @@ export class EmbedderFactory {
   }
 
   /**
+   * Create Ollama embedder with validation
+   */
+  async createValidatedOllamaEmbedder(): Promise<OllamaEmbedder> {
+    // For Ollama, validation is simpler - just check config basics
+    const issues: string[] = [];
+
+    if (!this.config.modelName) {
+      issues.push('Model name is required');
+    }
+    if (this.config.batchSize! <= 0) {
+      issues.push('batchSize must be greater than 0');
+    }
+
+    if (issues.length > 0) {
+      throw new Error(`Invalid Ollama embedder configuration: ${issues.join(', ')}`);
+    }
+
+    return this.createOllamaEmbedder();
+  }
+
+  /**
    * Create embedder with validation
+   * @deprecated Use createValidatedOllamaEmbedder() instead
    */
   async createValidatedEmbedder(): Promise<IsolatedEmbedder> {
     const validation = await this.validateConfig();
@@ -304,14 +363,19 @@ export function createTestFactory(overrides: Partial<EmbedderFactoryConfig> = {}
 }
 
 /**
- * Create a factory optimized for production use
+ * Create a factory optimized for production use with Ollama
  */
 export function createProductionFactory(overrides: Partial<EmbedderFactoryConfig> = {}): EmbedderFactory {
   return new EmbedderFactory({
+    modelName: 'bge-m3',
+    batchSize: 32,
+    ollamaKeepAlive: '2m',
+    normalizeVectors: true,
+    enableVerboseLogging: false,
+    // Legacy settings for backward compatibility
     maxMemoryMB: 1500,
     maxFilesBeforeRestart: 5000,
     memoryCheckInterval: 30000,
-    enableVerboseLogging: false,
     ...overrides
   });
 }

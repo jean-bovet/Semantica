@@ -42,6 +42,11 @@ const CATEGORIES = {
   'MODEL-LOADER': false,
   'NODE-MESSENGER': false,
 
+  // Ollama integration
+  'OLLAMA-SERVICE': false,
+  'OLLAMA-EMBEDDER': false,
+  'OLLAMA-CLIENT': false,
+
   // System monitoring
   'MEMORY': false,
   'PERFORMANCE': false,

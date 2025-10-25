@@ -87,7 +87,8 @@ setInterval(async () => {
       backpressureActive: false
     };
 
-    const embedderStats = embedderPool ? embedderPool.getStats() : [];
+    // Ollama embedder stats (simplified - no pool management needed)
+    const embedderStats = ollamaEmbedder ? [ollamaEmbedder.getStats()] : [];
     const processingFiles = fileQueue.getProcessingFiles();
     const fileTrackers = embeddingQueue ? embeddingQueue.getFileTrackers() : new Map();
     const maxConcurrent = fileQueue.getCurrentMaxConcurrent();
@@ -110,23 +111,8 @@ setInterval(async () => {
     });
   }
   
-  // Check embedder pool health and restart if needed
-  if (embedderPool) {
-    try {
-      const stats = embedderPool.getStats();
-      for (const stat of stats) {
-        // Use the extracted function for consistency with tests
-        if (shouldRestartEmbedder(stat.filesProcessed, stat.memoryUsage)) {
-          const memoryMB = bytesToMB(stat.memoryUsage);
-          logger.log('MEMORY', `Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${memoryMB}MB)`);
-          await embedderPool.restartEmbedder(stat.id);
-          recordEvent('embedderRestart'); // Track for profiling
-        }
-      }
-    } catch (error) {
-      logger.error('MEMORY', 'Failed to check embedder health:', error);
-    }
-  }
+  // Ollama manages its own memory and lifecycle, so no health checks needed
+  // (Legacy code for EmbedderPool removed)
 }, 2000);
 
 import { getParserForExtension, getEnabledExtensions } from '../parsers/registry';
@@ -141,6 +127,8 @@ try {
 }
 // Use isolated embedder for better memory management
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
+import { OllamaEmbedder } from '../../shared/embeddings/implementations/OllamaEmbedder';
+import { OllamaClient } from '../services/OllamaClient';
 import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
@@ -159,6 +147,7 @@ let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
 let embedderPool: EmbedderPool | null = null;
+let ollamaEmbedder: OllamaEmbedder | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
 
 // CPU-aware concurrency settings
@@ -386,23 +375,8 @@ async function initDB(dir: string, _userDataPath: string) {
 let healthCheckInterval: NodeJS.Timeout | null = null;
 
 function startEmbedderHealthCheck() {
-  if (healthCheckInterval) {
-    clearInterval(healthCheckInterval);
-  }
-  
-  const performHealthCheck = async () => {
-    if (!embedderPool) return;
-    
-    try {
-      await embedderPool.checkHealth();
-    } catch (error) {
-      logger.error('WORKER', 'Health check failed:', error);
-    }
-  };
-  
-  // Check health every 5 seconds
-  healthCheckInterval = setInterval(performHealthCheck, 5000);
-  logger.log('WORKER', 'Started embedder health check monitoring');
+  // Ollama manages its own health, so no periodic health checks needed
+  // (Legacy health check code for EmbedderPool removed)
 }
 
 // Separate function to check and download model after worker is ready
@@ -443,101 +417,17 @@ async function initializeModel(userDataPath: string) {
     logger.log('WORKER', '========== MODEL FOUND, SKIPPING DOWNLOAD ==========');
   }
   
-  // Send model ready status
+  // Send model ready status (legacy, not used anymore with Ollama)
   if (parentPort) {
     parentPort.postMessage({
       type: 'model:ready',
-      payload: { ready: modelReady }
+      payload: { ready: true } // Always true now, model check happens in main process
     });
   }
-  
-  // Initialize embedder pool (it will handle model download internally if needed)
-  if (!embedderPool) {
-    const settings = configManager?.getSettings();
-    const poolSize = settings?.embedderPoolSize ?? 2;
-    emitStageProgress(StartupStage.EMBEDDER_INIT, `Initializing ${poolSize} embedder processes`);
-    logger.log('WORKER', `Initializing embedder pool with ${poolSize} processes`);
-    
-    embedderPool = new EmbedderPool({
-      poolSize,
-      maxFilesBeforeRestart: 200,  // Restart every 200 files (was too low)
-      maxMemoryMB: 1500,            // Restart when child process hits 1.5GB RSS
-      onEmbedderRestart: (index) => {
-        // Notify the embedding queue that an embedder is restarting
-        if (embeddingQueue) {
-          embeddingQueue.onEmbedderRestart(index);
-        }
-      }
-    });
-    
-    try {
-      logger.log('WORKER', 'About to call embedderPool.initialize()');
-      await embedderPool.initialize();
-      emitStageProgress(StartupStage.EMBEDDER_INIT, 'Embedder pool ready');
-      logger.log('WORKER', 'Embedder pool initialized successfully');
 
-      // Initialize the embedding queue with the pool
-      const batchSize = settings?.embeddingBatchSize ?? 32;
-      logger.log('WORKER', 'Creating EmbeddingQueue with batch size:', batchSize);
-      embeddingQueue = new EmbeddingQueue({
-        maxQueueSize: 2000,
-        batchSize,
-        backpressureThreshold: 1000,
-        onProgress: (filePath: string, processed: number, total: number) => {
-          logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
-        },
-        onFileComplete: (filePath: string) => {
-          logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
-        }
-      });
-      logger.log('WORKER', 'About to call embeddingQueue.initialize()');
-      // Initialize with batch processor that writes to database
-      embeddingQueue.initialize(embedderPool, async (batch: any) => {
-        // Extract file metadata from the first chunk
-        const filePath = batch.chunks[0].metadata.filePath;
-        const fileExt = path.extname(filePath).slice(1).toLowerCase();
-
-        // Get file stats
-        const stat = await fs.promises.stat(filePath);
-        const mtime = stat.mtimeMs;
-
-        // Create database rows
-        const rows = batch.chunks.map((chunk: any, idx: number) => {
-          const id = crypto.createHash('sha1')
-            .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
-            .digest('hex');
-
-          return {
-            id,
-            path: filePath,
-            mtime,
-            page: chunk.metadata.page || 0,
-            offset: chunk.metadata.offset,
-            text: chunk.text,
-            vector: batch.vectors[idx],
-            type: fileExt,
-            title: path.basename(filePath)
-          };
-        });
-
-        // Write to database
-        await mergeRows(rows);
-      });
-      logger.log('WORKER', 'Embedding queue initialized successfully');
-
-      // Start health check monitoring
-      startEmbedderHealthCheck();
-    } catch (error) {
-      logger.error('WORKER', 'Failed to initialize embedder pool:', error);
-      // Critical error - we need the embedder pool to function
-      throw new Error(`Failed to initialize embedder pool: ${error}`);
-    }
-  }
-
-  logger.log('WORKER', 'Model initialization completed successfully');
-
-  // NOW we're truly ready - database, model, and embedders are all initialized
-  emitStageProgress(StartupStage.READY, 'Worker initialization complete');
+  // Embedder will be initialized later by explicit message from main process
+  emitStageProgress(StartupStage.EMBEDDER_INIT, 'Waiting for embedder initialization signal');
+  logger.log('WORKER', 'Worker ready, waiting for embedder initialization...');
 }
 
 async function mergeRows(rows: any[]) {
@@ -1409,7 +1299,7 @@ parentPort!.on('message', async (msg: any) => {
         // Model download is handled during init, this is now a no-op
         // Just return success if model is ready
         if (msg.id) {
-          parentPort!.postMessage({ 
+          parentPort!.postMessage({
             id: msg.id,
             payload: { success: modelReady }
           });
@@ -1418,7 +1308,102 @@ parentPort!.on('message', async (msg: any) => {
           parentPort!.postMessage({ type: 'model:download:complete' });
         }
         break;
-        
+
+      case 'initializeEmbedder':
+        // Initialize the Ollama embedder after model is confirmed ready by main process
+        logger.log('WORKER', 'Received initializeEmbedder signal - model is ready');
+
+        try {
+          const settings = configManager?.getSettings();
+          emitStageProgress(StartupStage.EMBEDDER_INIT, 'Initializing Ollama embedder');
+
+          // Create Ollama client and embedder
+          const ollamaClient = new OllamaClient();
+          ollamaEmbedder = new OllamaEmbedder({
+            modelName: 'bge-m3',
+            batchSize: settings?.embeddingBatchSize ?? 32,
+            client: ollamaClient,
+            keepAlive: '2m',
+            normalizeVectors: true
+          });
+
+          // Initialize embedder (should succeed since model exists)
+          const initialized = await ollamaEmbedder.initialize();
+
+          if (!initialized) {
+            throw new Error('Failed to initialize embedder after model confirmation');
+          }
+
+          logger.log('WORKER', 'Ollama embedder initialized successfully');
+
+          // Create embedding queue
+          const batchSize = settings?.embeddingBatchSize ?? 32;
+          embeddingQueue = new EmbeddingQueue({
+            maxQueueSize: 2000,
+            batchSize,
+            backpressureThreshold: 1000,
+            onProgress: (filePath: string, processed: number, total: number) => {
+              logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
+            },
+            onFileComplete: (filePath: string) => {
+              logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
+            }
+          });
+
+          // Initialize with batch processor
+          embeddingQueue.initialize(ollamaEmbedder, async (batch: any) => {
+            // Extract file metadata from the first chunk
+            const filePath = batch.chunks[0].metadata.filePath;
+            const fileExt = path.extname(filePath).slice(1).toLowerCase();
+
+            // Get file stats
+            const stat = await fs.promises.stat(filePath);
+            const mtime = stat.mtimeMs;
+
+            // Create database rows
+            const rows = batch.chunks.map((chunk: any, idx: number) => {
+              const id = crypto.createHash('sha1')
+                .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+                .digest('hex');
+
+              return {
+                id,
+                path: filePath,
+                mtime,
+                page: chunk.metadata.page || 0,
+                offset: chunk.metadata.offset,
+                text: chunk.text,
+                vector: batch.vectors[idx],
+                type: fileExt,
+                title: path.basename(filePath)
+              };
+            });
+
+            // Write to database
+            await mergeRows(rows);
+          });
+
+          logger.log('WORKER', 'Embedding queue initialized');
+          emitStageProgress(StartupStage.READY, 'Worker fully initialized');
+
+          // Reply with success
+          if (msg.id) {
+            parentPort!.postMessage({
+              id: msg.id,
+              payload: { success: true }
+            });
+          }
+        } catch (error) {
+          logger.error('WORKER', 'Failed to initialize embedder:', error);
+          if (msg.id) {
+            parentPort!.postMessage({
+              id: msg.id,
+              error: String(error)
+            });
+          }
+        }
+        break;
+
       case 'watchStart':
         const { roots, options } = msg.payload;
         
@@ -1653,8 +1638,8 @@ process.on('exit', async () => {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (embedderPool) {
-    await embedderPool.dispose();
+  if (ollamaEmbedder) {
+    await ollamaEmbedder.shutdown();
   }
 });
 
@@ -1667,12 +1652,12 @@ process.on('SIGTERM', async () => {
       await profiler.saveReport();
     }
   }
-  
+
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (embedderPool) {
-    await embedderPool.dispose();
+  if (ollamaEmbedder) {
+    await ollamaEmbedder.shutdown();
   }
   process.exit(0);
 });
