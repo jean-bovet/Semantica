@@ -6,6 +6,8 @@
  * isolation from the Electron process and efficient memory management.
  */
 
+import { logger } from '../../shared/utils/logger';
+
 export interface OllamaEmbedRequest {
   model: string;
   input: string[];
@@ -281,10 +283,13 @@ export class OllamaClient {
       const data = await response.json();
       return data as T;
     } catch (error) {
-      // Don't retry on timeout or if max attempts reached
-      if (attempt >= this.retryAttempts || error instanceof OllamaClientError) {
+      // Don't retry if max attempts reached or error is not retryable
+      if (attempt >= this.retryAttempts || !this.isRetryableError(error)) {
         throw error;
       }
+
+      // Log retry attempt
+      logger.log('OLLAMA-CLIENT', `Retry attempt ${attempt}/${this.retryAttempts} after error:`, error);
 
       // Exponential backoff
       const delay = this.retryDelay * Math.pow(2, attempt - 1);
@@ -292,6 +297,43 @@ export class OllamaClient {
 
       return this.fetchWithRetry<T>(path, options, attempt + 1);
     }
+  }
+
+  /**
+   * Determine if an error should be retried
+   * Retries on:
+   * - Server errors (HTTP 5xx) - transient issues like EOF, timeouts
+   * - Network errors (connection refused, etc.)
+   * Does not retry on:
+   * - Client errors (HTTP 4xx) - bad request, not found, etc.
+   */
+  private isRetryableError(error: unknown): boolean {
+    if (error instanceof OllamaClientError) {
+      // Retry on server errors (500-599)
+      if (error.statusCode && error.statusCode >= 500 && error.statusCode < 600) {
+        return true;
+      }
+      // Don't retry on client errors (400-499)
+      if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+        return false;
+      }
+    }
+
+    // Retry on network errors (no status code)
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      // Common network error patterns
+      if (message.includes('econnrefused') ||
+          message.includes('econnreset') ||
+          message.includes('etimedout') ||
+          message.includes('eof') ||
+          message.includes('fetch failed')) {
+        return true;
+      }
+    }
+
+    // Don't retry unknown errors
+    return false;
   }
 
   /**
