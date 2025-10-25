@@ -16,9 +16,7 @@ declare global {
 }
 
 function App() {
-  const [appReady, setAppReady] = useState(() =>
-    sessionStorage.getItem('appReady') === 'true'
-  );
+  const [appReady, setAppReady] = useState(false);
   const [_filesLoaded, setFilesLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
@@ -30,12 +28,11 @@ function App() {
     paused: false,
     initialized: false
   });
-  
+
   // Listen for app ready event
   useEffect(() => {
     const handleAppReady = () => {
       setAppReady(true);
-      sessionStorage.setItem('appReady', 'true');
     };
 
     window.api.on('app:ready', handleAppReady);
@@ -88,20 +85,23 @@ function App() {
       clearInterval(interval);
     };
   }, []);
-  
+
+  // DEBUG: Check if component should render
+  console.log('[App] About to render, appReady:', appReady, 'should show StartupProgress:', !appReady);
+
   return (
     <SearchProvider>
       <div className="app" data-testid="app-ready">
         <div className="main-content">
           <SearchView />
         </div>
-        
-        <StatusBar 
-          progress={indexProgress} 
+
+        <StatusBar
+          progress={indexProgress}
           onSettingsClick={() => setShowSettings(true)}
           onFileSearchClick={() => setShowFileSearch(true)}
         />
-        
+
         <Modal
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
@@ -109,17 +109,17 @@ function App() {
         >
           <SettingsView />
         </Modal>
-        
+
         <FileSearchModal
           isOpen={showFileSearch}
           onClose={() => setShowFileSearch(false)}
         />
-        
-        {/* Startup progress overlay */}
-        {!appReady && (
-          <StartupProgress onComplete={() => setAppReady(true)} />
-        )}
       </div>
+
+      {/* Startup progress overlay - rendered outside .app to avoid flex container issues */}
+      {!appReady && (
+        <StartupProgress onComplete={() => setAppReady(true)} />
+      )}
     </SearchProvider>
   );
 }

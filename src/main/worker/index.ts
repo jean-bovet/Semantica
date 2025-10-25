@@ -35,13 +35,14 @@ const folderRemovalManager = new FolderRemovalManager();
 
 // Helper to emit startup stage progress
 function emitStageProgress(stage: StartupStage, message?: string, progress?: number) {
-  const stageProgress: StageProgress = {
+  // Use the same format as WorkerStartup.ts for consistency
+  const stageMessage = {
+    channel: 'startup:stage',
     stage,
     message,
-    progress,
-    timestamp: Date.now()
+    progress
   };
-  parentPort?.postMessage({ type: 'startup:stage', payload: stageProgress });
+  parentPort?.postMessage(stageMessage);
   logger.log('STARTUP', `Stage: ${stage}${message ? ` - ${message}` : ''}${progress !== undefined ? ` (${progress}%)` : ''}`);
 }
 

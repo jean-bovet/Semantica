@@ -5,7 +5,17 @@
  * startup progress indicator. All functions are side-effect free and easily testable.
  */
 
-export type StartupStage = 'checking' | 'downloading' | 'initializing' | 'ready' | 'error';
+export type StartupStage =
+  | 'worker_spawn'
+  | 'db_init'
+  | 'db_load'
+  | 'folder_scan'
+  | 'checking'
+  | 'downloading'
+  | 'initializing'
+  | 'ready'
+  | 'error';
+
 export type StepStatus = 'completed' | 'active' | 'pending' | 'error';
 
 export interface StepDefinition {
@@ -16,10 +26,14 @@ export interface StepDefinition {
 
 /**
  * Ordered list of startup steps
+ * Note: 'downloading' stage only appears if model needs to be downloaded
  */
 export const STARTUP_STEPS: StepDefinition[] = [
+  { id: 'worker_spawn', label: 'Starting Worker', stage: 'worker_spawn' },
+  { id: 'db_init', label: 'Initializing Database', stage: 'db_init' },
+  { id: 'db_load', label: 'Loading Files', stage: 'db_load' },
+  { id: 'folder_scan', label: 'Scanning Folders', stage: 'folder_scan' },
   { id: 'checking', label: 'Checking Ollama', stage: 'checking' },
-  { id: 'downloading', label: 'Downloading Model', stage: 'downloading' },
   { id: 'initializing', label: 'Initializing Embedder', stage: 'initializing' },
   { id: 'ready', label: 'Ready', stage: 'ready' },
 ];
@@ -90,6 +104,14 @@ export function getStageMessage(stage: StartupStage, customMessage?: string): st
   if (customMessage) return customMessage;
 
   switch (stage) {
+    case 'worker_spawn':
+      return 'Starting worker process...';
+    case 'db_init':
+      return 'Initializing database...';
+    case 'db_load':
+      return 'Loading indexed files...';
+    case 'folder_scan':
+      return 'Scanning folders...';
     case 'checking':
       return 'Verifying Ollama installation...';
     case 'downloading':
