@@ -86,9 +86,6 @@ function App() {
     };
   }, []);
 
-  // DEBUG: Check if component should render
-  console.log('[App] About to render, appReady:', appReady, 'should show StartupProgress:', !appReady);
-
   return (
     <SearchProvider>
       <div className="app" data-testid="app-ready">

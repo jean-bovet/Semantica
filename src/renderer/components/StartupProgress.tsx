@@ -14,9 +14,6 @@ interface StartupProgressProps {
 }
 
 const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
-  // DEBUG: Check if component is mounting
-  console.log('[StartupProgress] COMPONENT MOUNTED');
-
   const [stage, setStage] = useState<StartupStage>('worker_spawn');
   const [stageMessage, setStageMessage] = useState('Initializing...');
   const [progress, setProgress] = useState(0);
@@ -25,25 +22,51 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   const [bytesTotal, setBytesTotal] = useState(0);
   const [error, setError] = useState<StartupErrorMessage | null>(null);
 
-  // DEBUG: Check render state
-  console.log('[StartupProgress] Rendering - stage:', stage, 'error:', error);
+  // Track stage timing for minimum display duration
+  const stageStartTime = React.useRef<number>(Date.now());
+  const pendingStageUpdate = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
+    // Minimum duration each stage should be visible (ms)
+    const MIN_STAGE_DURATION = 400;
+
     // Listen for startup stage events
     const handleStage = (_: any, data: StartupStageMessage) => {
       if (!mounted) return;
-      console.log('[StartupProgress] Received stage event:', data.stage, 'message:', data.message);
-      setStage(data.stage);
-      setStageMessage(data.message || '');
-      if (data.progress !== undefined) {
-        setProgress(data.progress);
+
+      // Calculate how long current stage has been visible
+      const elapsed = Date.now() - stageStartTime.current;
+      const remaining = Math.max(0, MIN_STAGE_DURATION - elapsed);
+
+      // Clear any pending stage update
+      if (pendingStageUpdate.current) {
+        clearTimeout(pendingStageUpdate.current);
+        pendingStageUpdate.current = null;
       }
 
-      // Complete when ready
-      if (data.stage === 'ready') {
-        onComplete();
+      // Function to apply the stage update
+      const applyUpdate = () => {
+        setStage(data.stage);
+        setStageMessage(data.message || '');
+        if (data.progress !== undefined) {
+          setProgress(data.progress);
+        }
+        stageStartTime.current = Date.now();
+
+        // Complete when ready
+        if (data.stage === 'ready') {
+          onComplete();
+        }
+      };
+
+      // Delay update if current stage hasn't been visible long enough
+      if (remaining > 0 && stage !== 'worker_spawn') {
+        // Don't delay the first stage transition
+        pendingStageUpdate.current = setTimeout(applyUpdate, remaining);
+      } else {
+        applyUpdate();
       }
     };
 
@@ -76,6 +99,13 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
 
     return () => {
       mounted = false;
+
+      // Clear any pending stage update
+      if (pendingStageUpdate.current) {
+        clearTimeout(pendingStageUpdate.current);
+        pendingStageUpdate.current = null;
+      }
+
       window.api.off('startup:stage', handleStage);
       window.api.off('startup:error', handleError);
       window.api.off('model:download:progress', handleProgress);
@@ -206,7 +236,10 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
                   <div className="startup-step-content">
                     {renderStepIcon(status)}
                     <div className={`startup-step-label ${status}`}>
-                      <p>{step.label}</p>
+                      <p>
+                        {step.label}
+                        {step.stage === 'downloading' && progress > 0 && ` (${Math.round(progress)}%)`}
+                      </p>
                     </div>
                   </div>
                   {!isLast && <div className="startup-step-connector"></div>}
