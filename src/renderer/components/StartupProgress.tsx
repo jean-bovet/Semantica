@@ -22,51 +22,26 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   const [bytesTotal, setBytesTotal] = useState(0);
   const [error, setError] = useState<StartupErrorMessage | null>(null);
 
-  // Track stage timing for minimum display duration
-  const stageStartTime = React.useRef<number>(Date.now());
-  const pendingStageUpdate = React.useRef<NodeJS.Timeout | null>(null);
-
   useEffect(() => {
     let mounted = true;
-
-    // Minimum duration each stage should be visible (ms)
-    const MIN_STAGE_DURATION = 400;
 
     // Listen for startup stage events
     const handleStage = (_: any, data: StartupStageMessage) => {
       if (!mounted) return;
 
-      // Calculate how long current stage has been visible
-      const elapsed = Date.now() - stageStartTime.current;
-      const remaining = Math.max(0, MIN_STAGE_DURATION - elapsed);
-
-      // Clear any pending stage update
-      if (pendingStageUpdate.current) {
-        clearTimeout(pendingStageUpdate.current);
-        pendingStageUpdate.current = null;
+      setStage(data.stage);
+      setStageMessage(data.message || '');
+      if (data.progress !== undefined) {
+        setProgress(data.progress);
       }
 
-      // Function to apply the stage update
-      const applyUpdate = () => {
-        setStage(data.stage);
-        setStageMessage(data.message || '');
-        if (data.progress !== undefined) {
-          setProgress(data.progress);
-        }
-        stageStartTime.current = Date.now();
-
-        // Complete when ready
-        if (data.stage === 'ready') {
-          onComplete();
-        }
-      };
-
-      // Delay update if current stage hasn't been visible long enough
-      if (remaining > 0 && stage !== 'worker_spawn') {
-        // Don't delay the first stage transition
-        pendingStageUpdate.current = setTimeout(applyUpdate, remaining);
-      } else {
-        applyUpdate();
+      // Delay completion to let user see "ready" stage
+      if (data.stage === 'ready') {
+        setTimeout(() => {
+          if (mounted) {
+            onComplete();
+          }
+        }, 400);
       }
     };
 
@@ -86,30 +61,15 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
       setBytesTotal(data.total || 0);
     };
 
-    // Listen for app:ready as backup
-    const handleReady = () => {
-      if (!mounted) return;
-      onComplete();
-    };
-
     window.api.on('startup:stage', handleStage);
     window.api.on('startup:error', handleError);
     window.api.on('model:download:progress', handleProgress);
-    window.api.on('app:ready', handleReady);
 
     return () => {
       mounted = false;
-
-      // Clear any pending stage update
-      if (pendingStageUpdate.current) {
-        clearTimeout(pendingStageUpdate.current);
-        pendingStageUpdate.current = null;
-      }
-
       window.api.off('startup:stage', handleStage);
       window.api.off('startup:error', handleError);
       window.api.off('model:download:progress', handleProgress);
-      window.api.off('app:ready', handleReady);
     };
   }, [onComplete]);
 

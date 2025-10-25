@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import SearchView from './components/SearchView';
 import SettingsView from './components/SettingsView';
 import StatusBar from './components/StatusBar';
@@ -29,17 +29,9 @@ function App() {
     initialized: false
   });
 
-  // Listen for app ready event
-  useEffect(() => {
-    const handleAppReady = () => {
-      setAppReady(true);
-    };
-
-    window.api.on('app:ready', handleAppReady);
-
-    return () => {
-      window.api.off('app:ready', handleAppReady);
-    };
+  // Memoized callback to prevent re-creating on every render
+  const handleStartupComplete = useCallback(() => {
+    setAppReady(true);
   }, []);
 
   // Listen for files loaded event
@@ -115,7 +107,7 @@ function App() {
 
       {/* Startup progress overlay - rendered outside .app to avoid flex container issues */}
       {!appReady && (
-        <StartupProgress onComplete={() => setAppReady(true)} />
+        <StartupProgress onComplete={handleStartupComplete} />
       )}
     </SearchProvider>
   );

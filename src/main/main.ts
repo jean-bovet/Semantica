@@ -88,7 +88,6 @@ function spawnWorker() {
           startupTimeout = null;
         }
         startupRetries = 0; // Reset retry counter on success
-        win?.webContents.send('app:ready');
       }
     } else if (isStartupErrorMessage(msg)) {
       logger.error('STARTUP', `Error: ${msg.code} - ${msg.message}`);
