@@ -11,15 +11,16 @@ import {
 
 describe('StepperLogic - Pure Functions', () => {
   describe('STARTUP_STEPS', () => {
-    it('should have 7 steps in correct order', () => {
-      expect(STARTUP_STEPS).toHaveLength(7);
+    it('should have 8 steps in correct order', () => {
+      expect(STARTUP_STEPS).toHaveLength(8);
       expect(STARTUP_STEPS[0].id).toBe('worker_spawn');
       expect(STARTUP_STEPS[1].id).toBe('db_init');
       expect(STARTUP_STEPS[2].id).toBe('db_load');
       expect(STARTUP_STEPS[3].id).toBe('folder_scan');
       expect(STARTUP_STEPS[4].id).toBe('checking');
-      expect(STARTUP_STEPS[5].id).toBe('initializing');
-      expect(STARTUP_STEPS[6].id).toBe('ready');
+      expect(STARTUP_STEPS[5].id).toBe('downloading');
+      expect(STARTUP_STEPS[6].id).toBe('initializing');
+      expect(STARTUP_STEPS[7].id).toBe('ready');
     });
 
     it('should have descriptive labels', () => {
@@ -28,8 +29,9 @@ describe('StepperLogic - Pure Functions', () => {
       expect(STARTUP_STEPS[2].label).toBe('Loading Files');
       expect(STARTUP_STEPS[3].label).toBe('Scanning Folders');
       expect(STARTUP_STEPS[4].label).toBe('Checking Ollama');
-      expect(STARTUP_STEPS[5].label).toBe('Initializing Embedder');
-      expect(STARTUP_STEPS[6].label).toBe('Ready');
+      expect(STARTUP_STEPS[5].label).toBe('Downloading Model');
+      expect(STARTUP_STEPS[6].label).toBe('Initializing Embedder');
+      expect(STARTUP_STEPS[7].label).toBe('Ready');
     });
 
     it('should map ids to stages correctly', () => {
@@ -38,8 +40,9 @@ describe('StepperLogic - Pure Functions', () => {
       expect(STARTUP_STEPS[2].stage).toBe('db_load');
       expect(STARTUP_STEPS[3].stage).toBe('folder_scan');
       expect(STARTUP_STEPS[4].stage).toBe('checking');
-      expect(STARTUP_STEPS[5].stage).toBe('initializing');
-      expect(STARTUP_STEPS[6].stage).toBe('ready');
+      expect(STARTUP_STEPS[5].stage).toBe('downloading');
+      expect(STARTUP_STEPS[6].stage).toBe('initializing');
+      expect(STARTUP_STEPS[7].stage).toBe('ready');
     });
   });
 
@@ -77,6 +80,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('checking', 4, false)).toBe('active');
         expect(getStepStatus('checking', 5, false)).toBe('pending');
         expect(getStepStatus('checking', 6, false)).toBe('pending');
+        expect(getStepStatus('checking', 7, false)).toBe('pending');
       });
 
       it('should mark previous steps as completed when downloading', () => {
@@ -87,6 +91,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('downloading', 4, false)).toBe('completed');
         expect(getStepStatus('downloading', 5, false)).toBe('active');
         expect(getStepStatus('downloading', 6, false)).toBe('pending');
+        expect(getStepStatus('downloading', 7, false)).toBe('pending');
       });
 
       it('should mark previous steps as completed when initializing', () => {
@@ -97,6 +102,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('initializing', 4, false)).toBe('completed');
         expect(getStepStatus('initializing', 5, false)).toBe('completed');
         expect(getStepStatus('initializing', 6, false)).toBe('active');
+        expect(getStepStatus('initializing', 7, false)).toBe('pending');
       });
 
       it('should mark all steps as completed when ready', () => {
@@ -107,6 +113,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('ready', 4, false)).toBe('completed');
         expect(getStepStatus('ready', 5, false)).toBe('completed');
         expect(getStepStatus('ready', 6, false)).toBe('completed');
+        expect(getStepStatus('ready', 7, false)).toBe('completed');
       });
     });
 
@@ -120,6 +127,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('checking', 4, true)).toBe('error');
         expect(getStepStatus('checking', 5, true)).toBe('pending');
         expect(getStepStatus('checking', 6, true)).toBe('pending');
+        expect(getStepStatus('checking', 7, true)).toBe('pending');
       });
 
       it('should mark previous steps as completed when error occurs', () => {
@@ -131,6 +139,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('downloading', 4, true)).toBe('completed');
         expect(getStepStatus('downloading', 5, true)).toBe('error');
         expect(getStepStatus('downloading', 6, true)).toBe('pending');
+        expect(getStepStatus('downloading', 7, true)).toBe('pending');
       });
 
       it('should handle error in initializing step', () => {
@@ -141,6 +150,7 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('initializing', 4, true)).toBe('completed');
         expect(getStepStatus('initializing', 5, true)).toBe('completed');
         expect(getStepStatus('initializing', 6, true)).toBe('error');
+        expect(getStepStatus('initializing', 7, true)).toBe('pending');
       });
 
       it('should handle generic error stage', () => {
@@ -275,6 +285,7 @@ describe('StepperLogic - Pure Functions', () => {
       expect(getStepStatus(stage, 4, hasError)).toBe('error');
       expect(getStepStatus(stage, 5, hasError)).toBe('pending');
       expect(getStepStatus(stage, 6, hasError)).toBe('pending');
+      expect(getStepStatus(stage, 7, hasError)).toBe('pending');
 
       expect(hasAnyCompletedSteps(stage, hasError)).toBe(false);
       expect(allStepsCompleted(stage)).toBe(false);
@@ -291,6 +302,7 @@ describe('StepperLogic - Pure Functions', () => {
       expect(getStepStatus(stage, 4, false)).toBe('completed'); // checking ✓
       expect(getStepStatus(stage, 5, false)).toBe('completed'); // downloading ✓
       expect(getStepStatus(stage, 6, false)).toBe('active');    // initializing ⟳
+      expect(getStepStatus(stage, 7, false)).toBe('pending');   // ready ○
 
       expect(hasAnyCompletedSteps(stage, false)).toBe(true);
       expect(allStepsCompleted(stage)).toBe(false);

@@ -22,7 +22,7 @@ export interface StepDefinition {
 
 /**
  * Ordered list of startup steps
- * Note: 'downloading' stage only appears if model needs to be downloaded
+ * Note: 'downloading' stage may be skipped if model is already downloaded
  */
 export const STARTUP_STEPS: StepDefinition[] = [
   { id: 'worker_spawn', label: 'Starting Worker', stage: 'worker_spawn' },
@@ -30,6 +30,7 @@ export const STARTUP_STEPS: StepDefinition[] = [
   { id: 'db_load', label: 'Loading Files', stage: 'db_load' },
   { id: 'folder_scan', label: 'Scanning Folders', stage: 'folder_scan' },
   { id: 'checking', label: 'Checking Ollama', stage: 'checking' },
+  { id: 'downloading', label: 'Downloading Model', stage: 'downloading' },
   { id: 'initializing', label: 'Initializing Embedder', stage: 'initializing' },
   { id: 'ready', label: 'Ready', stage: 'ready' },
 ];
