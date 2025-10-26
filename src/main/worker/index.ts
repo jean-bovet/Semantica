@@ -1266,6 +1266,7 @@ parentPort!.on('message', async (msg: any) => {
             embeddingQueue = new EmbeddingQueue({
               maxQueueSize: 2000,
               batchSize,
+              maxTokensPerBatch: 7000, // Safe limit with ~1K buffer to prevent EOF errors
               backpressureThreshold: 1000,
               onProgress: (filePath: string, processed: number, total: number) => {
                 logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
@@ -1391,6 +1392,7 @@ parentPort!.on('message', async (msg: any) => {
             embeddingQueue = new EmbeddingQueue({
               maxQueueSize: 2000,
               batchSize,
+              maxTokensPerBatch: 7000, // Safe limit with ~1K buffer to prevent EOF errors
               backpressureThreshold: 1000
             });
 

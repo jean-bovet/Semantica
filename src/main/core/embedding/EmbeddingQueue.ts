@@ -29,6 +29,7 @@ export interface FileTracker {
 export interface EmbeddingQueueConfig {
   maxQueueSize?: number;
   batchSize?: number;
+  maxTokensPerBatch?: number;
   backpressureThreshold?: number;
   onProgress?: (filePath: string, processed: number, total: number) => void;
   onFileComplete?: (filePath: string) => void;
@@ -50,6 +51,7 @@ export class EmbeddingQueue {
   private queue: QueuedChunk[] = [];
   private maxQueueSize: number;
   private batchSize: number;
+  private maxTokensPerBatch: number;
   private backpressureThreshold: number;
   private isProcessing = false;
   private fileTrackers = new Map<string, FileTracker>();
@@ -69,6 +71,7 @@ export class EmbeddingQueue {
   constructor(config: EmbeddingQueueConfig = {}) {
     this.maxQueueSize = config.maxQueueSize || 2000;
     this.batchSize = config.batchSize || 32;
+    this.maxTokensPerBatch = config.maxTokensPerBatch || 7000; // Safe limit with ~1K buffer
     this.backpressureThreshold = config.backpressureThreshold || 1000;
     this.onProgress = config.onProgress;
     this.onFileComplete = config.onFileComplete;
@@ -147,6 +150,48 @@ export class EmbeddingQueue {
   }
 
   /**
+   * Estimate the number of tokens in a text string
+   * Uses heuristic: 1 token ≈ 4 characters
+   */
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  /**
+   * Calculate dynamic batch size based on token limits
+   * Prevents EOF errors by ensuring batches don't exceed Ollama's token limit
+   */
+  private calculateBatchSize(): number {
+    let batchSize = 0;
+    let totalTokens = 0;
+    const maxBatchSize = Math.min(this.batchSize, this.queue.length);
+
+    for (let i = 0; i < maxBatchSize; i++) {
+      const chunkTokens = this.estimateTokens(this.queue[i].text);
+
+      // Stop if adding this chunk would exceed the limit
+      if (totalTokens + chunkTokens > this.maxTokensPerBatch && batchSize > 0) {
+        break;
+      }
+
+      totalTokens += chunkTokens;
+      batchSize++;
+
+      // Safety check: if even a single chunk exceeds limit, take it anyway
+      // (we need to process it, even if it might fail)
+      if (batchSize === 1 && totalTokens > this.maxTokensPerBatch) {
+        logger.log('EMBEDDING-QUEUE', `⚠️  Single chunk exceeds token limit: ${totalTokens} tokens (limit: ${this.maxTokensPerBatch})`);
+        break;
+      }
+    }
+
+    // Log batch creation for debugging
+    logger.log('EMBEDDING-QUEUE', `Creating batch: ${batchSize} chunks, ~${totalTokens} tokens (limit: ${this.maxTokensPerBatch})`);
+
+    return Math.max(1, batchSize); // Always take at least 1 chunk
+  }
+
+  /**
    * Start the consumer loop
    */
   private async startProcessing() {
@@ -173,8 +218,10 @@ export class EmbeddingQueue {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
 
-      // Check if we have enough for a batch or if this is the last batch
-      const batchSize = Math.min(this.batchSize, this.queue.length);
+      // Calculate dynamic batch size based on token limits
+      const batchSize = this.calculateBatchSize();
+
+      // Check if we should wait for more chunks
       if (this.queue.length < this.batchSize && this.hasMoreChunkscoming()) {
         // Wait for more chunks to arrive for a full batch
         await new Promise(resolve => setTimeout(resolve, 100));
