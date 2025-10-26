@@ -35,7 +35,7 @@ export class OllamaEmbedder implements IEmbedder {
 
   constructor(config: OllamaEmbedderConfig = {}) {
     this.client = config.client || new OllamaClient();
-    this.modelName = config.modelName || 'bge-m3';
+    this.modelName = config.modelName || 'nomic-embed-text';
     this.keepAlive = config.keepAlive || '2m';
     this.normalizeVectors = config.normalizeVectors !== false; // Default true
     this.batchSize = config.batchSize || 32;

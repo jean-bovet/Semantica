@@ -195,8 +195,9 @@ declare global {
 
 // Database version management
 // Version 1: 384-dimensional vectors (old Xenova multilingual-e5-small model)
-// Version 2: 1024-dimensional vectors (new Ollama bge-m3 model)
-const DB_VERSION = 2;
+// Version 2: 1024-dimensional vectors (Ollama bge-m3 model - buggy, deprecated)
+// Version 3: 768-dimensional vectors (Ollama nomic-embed-text - stable)
+const DB_VERSION = 3;
 const DB_VERSION_FILE = '.db-version';
 
 /**
@@ -290,8 +291,8 @@ async function initDB(dir: string, _userDataPath: string) {
     emitStageProgress('db_init', 'Connecting to database');
     db = await lancedb.connect(dir);
 
-    // BGE-M3 model uses 1024-dimensional vectors
-    const EXPECTED_VECTOR_DIMENSION = 1024;
+    // nomic-embed-text model uses 768-dimensional vectors
+    const EXPECTED_VECTOR_DIMENSION = 768;
 
     tbl = await db.openTable('chunks').catch(async () => {
       // Create table with initial schema

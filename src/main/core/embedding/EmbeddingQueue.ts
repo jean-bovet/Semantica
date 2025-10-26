@@ -151,10 +151,11 @@ export class EmbeddingQueue {
 
   /**
    * Estimate the number of tokens in a text string
-   * Uses heuristic: 1 token ≈ 4 characters
+   * Uses heuristic: 1 token ≈ 2.5 characters
+   * Conservative estimate to account for multilingual text, URLs, and special characters
    */
   private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
+    return Math.ceil(text.length / 2.5);
   }
 
   /**
@@ -164,29 +165,46 @@ export class EmbeddingQueue {
   private calculateBatchSize(): number {
     let batchSize = 0;
     let totalTokens = 0;
+    let totalChars = 0;
     const maxBatchSize = Math.min(this.batchSize, this.queue.length);
 
+    // Log batch building process for debugging
+    logger.log('EMBEDDING-QUEUE', `📊 Building batch (limit: ${this.maxTokensPerBatch} tokens):`);
+
     for (let i = 0; i < maxBatchSize; i++) {
-      const chunkTokens = this.estimateTokens(this.queue[i].text);
+      const chunkText = this.queue[i].text;
+      const chunkChars = chunkText.length;
+      const chunkTokens = this.estimateTokens(chunkText);
 
       // Stop if adding this chunk would exceed the limit
       if (totalTokens + chunkTokens > this.maxTokensPerBatch && batchSize > 0) {
+        logger.log('EMBEDDING-QUEUE', `   ⛔ Stopping: adding chunk ${i+1} (${chunkChars} chars, ~${chunkTokens} tokens) would exceed limit`);
+        logger.log('EMBEDDING-QUEUE', `   Would be: ${totalTokens + chunkTokens} tokens > ${this.maxTokensPerBatch} limit`);
         break;
       }
 
       totalTokens += chunkTokens;
+      totalChars += chunkChars;
       batchSize++;
+
+      // Log each chunk added (show first 5, then summarize)
+      if (i < 5 || i === maxBatchSize - 1) {
+        logger.log('EMBEDDING-QUEUE', `   ✓ Chunk ${i+1}: ${chunkChars} chars (~${chunkTokens} tokens) | Running: ${totalChars} chars, ~${totalTokens} tokens`);
+      } else if (i === 5) {
+        logger.log('EMBEDDING-QUEUE', `   ... (showing only first 5 and last chunks)`);
+      }
 
       // Safety check: if even a single chunk exceeds limit, take it anyway
       // (we need to process it, even if it might fail)
       if (batchSize === 1 && totalTokens > this.maxTokensPerBatch) {
-        logger.log('EMBEDDING-QUEUE', `⚠️  Single chunk exceeds token limit: ${totalTokens} tokens (limit: ${this.maxTokensPerBatch})`);
+        logger.log('EMBEDDING-QUEUE', `⚠️  Single chunk exceeds token limit: ${totalTokens} tokens (${totalChars} chars) - limit: ${this.maxTokensPerBatch}`);
+        logger.log('EMBEDDING-QUEUE', `   This chunk may cause EOF errors but will attempt anyway`);
         break;
       }
     }
 
-    // Log batch creation for debugging
-    logger.log('EMBEDDING-QUEUE', `Creating batch: ${batchSize} chunks, ~${totalTokens} tokens (limit: ${this.maxTokensPerBatch})`);
+    // Log batch creation summary
+    logger.log('EMBEDDING-QUEUE', `✅ Created batch: ${batchSize} chunks, ${totalChars} chars, ~${totalTokens} tokens (limit: ${this.maxTokensPerBatch})`);
 
     return Math.max(1, batchSize); // Always take at least 1 chunk
   }
@@ -231,8 +249,8 @@ export class EmbeddingQueue {
       // Pull a batch from the queue
       const batch = this.queue.splice(0, batchSize);
 
-      // Process this batch asynchronously (don't await)
-      this.processOneBatch(batch);
+      // Process this batch sequentially (await to prevent overlapping requests to Ollama)
+      await this.processOneBatch(batch);
     }
   }
 
@@ -252,6 +270,32 @@ export class EmbeddingQueue {
 
       // Extract texts for embedding
       const texts = batch.map(chunk => chunk.text);
+
+      // Log text samples for debugging EOF errors
+      if (texts.length > 0) {
+        const firstText = texts[0];
+        const lastText = texts[texts.length - 1];
+
+        // Show first 100 chars of first text
+        const firstPreview = firstText.substring(0, 100).replace(/\n/g, ' ');
+        logger.log('EMBEDDING-QUEUE', `   📝 First chunk preview: "${firstPreview}${firstText.length > 100 ? '...' : ''}"`);
+
+        // Show last 100 chars of last text (if different from first)
+        if (texts.length > 1) {
+          const lastPreview = lastText.substring(Math.max(0, lastText.length - 100)).replace(/\n/g, ' ');
+          logger.log('EMBEDDING-QUEUE', `   📝 Last chunk preview: "...${lastPreview}"`);
+        }
+
+        // Check for potential encoding issues
+        const totalNonAscii = texts.reduce((count, text) => {
+          return count + (text.match(/[^\x00-\x7F]/g) || []).length;
+        }, 0);
+        if (totalNonAscii > 0) {
+          const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
+          const pctNonAscii = ((totalNonAscii / totalChars) * 100).toFixed(1);
+          logger.log('EMBEDDING-QUEUE', `   ⚠️  Batch contains ${totalNonAscii} non-ASCII characters (${pctNonAscii}% of total)`);
+        }
+      }
 
       // Generate embeddings
       logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Starting embedding for ${texts.length} texts`);
@@ -311,6 +355,9 @@ export class EmbeddingQueue {
 
     } catch (error) {
       logger.error('EMBEDDING-QUEUE', 'Batch processing failed:', error);
+
+      // Note: Batch capture now happens in OllamaClient.ts on first error occurrence
+      // This ensures we capture the batch data even if retries succeed
 
       // Remove from active tracking since it failed
       this.activeBatches.delete(batchId);

@@ -40,7 +40,7 @@ export class WorkerStartup {
   private abortController: AbortController | null = null;
   private ringBuffer: RingBufferEntry[] = [];
   private readonly RING_BUFFER_SIZE = 100;
-  private readonly MODEL_NAME = 'bge-m3';
+  private readonly MODEL_NAME = 'nomic-embed-text';
 
   constructor() {
     this.ollamaClient = new OllamaClient();

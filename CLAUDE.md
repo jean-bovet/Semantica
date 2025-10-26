@@ -18,7 +18,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - **Frontend**: React, TypeScript, Tailwind CSS
 - **Backend**: Electron, Node.js Worker Threads
 - **Database**: LanceDB for vector storage
-- **ML Model**: Ollama with bge-m3 for embeddings (replaces Xenova/transformers + ONNX)
+- **ML Model**: Ollama with nomic-embed-text for embeddings (768-dim, stable)
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
 
 ## Important Guidelines
@@ -145,11 +145,20 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 
 ## Recent Updates
 
+### 2025-10-26 - Model Switch to nomic-embed-text
+- **Critical fix**: Switched from bge-m3 to nomic-embed-text due to upstream Ollama bugs
+- **Stability**: nomic-embed-text is more stable, doesn't have pooling_type crashes
+- **Vector dimensions**: Changed from 1024-dim to 768-dim (DB version 3)
+- **Database migration**: Auto-migrates on startup, clears old embeddings
+- **Root cause**: bge-m3 had segmentation faults in llama.cpp causing intermittent EOF errors
+- **Request serialization**: Added promise queue to prevent concurrent Ollama requests
+- **See**: `planning/eof-debugging-logging-added.md` for full investigation details
+
 ### 2025-10-25 - Ollama Migration
 - **Architecture simplification**: Migrated from HuggingFace Transformers + ONNX Runtime to Ollama
 - **Memory improvement**: 3-6× reduction in memory footprint using quantized GGUF models
 - **Process isolation**: Ollama runs as external service, eliminating child process complexity
-- **Model upgrade**: Now using bge-m3 (multilingual) via Ollama instead of Xenova/multilingual-e5-small
+- **Model upgrade**: Initially used bge-m3 (later replaced with nomic-embed-text)
 - **Auto-management**: Ollama handles model lifecycle, memory management, and auto-scaling
 - **Stability improvements**: No more embedder child process crashes or manual restarts
 - **Codebase simplification**: Removed ~1000 lines of child process management code

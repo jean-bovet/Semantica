@@ -37,7 +37,7 @@ export class OllamaService {
   constructor(config: OllamaServiceConfig = {}) {
     this.client = config.client || new OllamaClient();
     this.autoStart = config.autoStart !== false; // Default true
-    this.defaultModel = config.defaultModel || 'bge-m3';
+    this.defaultModel = config.defaultModel || 'nomic-embed-text';
   }
 
   /**

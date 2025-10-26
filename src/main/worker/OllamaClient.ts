@@ -71,6 +71,10 @@ export class OllamaClient {
   private readonly retryAttempts: number;
   private readonly retryDelay: number;
 
+  // Promise queue for serializing requests to prevent Ollama runner crashes
+  // Ensures only one embedding request is in-flight at a time
+  private requestQueue: Promise<any> = Promise.resolve();
+
   constructor(config: OllamaClientConfig = {}) {
     this.baseUrl = config.baseUrl || 'http://127.0.0.1:11434';
     this.timeout = config.timeout || 300000; // 5 minutes default for embeddings
@@ -79,31 +83,71 @@ export class OllamaClient {
   }
 
   /**
-   * Generate embeddings for a batch of texts
+   * Generate embeddings for a batch of texts (serialized through request queue)
    * @param texts Array of strings to embed
-   * @param model Model name (e.g., 'bge-m3')
+   * @param model Model name (e.g., 'nomic-embed-text')
    * @param keepAlive Time to keep model loaded (default: '2m')
    * @returns Array of embedding vectors
    */
   async embedBatch(
     texts: string[],
-    model: string = 'bge-m3',
+    model: string = 'nomic-embed-text',
     keepAlive: string = '2m'
   ): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
 
+    // Serialize all embedding requests through a promise chain
+    // This prevents concurrent requests from overwhelming Ollama's scheduler
+    return this.requestQueue = this.requestQueue
+      .then(() => this.embedBatchInternal(texts, model, keepAlive))
+      .catch(err => {
+        // Reset queue on error to prevent indefinite blocking
+        this.requestQueue = Promise.resolve();
+        throw err;
+      });
+  }
+
+  /**
+   * Internal implementation of embedBatch (executed serially via queue)
+   */
+  private async embedBatchInternal(
+    texts: string[],
+    model: string = 'nomic-embed-text',
+    keepAlive: string = '2m'
+  ): Promise<number[][]> {
+
+    // Calculate metrics for logging
+    const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
+    const estimatedTokens = Math.ceil(totalChars / 2.5); // Same heuristic as EmbeddingQueue (1 token ≈ 2.5 chars)
+    const textLengths = texts.map(t => t.length);
+
+    // Create payload
+    const payload = {
+      model,
+      input: texts,
+      keep_alive: keepAlive,
+    };
+    const payloadJson = JSON.stringify(payload);
+    const payloadBytes = new TextEncoder().encode(payloadJson).length;
+
+    // Log request details for debugging EOF errors
+    logger.log('OLLAMA-CLIENT', `📤 Embedding request: ${texts.length} texts, ${totalChars} chars total, ~${estimatedTokens} est. tokens`);
+    logger.log('OLLAMA-CLIENT', `   Text lengths: [${textLengths.join(', ')}]`);
+    logger.log('OLLAMA-CLIENT', `   JSON payload: ${payloadBytes} bytes (${(payloadBytes/1024).toFixed(2)} KB)`);
+
+    // Log average and max chunk sizes
+    const avgLength = Math.round(totalChars / texts.length);
+    const maxLength = Math.max(...textLengths);
+    logger.log('OLLAMA-CLIENT', `   Avg chunk: ${avgLength} chars, Max chunk: ${maxLength} chars`);
+
     const response = await this.fetchWithRetry<OllamaEmbedResponse>(
       '/api/embed',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          input: texts,
-          keep_alive: keepAlive,
-        }),
+        body: payloadJson,
       }
     );
 
@@ -139,7 +183,7 @@ export class OllamaClient {
 
   /**
    * Pull (download) a model from Ollama registry
-   * @param model Model name (e.g., 'bge-m3')
+   * @param model Model name (e.g., 'nomic-embed-text')
    * @param onProgress Callback for download progress (compatible with existing UI)
    */
   async pullModel(
@@ -283,6 +327,54 @@ export class OllamaClient {
       const data = await response.json();
       return data as T;
     } catch (error) {
+      // Save batch on FIRST EOF error (even if we'll retry and succeed)
+      // This helps debug intermittent EOF errors that succeed on retry
+      if (attempt === 1 && path === '/api/embed') {
+        const errorMsg = (error as Error).message || String(error);
+        if (errorMsg.includes('EOF') || errorMsg.includes('500')) {
+          try {
+            // Parse request body to get texts
+            const body = JSON.parse(options.body as string);
+            const texts: string[] = body.input || [];
+            const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
+
+            // Create batch data structure
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const failedBatch = {
+              timestamp: new Date().toISOString(),
+              texts: texts,
+              textLengths: texts.map(t => t.length),
+              chunkCount: texts.length,
+              totalChars: totalChars,
+              estimatedTokens: Math.ceil(totalChars / 2.5),
+              error: errorMsg,
+              attempt: attempt,
+              willRetry: true,
+              stackTrace: (error as Error).stack
+            };
+
+            // Save to Desktop (with fallback to temp)
+            const fs = require('node:fs');
+            const pathModule = require('node:path');
+            const os = require('node:os');
+
+            const desktopPath = pathModule.join(os.homedir(), 'Desktop', `failed-batch-${timestamp}.json`);
+            const tempPath = pathModule.join(os.tmpdir(), `failed-batch-${timestamp}.json`);
+
+            try {
+              fs.writeFileSync(desktopPath, JSON.stringify(failedBatch, null, 2));
+              logger.log('OLLAMA-CLIENT', `💾 Failed batch saved to: ${desktopPath}`);
+            } catch (desktopError) {
+              // Fallback to temp directory
+              fs.writeFileSync(tempPath, JSON.stringify(failedBatch, null, 2));
+              logger.log('OLLAMA-CLIENT', `💾 Failed batch saved to: ${tempPath}`);
+            }
+          } catch (saveError) {
+            logger.error('OLLAMA-CLIENT', 'Failed to save batch for debugging:', saveError);
+          }
+        }
+      }
+
       // Don't retry if max attempts reached or error is not retryable
       if (attempt >= this.retryAttempts || !this.isRetryableError(error)) {
         throw error;

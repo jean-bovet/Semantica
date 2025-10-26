@@ -51,7 +51,7 @@ export class EmbedderFactory {
   constructor(config: EmbedderFactoryConfig = {}) {
     this.config = {
       // Default embedder config - now optimized for Ollama
-      modelName: 'bge-m3', // Ollama model (was: 'Xenova/multilingual-e5-small')
+      modelName: 'nomic-embed-text', // Ollama model (768-dim, stable)
       maxFilesBeforeRestart: 5000,
       maxMemoryMB: 1500,
       batchSize: 32,
@@ -367,7 +367,7 @@ export function createTestFactory(overrides: Partial<EmbedderFactoryConfig> = {}
  */
 export function createProductionFactory(overrides: Partial<EmbedderFactoryConfig> = {}): EmbedderFactory {
   return new EmbedderFactory({
-    modelName: 'bge-m3',
+    modelName: 'nomic-embed-text',
     batchSize: 32,
     ollamaKeepAlive: '2m',
     normalizeVectors: true,
