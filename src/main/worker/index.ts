@@ -1172,7 +1172,8 @@ parentPort!.on('message', async (msg: any) => {
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
 
         await initDB(dbDir, userDataPath);
-        parentPort!.postMessage({ type: 'ready' });
+        // Note: 'ready' message is sent by WorkerStartup after full initialization
+        // Don't send legacy 'ready' here - it creates a race condition
 
         // Auto-start: Initialize embedder using WorkerStartup state machine
         (async () => {

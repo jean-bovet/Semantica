@@ -287,10 +287,13 @@ if (gotTheLock) {
     log.error('Update error:', error);
   });
 
-  // Spawn worker - it will handle all initialization (Ollama, model, embedder)
-  logger.log('STARTUP', 'Spawning worker...');
-  spawnWorker();
-  
+  // Wait for renderer to load before spawning worker
+  // This ensures React component is mounted and listening for startup events
+  win.webContents.once('did-finish-load', () => {
+    logger.log('STARTUP', 'Renderer loaded, spawning worker...');
+    spawnWorker();
+  });
+
   // Register all IPC handlers
 
   // Startup retry handler
