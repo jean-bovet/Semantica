@@ -193,8 +193,96 @@ declare global {
   var filesLoadedSent: boolean | undefined;
 }
 
+// Database version management
+// Version 1: 384-dimensional vectors (old Xenova multilingual-e5-small model)
+// Version 2: 1024-dimensional vectors (new Ollama bge-m3 model)
+const DB_VERSION = 2;
+const DB_VERSION_FILE = '.db-version';
+
+/**
+ * Check if database version matches current version
+ * @param dir Database directory
+ * @returns true if migration needed, false if version is current
+ */
+export async function checkDatabaseVersion(dir: string): Promise<boolean> {
+  const versionFile = path.join(dir, DB_VERSION_FILE);
+  try {
+    const content = await fs.promises.readFile(versionFile, 'utf-8');
+    const existingVersion = parseInt(content.trim(), 10);
+
+    if (isNaN(existingVersion)) {
+      logger.log('DATABASE', 'Version file contains invalid data');
+      return true; // Corrupted = needs migration
+    }
+
+    return existingVersion !== DB_VERSION;
+  } catch {
+    // File doesn't exist or can't be read
+    return true;
+  }
+}
+
+/**
+ * Migrate database if version doesn't match
+ * @param dir Database directory
+ * @returns true if migration was performed, false if not needed
+ */
+export async function migrateDatabaseIfNeeded(dir: string): Promise<boolean> {
+  const needsMigration = await checkDatabaseVersion(dir);
+
+  if (!needsMigration) {
+    logger.log('DATABASE', `Database version ${DB_VERSION} is current, no migration needed`);
+    return false;
+  }
+
+  logger.log('DATABASE', `⚠️  Database version mismatch detected`);
+  logger.log('DATABASE', `🔄 Migrating to database version ${DB_VERSION}...`);
+
+  try {
+    // Ensure directory exists
+    await fs.promises.mkdir(dir, { recursive: true });
+
+    // Delete all .lance directories (chunks.lance, file_status.lance, etc.)
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.endsWith('.lance')) {
+        const fullPath = path.join(dir, entry.name);
+        logger.log('DATABASE', `Deleting old database: ${entry.name}`);
+        await fs.promises.rm(fullPath, { recursive: true, force: true });
+      }
+    }
+
+    // Delete old version file
+    const versionFile = path.join(dir, DB_VERSION_FILE);
+    await fs.promises.rm(versionFile, { force: true });
+
+    // Clear fileHashes to force re-indexing
+    fileHashes.clear();
+
+    logger.log('DATABASE', '✅ Database migration complete. All files will be re-indexed.');
+    return true;
+  } catch (error) {
+    logger.error('DATABASE', 'Failed to migrate database:', error);
+    throw error;
+  }
+}
+
+/**
+ * Write current database version to file
+ * @param dir Database directory
+ */
+export async function writeDatabaseVersion(dir: string): Promise<void> {
+  const versionFile = path.join(dir, DB_VERSION_FILE);
+  await fs.promises.writeFile(versionFile, String(DB_VERSION), 'utf-8');
+  logger.log('DATABASE', `Database version ${DB_VERSION} written`);
+}
+
 async function initDB(dir: string, _userDataPath: string) {
   try {
+    emitStageProgress('db_init', 'Checking database version');
+    // Check database version and migrate if needed
+    await migrateDatabaseIfNeeded(dir);
+
     emitStageProgress('db_init', 'Initializing config manager');
     // Initialize config manager
     configManager = new ConfigManager(dir);
@@ -233,76 +321,10 @@ async function initDB(dir: string, _userDataPath: string) {
       return table;
     });
 
-    // Check for schema mismatch (old 384-dim vs new 1024-dim vectors)
-    try {
-      const schema = await tbl.schema;
-      const vectorField = schema.fields.find((f: any) => f.name === 'vector');
-
-      if (vectorField) {
-        // Extract dimension from field type (e.g., "FixedSizeList<384>" or similar)
-        const typeStr = vectorField.type?.toString() || '';
-        const dimensionMatch = typeStr.match(/(\d+)/);
-        const actualDimension = dimensionMatch ? parseInt(dimensionMatch[1], 10) : null;
-
-        if (actualDimension && actualDimension !== EXPECTED_VECTOR_DIMENSION) {
-          logger.log('DATABASE', `⚠️  Schema mismatch detected: Database has ${actualDimension}-dimensional vectors, but bge-m3 requires ${EXPECTED_VECTOR_DIMENSION}-dimensional vectors`);
-          logger.log('DATABASE', '🔄 Automatically migrating to new schema by recreating database...');
-
-          // Close the database
-          await db.close();
-
-          // Delete old database directory
-          const dbPath = path.join(dir, 'chunks.lance');
-          if (fs.existsSync(dbPath)) {
-            logger.log('DATABASE', `Deleting old database at: ${dbPath}`);
-            await fs.promises.rm(dbPath, { recursive: true, force: true });
-          }
-
-          // Reconnect and recreate with correct schema
-          db = await lancedb.connect(dir);
-          const initialData = [{
-            id: 'init',
-            path: '',
-            mtime: 0,
-            page: 0,
-            offset: 0,
-            text: '',
-            vector: new Array(EXPECTED_VECTOR_DIMENSION).fill(0),
-            type: 'init',
-            title: ''
-          }];
-
-          tbl = await db.createTable('chunks', initialData, {
-            mode: 'create'
-          });
-
-          // Delete the initialization record
-          try {
-            await tbl.delete('id = "init"');
-          } catch (e: any) {
-            logger.log('DATABASE', 'Could not delete init record:', e?.message || e);
-          }
-
-          // Clear fileHashes to force re-indexing of all files
-          fileHashes.clear();
-
-          // Also clear file status table if it exists
-          const statusTablePath = path.join(dir, 'file_status.lance');
-          if (fs.existsSync(statusTablePath)) {
-            logger.log('DATABASE', 'Clearing file status table...');
-            await fs.promises.rm(statusTablePath, { recursive: true, force: true });
-          }
-
-          logger.log('DATABASE', '✅ Database migration complete. All files will be re-indexed with new model.');
-        }
-      }
-    } catch (schemaError: any) {
-      // If we can't detect schema, log warning but continue
-      // (this shouldn't fail the entire initialization)
-      logger.log('DATABASE', 'Could not check schema (non-critical):', schemaError?.message || schemaError);
-    }
-    
     logger.log('DATABASE', 'Database initialized');
+
+    // Write database version marker
+    await writeDatabaseVersion(dir);
 
     emitStageProgress('db_init', 'Creating file status table');
     // Initialize file status table (optional - won't fail if it doesn't work)
