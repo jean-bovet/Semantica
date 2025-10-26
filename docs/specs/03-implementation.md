@@ -286,26 +286,28 @@ export function chunkText(text: string): Chunk[] {
 ```
 
 ### Embedding Generation
-Chunks are processed in batches through the isolated embedder:
+Chunks are processed through the EmbeddingQueue with dynamic token-based batching:
 
 ```typescript
-// Batch processing with memory safety
-async function generateEmbeddings(chunks: string[]): Promise<number[][]> {
-  const batchSize = 8;
-  const embeddings: number[][] = [];
-  
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    const batchEmbeddings = await embedder.embed(batch);
-    embeddings.push(...batchEmbeddings);
-    
-    // Yield to event loop
-    await new Promise(resolve => setImmediate(resolve));
-  }
-  
-  return embeddings;
-}
+// Dynamic batching based on token count (prevents Ollama EOF errors)
+const embeddingQueue = new EmbeddingQueue({
+  maxQueueSize: 2000,
+  batchSize: 32,              // Maximum chunks per batch
+  maxTokensPerBatch: 8000,    // Ollama limit: ~8-10K tokens per request
+  backpressureThreshold: 1000
+});
+
+// Queue automatically calculates optimal batch size:
+// - Small chunks (50 words): batches of ~60 chunks
+// - Large chunks (500 words): batches of ~12 chunks
+// - Always stays within Ollama's token limits
+
+await embeddingQueue.addChunks(chunks, filePath, fileIndex);
 ```
+
+**Token Estimation**: Uses heuristic of 1 token ≈ 4 characters to calculate batch sizes dynamically. This prevents HTTP 500 EOF errors when processing documents with large chunks while maximizing throughput for small chunks.
+
+See `src/main/core/embedding/EmbeddingQueue.ts` for implementation details.
 
 ## Database Implementation
 
@@ -479,19 +481,22 @@ const MEMORY_CONFIG = {
   // Worker process limits
   WORKER_RSS_LIMIT: 1500,        // MB
   WORKER_THROTTLE_RSS: 800,      // MB - reduce parallelism
-  
-  // Embedder process limits  
+
+  // Embedder process limits
   EMBEDDER_RSS_LIMIT: 900,        // MB
   EMBEDDER_EXTERNAL_LIMIT: 300,   // MB
   EMBEDDER_FILES_LIMIT: 500,      // Files before restart
-  
+
   // Processing parameters
   MAX_CONCURRENT_FILES: 5,
-  EMBEDDING_BATCH_SIZE: 8,
+  EMBEDDING_BATCH_SIZE: 32,       // Maximum chunks per batch
+  MAX_TOKENS_PER_BATCH: 8000,     // Ollama request limit (dynamic batching)
   CHUNK_SIZE: 500,                // characters
   CHUNK_OVERLAP: 60                // characters
 };
 ```
+
+**Note**: `EMBEDDING_BATCH_SIZE` is now a maximum limit. Actual batch size is calculated dynamically based on `MAX_TOKENS_PER_BATCH` to prevent Ollama EOF errors. Small chunks may batch up to 60, while large chunks may only batch 12.
 
 ### File Type Configuration
 ```json

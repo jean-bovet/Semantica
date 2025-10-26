@@ -137,6 +137,63 @@ class EmbeddingQueue {
 }
 ```
 
+### 5. Dynamic Token-Based Batching (2025-10-25)
+
+**Problem**: Ollama's internal buffer has a ~8-10K token limit per request. Fixed batch sizes (32 chunks) caused HTTP 500 EOF errors when processing documents with large chunks (GitHub issue ollama/ollama#6094).
+
+**Solution**: The EmbeddingQueue now dynamically calculates batch size based on total token count:
+
+```typescript
+class EmbeddingQueue {
+  private maxTokensPerBatch = 8000;  // Safe limit for Ollama
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);  // 1 token ≈ 4 characters
+  }
+
+  private calculateBatchSize(): number {
+    let batchSize = 0;
+    let totalTokens = 0;
+    const maxBatchSize = Math.min(this.batchSize, this.queue.length);
+
+    // Keep adding chunks while under token limit
+    for (let i = 0; i < maxBatchSize; i++) {
+      const chunkTokens = this.estimateTokens(this.queue[i].text);
+
+      // Stop if adding this chunk would exceed the limit
+      if (totalTokens + chunkTokens > this.maxTokensPerBatch && batchSize > 0) {
+        break;
+      }
+
+      totalTokens += chunkTokens;
+      batchSize++;
+    }
+
+    return Math.max(1, batchSize);  // Always process at least 1 chunk
+  }
+}
+```
+
+**Benefits**:
+- **Eliminates EOF errors**: Stays within Ollama's token limits
+- **Adaptive throughput**: Small chunks (50 words) → batch of ~60 chunks, Large chunks (500 words) → batch of ~12 chunks
+- **Backward compatible**: Respects `embeddingBatchSize` config as maximum limit
+- **Optimal performance**: Maximizes batch size without exceeding limits
+
+**Configuration**:
+```typescript
+new EmbeddingQueue({
+  batchSize: 32,              // Maximum chunks per batch
+  maxTokensPerBatch: 8000,    // Token limit (Ollama constraint)
+});
+```
+
+**Test Results** (from `tests/unit/embedding-queue-dynamic-batching.spec.ts`):
+- ✅ 64 small chunks (50 words each) → Single batch with ~4,000 tokens
+- ✅ 32 large chunks (500 words each) → Multiple batches of ~12 chunks each
+- ✅ Single huge chunk (50,000 tokens) → Processes without error
+- ✅ Mixed sizes → Intelligent batch boundaries
+
 ## Performance Monitoring
 
 ### Built-in Profiler

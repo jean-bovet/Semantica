@@ -1,6 +1,17 @@
 # Memory Management Solution
 
-## Problem Summary
+> **⚠️ ARCHIVED DOCUMENT**
+> This document describes the legacy ONNX/Transformers.js implementation that was replaced by Ollama in October 2025.
+>
+> **Current Implementation**: The application now uses [Ollama](https://ollama.com) for embeddings, which provides:
+> - External process isolation (no child process management needed)
+> - 3-6× memory reduction via quantized GGUF models
+> - Automatic memory management (no manual restarts)
+> - **Dynamic token-based batching** to prevent EOF errors (see below)
+>
+> **Ollama Token Limits**: Ollama has an internal ~8-10K token limit per request (GitHub issue ollama/ollama#6094). The EmbeddingQueue now implements dynamic batching to stay within this limit while maximizing throughput. See `docs/specs/11-performance-architecture.md` for details.
+
+## Problem Summary (Legacy)
 The application was experiencing severe memory leaks (1.2GB+ after 20 files) due to the transformers.js library not properly releasing tensors and native memory buffers.
 
 ## Solution: Process Isolation
