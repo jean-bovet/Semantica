@@ -201,7 +201,10 @@ async function initDB(dir: string, _userDataPath: string) {
 
     emitStageProgress('db_init', 'Connecting to database');
     db = await lancedb.connect(dir);
-    
+
+    // BGE-M3 model uses 1024-dimensional vectors
+    const EXPECTED_VECTOR_DIMENSION = 1024;
+
     tbl = await db.openTable('chunks').catch(async () => {
       // Create table with initial schema
       const initialData = [{
@@ -211,24 +214,93 @@ async function initDB(dir: string, _userDataPath: string) {
         page: 0,
         offset: 0,
         text: '',
-        vector: new Array(384).fill(0),
+        vector: new Array(EXPECTED_VECTOR_DIMENSION).fill(0),
         type: 'init',
         title: ''
       }];
-      
+
       const table = await db.createTable('chunks', initialData, {
         mode: 'create'
       });
-      
+
       // Delete the initialization record
       try {
         await table.delete('id = "init"');
       } catch (e: any) {
         logger.log('DATABASE', 'Could not delete init record (may not exist):', e?.message || e);
       }
-      
+
       return table;
     });
+
+    // Check for schema mismatch (old 384-dim vs new 1024-dim vectors)
+    try {
+      const schema = await tbl.schema;
+      const vectorField = schema.fields.find((f: any) => f.name === 'vector');
+
+      if (vectorField) {
+        // Extract dimension from field type (e.g., "FixedSizeList<384>" or similar)
+        const typeStr = vectorField.type?.toString() || '';
+        const dimensionMatch = typeStr.match(/(\d+)/);
+        const actualDimension = dimensionMatch ? parseInt(dimensionMatch[1], 10) : null;
+
+        if (actualDimension && actualDimension !== EXPECTED_VECTOR_DIMENSION) {
+          logger.log('DATABASE', `⚠️  Schema mismatch detected: Database has ${actualDimension}-dimensional vectors, but bge-m3 requires ${EXPECTED_VECTOR_DIMENSION}-dimensional vectors`);
+          logger.log('DATABASE', '🔄 Automatically migrating to new schema by recreating database...');
+
+          // Close the database
+          await db.close();
+
+          // Delete old database directory
+          const dbPath = path.join(dir, 'chunks.lance');
+          if (fs.existsSync(dbPath)) {
+            logger.log('DATABASE', `Deleting old database at: ${dbPath}`);
+            await fs.promises.rm(dbPath, { recursive: true, force: true });
+          }
+
+          // Reconnect and recreate with correct schema
+          db = await lancedb.connect(dir);
+          const initialData = [{
+            id: 'init',
+            path: '',
+            mtime: 0,
+            page: 0,
+            offset: 0,
+            text: '',
+            vector: new Array(EXPECTED_VECTOR_DIMENSION).fill(0),
+            type: 'init',
+            title: ''
+          }];
+
+          tbl = await db.createTable('chunks', initialData, {
+            mode: 'create'
+          });
+
+          // Delete the initialization record
+          try {
+            await tbl.delete('id = "init"');
+          } catch (e: any) {
+            logger.log('DATABASE', 'Could not delete init record:', e?.message || e);
+          }
+
+          // Clear fileHashes to force re-indexing of all files
+          fileHashes.clear();
+
+          // Also clear file status table if it exists
+          const statusTablePath = path.join(dir, 'file_status.lance');
+          if (fs.existsSync(statusTablePath)) {
+            logger.log('DATABASE', 'Clearing file status table...');
+            await fs.promises.rm(statusTablePath, { recursive: true, force: true });
+          }
+
+          logger.log('DATABASE', '✅ Database migration complete. All files will be re-indexed with new model.');
+        }
+      }
+    } catch (schemaError: any) {
+      // If we can't detect schema, log warning but continue
+      // (this shouldn't fail the entire initialization)
+      logger.log('DATABASE', 'Could not check schema (non-critical):', schemaError?.message || schemaError);
+    }
     
     logger.log('DATABASE', 'Database initialized');
 
