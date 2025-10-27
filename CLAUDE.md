@@ -149,17 +149,18 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 
 ## Recent Updates
 
-### 2025-10-27 - Python Sidecar Migration
+### 2025-10-27 - Python Sidecar Migration & Cleanup
 - **Architecture upgrade**: Migrated from Ollama to Python FastAPI sidecar for embeddings
 - **100% reliability**: Eliminates EOF errors and segmentation faults (was 1-2% failure rate with Ollama)
 - **Model**: sentence-transformers paraphrase-multilingual-mpnet-base-v2 (768-dim, multilingual)
 - **Performance**: 55-93 texts/sec throughput, <800MB memory usage
 - **Auto-managed**: Sidecar runs automatically on port 8421, no manual setup required
-- **Simpler codebase**: Removed ~205 lines of workaround code (promise queues, retry logic)
+- **Simpler codebase**: Removed ~30 obsolete files (Ollama + TransformersJS implementations)
+- **Cleanup**: Removed ~205 lines of workaround code (promise queues, retry logic, error handling)
 - **HTTP API**: Simple REST interface (/health, /embed, /info endpoints)
 - **Database version 4**: One-time re-indexing required on first launch
-- **Legacy code**: Ollama implementation preserved for reference
-- See `planning/python-sidecar-implementation-plan.md` for full details
+- **Legacy code**: Archived to `planning/archive/` and `docs/specs/archive/embedder/`
+- See `docs/specs/python-sidecar.md` for complete specification
 
 ### 2025-10-26 - Model Switch to nomic-embed-text
 - **Critical fix**: Switched from bge-m3 to nomic-embed-text due to upstream Ollama bugs

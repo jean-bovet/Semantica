@@ -99,12 +99,12 @@ Organized by domain:
 - `PipelineService.ts`: Formats pipeline status for monitoring
 - `ReindexService.ts`: High-level re-indexing operations
 
-### 3. Embedder Child Process (`src/main/worker/embedder.child.ts`)
-- **Isolated process for memory safety**
-- Loads and runs the transformer model
-- Processes text embeddings
-- Automatically restarts when memory thresholds exceeded
-- Build output: `dist/embedder.child.cjs`
+### 3. Python Embedding Sidecar (`embedding_sidecar/embed_server.py`)
+- **Isolated Python process for reliability**
+- FastAPI HTTP server on port 8421
+- sentence-transformers model (paraphrase-multilingual-mpnet-base-v2)
+- Automatic startup and lifecycle management
+- 100% reliability (no EOF errors or segfaults)
 
 ### 4. Startup System (`src/main/startup/`)
 - `StartupCoordinator.ts`: Manages staged initialization
@@ -154,33 +154,30 @@ Organized by domain:
 
 ## Memory Management Strategy
 
-### EmbedderPool Architecture
-The application uses a pool of embedder processes for parallel embedding generation:
+### Python Sidecar Architecture
+The application uses a Python-based embedding service for reliability and simplicity:
 
-```typescript
-class EmbedderPool {
-  // Pool configuration
-  poolSize: 2;              // Number of parallel processes
-  maxMemoryMB: 300;         // Per-process memory limit
-  maxFilesBeforeRestart: 5000; // Files processed before restart
-  
-  // Round-robin distribution
-  currentIndex = (currentIndex + 1) % poolSize;
-  
-  // Automatic recovery
-  async checkHealth() {
-    // Restart unhealthy processes
-    // Mutex-protected to prevent races
-  }
-}
+```
+PythonSidecarService
+  └── Python Process (FastAPI)
+      ├── sentence-transformers model
+      ├── Auto-managed memory (400-600MB stable)
+      ├── HTTP API on port 8421
+      └── Auto-restart on crash (optional)
 ```
 
+**Key Benefits:**
+- **Simple lifecycle**: Single Python process, no pooling needed
+- **External memory management**: Python handles its own memory
+- **No manual restarts**: Stable memory usage (<800MB)
+- **Clear errors**: Python stack traces vs C++ crashes
+
 ### Memory Monitoring
-Real-time memory tracking with automatic recovery:
-- RSS (Resident Set Size) monitoring
+Real-time memory tracking for the worker process:
+- RSS (Resident Set Size) monitoring (1500MB limit)
 - Heap usage tracking
-- External memory (native buffers) monitoring
-- Automatic child process restart when thresholds exceeded
+- Memory-based throttling at 800MB
+- Automatic concurrency adjustment
 
 ## Data Flow
 
@@ -204,21 +201,21 @@ Files are processed with **controlled parallelism** for optimal performance:
    - **Content Extraction**: Parse PDF/TXT/MD/DOCX/RTF files
    - **Text Chunking**: Split into 500-char chunks with 60-char overlap
    - **Embedding Generation** (Batched):
-     - Process chunks in batches of 8
-     - Each batch sent to isolated child process
-     - Wait for embeddings before next batch
+     - Process chunks in batches of 32
+     - Sent to Python sidecar via HTTP POST /embed
+     - sentence-transformers generates 768-dim vectors
    - **Vector Storage**: Store each batch in LanceDB with metadata
 4. **Memory Monitoring**: Continuous checks with automatic throttling
 5. **Status Updates**: Real-time progress (queued/processing/done)
 
 #### Memory Management
 - **Worker Process**: Limited to 1500MB RSS
-- **Embedder Pool**: Each process limited to 300MB RSS
-  - Auto-restart at 95% memory threshold
-  - Restart after 5000 files processed
-  - Memory checks every 10 files after initial 50
+- **Python Sidecar**: Manages its own memory (~400-600MB stable)
+  - No manual memory checks needed
+  - Auto-restart on crash (optional)
+  - External process isolation prevents worker memory impact
 - **CPU-Aware Throttling**: Reduces concurrency at 800MB worker RSS
-- Restarts are transparent - processing continues uninterrupted
+- Processing continues uninterrupted during any restarts
 
 ### Search Pipeline
 1. **Query Input**: User types in search box

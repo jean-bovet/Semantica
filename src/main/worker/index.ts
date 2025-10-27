@@ -116,9 +116,8 @@ setInterval(async () => {
       payload: pipelineStatus
     });
   }
-  
-  // Ollama manages its own memory and lifecycle, so no health checks needed
-  // (Legacy code for EmbedderPool removed)
+
+  // Python sidecar manages its own memory and lifecycle
 }, 2000);
 
 import { getParserForExtension, getEnabledExtensions } from '../parsers/registry';
@@ -132,7 +131,6 @@ try {
   logger.log('STARTUP', 'PDF parsing not available');
 }
 // Use Python sidecar embedder for better reliability
-import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
 import { PythonSidecarEmbedder } from '../../shared/embeddings/implementations/PythonSidecarEmbedder';
 import { PythonSidecarService } from './PythonSidecarService';
 import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
@@ -152,7 +150,6 @@ let paused = false;
 let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
-let embedderPool: EmbedderPool | null = null;
 let sidecarEmbedder: PythonSidecarEmbedder | null = null;
 let sidecarService: PythonSidecarService | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
@@ -1680,10 +1677,6 @@ parentPort!.on('message', async (msg: any) => {
           clearInterval(healthCheckInterval);
           healthCheckInterval = null;
         }
-        // Shutdown embedder pool (legacy - not used with sidecar)
-        // if (embedderPool) {
-        //   await embedderPool.dispose();
-        // }
         if (db) {
           await db.close();
         }
