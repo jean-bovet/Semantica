@@ -83,6 +83,7 @@ function spawnWorker() {
 
       // Clear timeout if we reach 'ready' stage
       if (msg.stage === 'ready') {
+        workerReady = true; // Set worker ready flag
         if (startupTimeout) {
           clearTimeout(startupTimeout);
           startupTimeout = null;
@@ -394,7 +395,15 @@ if (gotTheLock) {
   });
   
   ipcMain.handle('indexer:getWatchedFolders', async () => {
-    return sendToWorker('getWatchedFolders');
+    logger.log('IPC', 'indexer:getWatchedFolders called');
+    try {
+      const result = await sendToWorker('getWatchedFolders');
+      logger.log('IPC', `indexer:getWatchedFolders received from worker:`, result);
+      return result;
+    } catch (error) {
+      logger.error('IPC', 'indexer:getWatchedFolders error:', error);
+      throw error;
+    }
   });
   
   ipcMain.handle('settings:get', async () => {

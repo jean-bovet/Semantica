@@ -1557,8 +1557,10 @@ parentPort!.on('message', async (msg: any) => {
         break;
         
       case 'getWatchedFolders':
+        const watchedFolders = configManager?.getWatchedFolders() || [];
+        logger.log('WORKER', `getWatchedFolders called - returning ${watchedFolders.length} folders:`, watchedFolders);
         if (msg.id) {
-          parentPort!.postMessage({ id: msg.id, payload: configManager?.getWatchedFolders() || [] });
+          parentPort!.postMessage({ id: msg.id, payload: watchedFolders });
         }
         break;
         
