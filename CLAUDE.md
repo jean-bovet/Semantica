@@ -56,19 +56,17 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- See [testing strategy](./planning/testing-strategy.md) for details
+- All 517 tests should pass before committing
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
 - Python sidecar manages its own memory externally (no manual restarts needed)
 - Stable memory usage: 400-600MB for embedding service
-- See [memory-solution.md](./docs/specs/memory-solution.md) for legacy ONNX implementation
 
 ### Database Operations
 - LanceDB requires initialization with dummy data
 - File status tracked in separate table
 - Avoid complex WHERE clauses (not yet implemented)
-- See [troubleshooting.md](./docs/specs/troubleshooting.md) for common issues
 
 ## Common Tasks
 
@@ -145,93 +143,18 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 ### E2E Testing Notes
 - Tests run sequentially (not in parallel) to avoid race conditions
 - Mock downloads available for testing model download flow
-- See [operations guide](./specs/04-operations.md#e2e-testing-configuration) for details
-
-## Recent Updates
-
-### 2025-10-27 - Python Sidecar Migration & Cleanup
-- **Architecture upgrade**: Migrated from Ollama to Python FastAPI sidecar for embeddings
-- **100% reliability**: Eliminates EOF errors and segmentation faults (was 1-2% failure rate with Ollama)
-- **Model**: sentence-transformers paraphrase-multilingual-mpnet-base-v2 (768-dim, multilingual)
-- **Performance**: 55-93 texts/sec throughput, <800MB memory usage
-- **Auto-managed**: Sidecar runs automatically on port 8421, no manual setup required
-- **Simpler codebase**: Removed ~30 obsolete files (Ollama + TransformersJS implementations)
-- **Cleanup**: Removed ~205 lines of workaround code (promise queues, retry logic, error handling)
-- **HTTP API**: Simple REST interface (/health, /embed, /info endpoints)
-- **Database version 4**: One-time re-indexing required on first launch
-- **Legacy code**: Archived to `planning/archive/` and `docs/specs/archive/embedder/`
-- See `docs/specs/python-sidecar.md` for complete specification
-
-### 2025-10-26 - Model Switch to nomic-embed-text
-- **Critical fix**: Switched from bge-m3 to nomic-embed-text due to upstream Ollama bugs
-- **Stability**: nomic-embed-text is more stable, doesn't have pooling_type crashes
-- **Vector dimensions**: Changed from 1024-dim to 768-dim (DB version 3)
-- **Database migration**: Auto-migrates on startup, clears old embeddings
-- **Root cause**: bge-m3 had segmentation faults in llama.cpp causing intermittent EOF errors
-- **Request serialization**: Added promise queue to prevent concurrent Ollama requests
-- **See**: `planning/eof-debugging-logging-added.md` for full investigation details
-
-### 2025-10-25 - Ollama Migration
-- **Architecture simplification**: Migrated from HuggingFace Transformers + ONNX Runtime to Ollama
-- **Memory improvement**: 3-6× reduction in memory footprint using quantized GGUF models
-- **Process isolation**: Ollama runs as external service, eliminating child process complexity
-- **Model upgrade**: Initially used bge-m3 (later replaced with nomic-embed-text)
-- **Auto-management**: Ollama handles model lifecycle, memory management, and auto-scaling
-- **Stability improvements**: No more embedder child process crashes or manual restarts
-- **Codebase simplification**: Removed ~1000 lines of child process management code
-- **Dependencies removed**: `@xenova/transformers`, `onnxruntime-node` (binary dependencies)
-- **Setup requirement**: Ollama must be installed and running (auto-detected and started on macOS)
-- **Legacy code**: Old transformer-based implementation files retained temporarily for reference
-
-### 2025-09-20 - Selective Logging System
-- **Category-based logging**: Replaced verbose logging with selective category system
-- **Silent by default**: Only shows errors unless configured (updated 2025-10-27)
-- **Developer control**: Use LOG_CATEGORIES environment variable to enable specific logs
-- **Performance**: Reduced console I/O overhead by ~90%
-- **Debugging presets**: Common scenarios like `EMBEDDER-*` for embedder debugging
-- **Logger utility**: Centralized logging in `/src/shared/utils/logger.ts`
-
-### 2025-08-31 - Performance Optimizations & Profiling
-- **4x Performance Improvement**: Increased embedding batch size from 8 to 32, added parallel processing
-- **Parallel Batch Processing**: Now processes 2 embedding batches concurrently for 2x speedup
-- **Configurable Performance**: Added embeddingBatchSize and parallelBatches settings
-- **Performance Profiling System**: Added comprehensive profiling to identify bottlenecks
-- **ISO-8859-1 Fix**: Enhanced detection and handling of ISO-8859-1 encoded files (common in legacy code)
-- **Better Error Handling**: Added detailed logging and fallback encoding strategies
-- **Parser version 4**: Text/markdown parsers updated with robust legacy encoding support
-- **Identified Bottleneck**: Embeddings take 94.5% of processing time
-
-### 2025-08-30 - Text Encoding Detection
-- **Fixed garbled text issue**: Text files with non-UTF-8 encodings (ISO-8859-1, Windows-1252, etc.) now display correctly
-- **Multi-encoding support**: Added automatic encoding detection using `chardet` library
-- **Encoding conversion**: Proper conversion to UTF-8 using `iconv-lite`
-- **UTF-16 detection**: Special handling for UTF-16LE/BE files with and without BOM
-- **Mac Roman support**: Added detection for Mac Roman encoded files (common in legacy Mac files)
-- **Encoding utility**: Created `src/main/utils/encoding-detector.ts` for reusable encoding detection
-- **Parser versioning**: Centralized parser versions with single source of truth in each parser file
-- **Comprehensive tests**: Added 30+ unit tests for encoding detection and conversion
-
-### 2025-09-03 - E2E Testing Improvements
-- **Sequential Test Execution**: Configured Playwright to run tests sequentially to avoid race conditions
-- **Mock Network Requests**: Implemented Undici MockAgent for intercepting fetch in worker threads
-- **Test Environment Variables**: Added E2E_MOCK_DOWNLOADS and E2E_MOCK_DELAYS for controlled testing
-- **Fixed Model Path Issues**: Updated checkModelExists to accept userDataPath parameter
-- **Improved Test Reliability**: E2E tests now pass consistently without network dependencies
-
-### 2025-08-24
-- Implemented search-first UI with modal settings
-- Added file search feature in status bar
-- Fixed .doc file parsing with word-extractor
-- Created file status tracking in database
-- Normalized documentation file naming
-- Reorganized docs into specs/planning folders
+- See [operations guide](./docs/specs/04-operations.md#e2e-testing-configuration) for details
 
 ## Resources
-- [Architecture](./specs/architecture.md) - System design
-- [Memory Solution](./specs/memory-solution.md) - Memory management
-- [Troubleshooting](./specs/troubleshooting.md) - Common issues
-- [Documentation Standards](./specs/documentation-standards.md) - File naming conventions
-- [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
+
+### Key Documentation
+- [Architecture](./docs/specs/02-architecture.md) - System design and overview
+- [Startup Flow](./docs/specs/08-startup-flow.md) - Complete initialization sequence
+- [Python Sidecar](./docs/specs/python-sidecar.md) - Embedding service specification
+- [Folder Structure](./docs/specs/12-folder-structure.md) - Codebase organization
+- [Logging Guide](./docs/guides/logging.md) - Category-based logging system
+
+### Important Constraints
 - Never run `npm run dev` without asking me first
 - Never commit to git without my permission
 
