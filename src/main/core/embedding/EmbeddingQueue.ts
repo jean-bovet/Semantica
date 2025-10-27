@@ -1,5 +1,4 @@
-import { EmbedderPool } from '../../../shared/embeddings/embedder-pool';
-import type { IEmbedder } from '../../../shared/embeddings/IEmbedder';
+import type { IEmbedder } from '../../worker/embeddings/IEmbedder';
 import { logger } from '../../../shared/utils/logger';
 
 export interface QueuedChunk {

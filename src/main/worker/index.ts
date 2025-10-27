@@ -131,7 +131,7 @@ try {
   logger.log('STARTUP', 'PDF parsing not available');
 }
 // Use Python sidecar embedder for better reliability
-import { PythonSidecarEmbedder } from '../../shared/embeddings/implementations/PythonSidecarEmbedder';
+import { PythonSidecarEmbedder } from './embeddings/PythonSidecarEmbedder';
 import { PythonSidecarService } from './PythonSidecarService';
 import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
 import { WorkerStartup } from './WorkerStartup'; // New state machine

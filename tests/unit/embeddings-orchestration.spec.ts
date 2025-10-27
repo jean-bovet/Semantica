@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { IEmbedder } from '../../src/shared/embeddings/IEmbedder';
-import { TestEmbedder, createTestEmbedder } from '../../src/shared/embeddings/TestEmbedder';
+import { IEmbedder } from '../../src/main/worker/embeddings/IEmbedder';
+import { TestEmbedder, createTestEmbedder } from '../../src/main/worker/embeddings/TestEmbedder';
 
 describe('Embeddings Orchestration', () => {
   let embedder: TestEmbedder;

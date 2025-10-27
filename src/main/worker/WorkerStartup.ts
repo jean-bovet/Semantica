@@ -13,7 +13,7 @@
 import { parentPort } from 'worker_threads';
 import { PythonSidecarService } from './PythonSidecarService';
 import { PythonSidecarClient } from './PythonSidecarClient';
-import { PythonSidecarEmbedder } from '../../shared/embeddings/implementations/PythonSidecarEmbedder';
+import { PythonSidecarEmbedder } from './embeddings/PythonSidecarEmbedder';
 import { logger } from '../../shared/utils/logger';
 import {
   type StartupStage,

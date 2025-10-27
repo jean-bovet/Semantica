@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EmbeddingQueue, ProcessedBatch } from '../../src/main/core/embedding/EmbeddingQueue';
-import type { IEmbedder } from '../../src/shared/embeddings/IEmbedder';
+import type { IEmbedder } from '../../src/main/worker/embeddings/IEmbedder';
 
 describe('EmbeddingQueue - Dynamic Token-Based Batching', () => {
   let queue: EmbeddingQueue;

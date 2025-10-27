@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PythonSidecarService } from '../../src/main/worker/PythonSidecarService';
 import { PythonSidecarClient } from '../../src/main/worker/PythonSidecarClient';
-import { PythonSidecarEmbedder } from '../../src/shared/embeddings/implementations/PythonSidecarEmbedder';
+import { PythonSidecarEmbedder } from '../../src/main/worker/embeddings/PythonSidecarEmbedder';
 import { EmbeddingQueue } from '../../src/main/core/embedding/EmbeddingQueue';
 
 describe('Python Sidecar Integration (Real Sidecar)', () => {

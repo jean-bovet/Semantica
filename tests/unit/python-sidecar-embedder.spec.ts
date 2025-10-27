@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PythonSidecarEmbedder } from '../../src/shared/embeddings/implementations/PythonSidecarEmbedder';
+import { PythonSidecarEmbedder } from '../../src/main/worker/embeddings/PythonSidecarEmbedder';
 import { PythonSidecarClient, PythonSidecarClientError } from '../../src/main/worker/PythonSidecarClient';
 import type { SidecarInfoResponse } from '../../src/main/worker/PythonSidecarClient';
 
