@@ -13,7 +13,7 @@ import {
   writeConfigFile,
   readConfigWithDefaults,
   AppConfig
-} from './configIO';
+} from '../../src/shared/config/configIO';
 
 describe('configIO', () => {
   let testDir: string;
