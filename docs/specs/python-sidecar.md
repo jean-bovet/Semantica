@@ -10,6 +10,18 @@
 
 FastAPI HTTP server providing embedding generation via sentence-transformers. Runs as child process, managed by `PythonSidecarService`.
 
+### Why Python Sidecar?
+
+**Architecture v3** - replacing Ollama after:
+- **v1 (TransformersJS):** Out-of-memory crashes, complex child process management
+- **v2 (Ollama):** 1-2% EOF error rate, segmentation faults, concurrent request crashes
+
+**Python Sidecar achieves:**
+- 100% reliability (vs 98-99% with Ollama)
+- Simple lifecycle management
+- Clear error messages (Python vs C++ segfaults)
+- No manual installation required
+
 ## Architecture
 
 ```

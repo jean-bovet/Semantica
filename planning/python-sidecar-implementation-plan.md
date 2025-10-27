@@ -41,6 +41,26 @@ Development use with local Python/venv. Production bundling can be done when shi
 
 Replace Ollama embedding service with a Python-based FastAPI sidecar using sentence-transformers. This eliminates EOF errors, simplifies architecture, and provides better stability.
 
+## Historical Context
+
+### The Journey to Python Sidecar
+
+**v1: TransformersJS/ONNX Runtime (2024)**
+- Embeddings in child processes using HuggingFace Transformers.js
+- **Problems:** Out-of-memory crashes, complex lifecycle management (~1000 lines), segmentation faults
+- **Abandoned:** Too unstable for production
+
+**v2: Ollama (Oct 2025)**
+- External Ollama server, improved memory footprint (3-6× better)
+- **Problems:** 1-2% EOF error rate, segmentation faults (llama.cpp bugs), concurrent request crashes
+- **Workarounds:** Added promise queues, complex retry logic (~205 lines of workaround code)
+- **Replaced:** After Python sidecar achieved 100% reliability in testing
+
+**v3: Python Sidecar (Oct 2025 - Current)**
+- FastAPI HTTP server with sentence-transformers
+- **Result:** 100% reliability, auto-managed, ~1205 lines of code removed total
+- **This is what we're implementing**
+
 **Success Criteria:**
 - ✅ Zero EOF errors in production
 - ✅ Comparable or better performance than Ollama

@@ -5,7 +5,52 @@
 
 ---
 
-## Why We Migrated
+## Architecture Evolution
+
+### v1: TransformersJS/ONNX Runtime (2024 - Abandoned)
+**Approach:** HuggingFace Transformers.js with ONNX Runtime in child processes
+
+**Problems:**
+- Out-of-memory crashes (child processes dying under load)
+- Complex child process management (~1000 lines of lifecycle code)
+- Manual memory-based restarts required
+- Segmentation faults (SIGTRAP errors)
+- Large binary dependencies (`@xenova/transformers`, `onnxruntime-node`)
+
+**Outcome:** Abandoned due to instability and complexity
+
+### v2: Ollama (Oct 2025 - Replaced)
+**Approach:** External Ollama server with HTTP API
+
+**Improvements:**
+- 3-6× better memory footprint (GGUF quantization)
+- External process isolation
+- Removed ~1000 lines of child process code
+
+**Problems:**
+- 1-2% EOF error rate (random failures)
+- Segmentation faults in llama.cpp (bge-m3 model bug)
+- Concurrent requests caused crashes (required promise queue workaround)
+- Complex retry logic (~205 lines of workarounds)
+- Manual installation required
+
+**Outcome:** Replaced after discovering Python sidecar achieved 100% reliability
+
+### v3: Python Sidecar (Oct 2025 - Current) ✅
+**Approach:** FastAPI HTTP server with sentence-transformers
+
+**Solutions:**
+- 100% reliability (zero failures in testing)
+- Auto-starts with app (no manual setup)
+- Simple HTTP API (no complex IPC)
+- Clear Python error messages (vs C++ segfaults)
+- Removed ~1205 lines of workaround code total
+
+**Result:** Production-ready, stable, maintainable
+
+---
+
+## Why We Migrated (from Ollama)
 
 ### Ollama Issues
 - 1-2% failure rate (EOF errors, segmentation faults)
