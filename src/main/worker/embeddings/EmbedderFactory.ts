@@ -1,6 +1,6 @@
 import { EmbedderConfig } from './IEmbedder';
-import { PythonSidecarEmbedder, PythonSidecarEmbedderConfig } from './implementations/PythonSidecarEmbedder';
-import { PythonSidecarClient } from '../../main/worker/PythonSidecarClient';
+import { PythonSidecarEmbedder, PythonSidecarEmbedderConfig } from './PythonSidecarEmbedder';
+import { PythonSidecarClient } from '../PythonSidecarClient';
 
 /**
  * Configuration for creating embedders

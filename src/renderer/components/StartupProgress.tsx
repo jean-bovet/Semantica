@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
-  STARTUP_STEPS,
-  getStepStatus,
   getStageMessage,
-  type StartupStage,
-  type StepStatus
+  type StartupStage
 } from '../utils/StepperLogic';
+import { getStageIndex, STARTUP_STAGE_ORDER } from '../../shared/types/startup';
 import type { StartupStageMessage, StartupErrorMessage } from '../../shared/types/startup';
 import './StartupProgress.css';
 
@@ -126,41 +124,18 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
     );
   }
 
-  // Render step icon based on status
-  const renderStepIcon = (status: StepStatus) => {
-    switch (status) {
-      case 'completed':
-        return (
-          <div className={`startup-step-icon ${status}`}>
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-        );
-      case 'active':
-        return (
-          <div className={`startup-step-icon ${status}`} />
-        );
-      case 'error':
-        return (
-          <div className={`startup-step-icon ${status}`}>
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-        );
-      case 'pending':
-      default:
-        return (
-          <div className={`startup-step-icon ${status}`}>
-            <div className="step-dot"></div>
-          </div>
-        );
-    }
+  // Calculate progress percentage based on current stage
+  const calculateProgress = (): number => {
+    const stageIdx = getStageIndex(stage);
+    if (stageIdx === -1) return 0; // Error state
+    const totalStages = STARTUP_STAGE_ORDER.length;
+    return Math.round(((stageIdx + 1) / totalStages) * 100);
   };
 
   // Normal loading state (not error)
   if (stage !== 'error') {
+    const progressPercentage = calculateProgress();
+
     return (
       <div className="startup-overlay">
         <div className="startup-card">
@@ -169,26 +144,11 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
             <p className="startup-message">{getStageMessage(stage, stageMessage)}</p>
           </div>
 
-          <div className="startup-steps">
-            {STARTUP_STEPS.map((step, index) => {
-              const status = getStepStatus(stage, index, false);
-              const isLast = index === STARTUP_STEPS.length - 1;
-
-              return (
-                <div key={step.id} className="startup-step">
-                  <div className="startup-step-content">
-                    {renderStepIcon(status)}
-                    <div className={`startup-step-label ${status}`}>
-                      <p>
-                        {step.label}
-                        {step.stage === 'downloading' && progress > 0 && ` (${Math.round(progress)}%)`}
-                      </p>
-                    </div>
-                  </div>
-                  {!isLast && <div className="startup-step-connector"></div>}
-                </div>
-              );
-            })}
+          <div className="progress-container">
+            <div
+              className="progress-fill"
+              style={{ width: `${progressPercentage}%` }}
+            />
           </div>
         </div>
       </div>

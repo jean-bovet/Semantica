@@ -90,6 +90,107 @@ Server and model information.
 
 ---
 
+## Progress Events
+
+The Python sidecar emits progress events via **stdout** during model loading to communicate startup progress to the TypeScript layer.
+
+### Event Format
+
+Events are JSON objects prefixed with `PROGRESS:` on stdout:
+
+```
+PROGRESS:{"type":"<event_type>","data":{...}}
+```
+
+### Event Types
+
+#### `model_cached`
+Emitted when model is already downloaded and cached locally.
+
+**Example:**
+```json
+PROGRESS:{"type":"model_cached","data":{"model":"paraphrase-multilingual-mpnet-base-v2"}}
+```
+
+**Effect:** Startup stage 6 (`downloading`) is **skipped**
+
+#### `download_started`
+Emitted when model needs to be downloaded (first run).
+
+**Example:**
+```json
+PROGRESS:{"type":"download_started","data":{"model":"paraphrase-multilingual-mpnet-base-v2"}}
+```
+
+**Effect:** Triggers startup stage 6 (`downloading`), updates UI with download message
+
+#### `model_loaded`
+Emitted when model is fully loaded into memory and ready.
+
+**Example:**
+```json
+PROGRESS:{"type":"model_loaded","data":{"model":"paraphrase-multilingual-mpnet-base-v2","dimensions":768}}
+```
+
+**Effect:** Proceeds to stage 7 (`sidecar_ready`)
+
+### TypeScript Integration
+
+The `PythonSidecarService` parses these events from stdout:
+
+```typescript
+// In PythonSidecarService constructor
+const service = new PythonSidecarService({
+  onProgress: (event: DownloadProgressEvent) => {
+    // Forward to WorkerStartup for stage management
+    console.log(`Progress: ${event.type}`, event.data);
+  }
+});
+```
+
+**Parsing logic:**
+```typescript
+this.process.stdout?.on('data', (data) => {
+  const lines = data.toString().split('\n');
+  for (const line of lines) {
+    if (line.startsWith('PROGRESS:')) {
+      const jsonStr = line.substring('PROGRESS:'.length);
+      const event = JSON.parse(jsonStr);
+      if (this.progressCallback) {
+        this.progressCallback(event);
+      }
+    }
+  }
+});
+```
+
+### Implementation in embed_server.py
+
+```python
+def emit_progress(event_type: str, data: dict):
+    """Emit JSON progress event to stdout for parent process to parse"""
+    event = {"type": event_type, "data": data}
+    print(f"PROGRESS:{json.dumps(event)}", flush=True)
+
+def load_model_with_progress():
+    cache_dir = CACHE_DIR or Path.home() / ".cache" / "huggingface"
+    model_path = Path(cache_dir) / f"hub" / f"models--{model_repo}"
+
+    if model_path.exists():
+        emit_progress("model_cached", {"model": DEFAULT_MODEL})
+    else:
+        emit_progress("download_started", {"model": DEFAULT_MODEL})
+
+    model = SentenceTransformer(DEFAULT_MODEL, device=DEVICE)
+    emit_progress("model_loaded", {
+        "model": DEFAULT_MODEL,
+        "dimensions": model.get_sentence_embedding_dimension()
+    })
+    return model
+```
+
+---
+
 ## Client Usage
 
 ### TypeScript (PythonSidecarClient)
