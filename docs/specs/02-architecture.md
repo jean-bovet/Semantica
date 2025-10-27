@@ -22,8 +22,8 @@ Main Process (Electron)
         ├── File Watching (Chokidar)
         ├── Document Parsing
         ├── LanceDB Operations
-        └── Embedder Child Process (Isolated)
-            └── Transformers.js (Memory-isolated)
+        └── Python Sidecar (HTTP)
+            └── FastAPI + sentence-transformers
 ```
 
 ## Core Components
@@ -56,9 +56,8 @@ The main process follows a strict initialization order to prevent IPC errors:
      - `DB_INIT`: Database connection and config initialization
      - `DB_LOAD`: Loading existing indexed files (with progress %)
      - `FOLDER_SCAN`: Scanning configured folders
-     - `MODEL_CHECK`: Verifying ML model exists
-     - `MODEL_DOWNLOAD`: Downloading model if needed
-     - `EMBEDDER_INIT`: Initializing embedder process pool
+     - `SIDECAR_START`: Starting Python embedding sidecar
+     - `SIDECAR_READY`: Sidecar health check passed
      - `READY`: All systems operational
    - **CRITICAL**: `app:ready` event sent only after ALL stages complete
    - UI shows loading spinner until `app:ready` received

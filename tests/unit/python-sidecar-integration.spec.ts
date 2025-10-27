@@ -102,6 +102,47 @@ describe('Python Sidecar Integration (Real Sidecar)', () => {
     });
   });
 
+  it('should handle concurrent embedding requests', async () => {
+    const texts = [
+      'Concurrent request 1',
+      'Concurrent request 2',
+      'Concurrent request 3'
+    ];
+
+    console.log('Testing concurrent requests...');
+    // Fire off multiple requests simultaneously
+    const [result1, result2, result3] = await Promise.all([
+      sidecarEmbedder.embed([texts[0]]),
+      sidecarEmbedder.embed([texts[1]]),
+      sidecarEmbedder.embed([texts[2]])
+    ]);
+
+    expect(result1).toBeDefined();
+    expect(result2).toBeDefined();
+    expect(result3).toBeDefined();
+    expect(result1[0].length).toBe(768);
+    expect(result2[0].length).toBe(768);
+    expect(result3[0].length).toBe(768);
+  });
+
+  it('should handle large batches (50+ texts)', async () => {
+    // Create 50 test texts
+    const texts = Array.from({ length: 50 }, (_, i) => `Test text number ${i} with some content to embed.`);
+
+    console.log('Embedding large batch of 50 texts...');
+    const startTime = Date.now();
+    const vectors = await sidecarEmbedder.embed(texts);
+    const duration = Date.now() - startTime;
+
+    console.log(`Large batch completed in ${duration}ms`);
+    console.log(`Throughput: ${(texts.length / (duration / 1000)).toFixed(1)} texts/sec`);
+
+    expect(vectors.length).toBe(50);
+    vectors.forEach(vector => {
+      expect(vector.length).toBe(768);
+    });
+  });
+
   it('should process chunks through EmbeddingQueue with batch processor', async () => {
     // This is the REAL test that reproduces the error from the app
 

@@ -29,7 +29,7 @@ import { checkDatabaseVersion, migrateDatabaseIfNeeded, writeDatabaseVersion } f
 
 describe('Database Version Migration', () => {
   let testDir: string;
-  const DB_VERSION = 2; // Current version (1024-dim vectors)
+  const DB_VERSION = 4; // Current version (Python sidecar with paraphrase-multilingual-mpnet-base-v2)
 
   beforeEach(async () => {
     // Create a temporary test directory
@@ -64,7 +64,27 @@ describe('Database Version Migration', () => {
       expect(needsMigration).toBe(true);
     });
 
-    it('should accept current version (v2) and return false (no migration)', async () => {
+    it('should detect old version (v2) and return true (needs migration)', async () => {
+      // Write v2 (Ollama bge-m3, deprecated)
+      const versionFile = path.join(testDir, '.db-version');
+      await fs.writeFile(versionFile, '2', 'utf-8');
+
+      const needsMigration = await checkDatabaseVersion(testDir);
+
+      expect(needsMigration).toBe(true);
+    });
+
+    it('should detect old version (v3) and return true (needs migration)', async () => {
+      // Write v3 (Ollama nomic-embed-text)
+      const versionFile = path.join(testDir, '.db-version');
+      await fs.writeFile(versionFile, '3', 'utf-8');
+
+      const needsMigration = await checkDatabaseVersion(testDir);
+
+      expect(needsMigration).toBe(true);
+    });
+
+    it('should accept current version (v4) and return false (no migration)', async () => {
       // Write current version
       const versionFile = path.join(testDir, '.db-version');
       await fs.writeFile(versionFile, String(DB_VERSION), 'utf-8');
@@ -240,8 +260,8 @@ describe('Database Version Migration', () => {
   });
 
   describe('Full migration workflow', () => {
-    it('should complete full migration cycle from v1 to v2', async () => {
-      // Setup: Create old database structure
+    it('should complete full migration cycle from v1 to v4', async () => {
+      // Setup: Create old database structure (v1: Xenova multilingual-e5-small)
       const chunksDir = path.join(testDir, 'chunks.lance');
       const statusDir = path.join(testDir, 'file_status.lance');
       await fs.mkdir(chunksDir, { recursive: true });
@@ -269,6 +289,41 @@ describe('Database Version Migration', () => {
 
       const newVersion = await fs.readFile(versionFile, 'utf-8');
       expect(newVersion).toBe(String(DB_VERSION));
+
+      // Step 4: Verify no migration needed now
+      const stillNeedsMigration = await checkDatabaseVersion(testDir);
+      expect(stillNeedsMigration).toBe(false);
+    });
+
+    it('should complete full migration cycle from v3 to v4 (Ollama to Python sidecar)', async () => {
+      // Setup: Create v3 database structure (Ollama nomic-embed-text, 768-dim)
+      const chunksDir = path.join(testDir, 'chunks.lance');
+      const statusDir = path.join(testDir, 'file_status.lance');
+      await fs.mkdir(chunksDir, { recursive: true });
+      await fs.mkdir(statusDir, { recursive: true });
+
+      const versionFile = path.join(testDir, '.db-version');
+      await fs.writeFile(versionFile, '3', 'utf-8');
+
+      // Step 1: Detect migration needed (v3 → v4: different model)
+      const needsMigration = await checkDatabaseVersion(testDir);
+      expect(needsMigration).toBe(true);
+
+      // Step 2: Perform migration
+      const migrated = await migrateDatabaseIfNeeded(testDir);
+      expect(migrated).toBe(true);
+
+      // Step 3: Write new version
+      await writeDatabaseVersion(testDir);
+
+      // Verify: Old embeddings cleared (even though both are 768-dim, different models)
+      const chunksExists = await fs.access(chunksDir).then(() => true).catch(() => false);
+      const statusExists = await fs.access(statusDir).then(() => true).catch(() => false);
+      expect(chunksExists).toBe(false);
+      expect(statusExists).toBe(false);
+
+      const newVersion = await fs.readFile(versionFile, 'utf-8');
+      expect(newVersion).toBe('4');
 
       // Step 4: Verify no migration needed now
       const stillNeedsMigration = await checkDatabaseVersion(testDir);

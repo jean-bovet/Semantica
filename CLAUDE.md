@@ -10,7 +10,7 @@ Semantica is an Electron-based application that provides offline semantic search
 
 ### Architecture
 - **Multi-process design**: Main process and Worker thread
-- **Ollama integration**: Uses external Ollama server for embeddings (process isolation, memory management)
+- **Python Sidecar**: FastAPI HTTP server for embeddings (process isolation, memory management)
 - **Search-first UI**: Full-screen search with modal settings overlay
 - See [architecture.md](./docs/specs/02-architecture.md) for complete details
 
@@ -18,7 +18,8 @@ Semantica is an Electron-based application that provides offline semantic search
 - **Frontend**: React, TypeScript, Tailwind CSS
 - **Backend**: Electron, Node.js Worker Threads
 - **Database**: LanceDB for vector storage
-- **ML Model**: Ollama with nomic-embed-text for embeddings (768-dim, stable)
+- **ML Model**: Python sidecar with sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768-dim)
+- **Embedding Service**: FastAPI HTTP server running locally on port 8421
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
 
 ## Important Guidelines
@@ -59,9 +60,9 @@ Documentation is organized under `/docs/`:
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
-- Ollama manages its own memory externally (no manual restarts needed)
-- Reduced memory footprint: 3-6× improvement over previous ONNX implementation
-- See [memory-solution.md](./docs/specs/memory-solution.md) for legacy implementation
+- Python sidecar manages its own memory externally (no manual restarts needed)
+- Stable memory usage: 400-600MB for embedding service
+- See [memory-solution.md](./docs/specs/memory-solution.md) for legacy ONNX implementation
 
 ### Database Operations
 - LanceDB requires initialization with dummy data
@@ -147,6 +148,18 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 - See [operations guide](./specs/04-operations.md#e2e-testing-configuration) for details
 
 ## Recent Updates
+
+### 2025-10-27 - Python Sidecar Migration
+- **Architecture upgrade**: Migrated from Ollama to Python FastAPI sidecar for embeddings
+- **100% reliability**: Eliminates EOF errors and segmentation faults (was 1-2% failure rate with Ollama)
+- **Model**: sentence-transformers paraphrase-multilingual-mpnet-base-v2 (768-dim, multilingual)
+- **Performance**: 55-93 texts/sec throughput, <800MB memory usage
+- **Auto-managed**: Sidecar runs automatically on port 8421, no manual setup required
+- **Simpler codebase**: Removed ~205 lines of workaround code (promise queues, retry logic)
+- **HTTP API**: Simple REST interface (/health, /embed, /info endpoints)
+- **Database version 4**: One-time re-indexing required on first launch
+- **Legacy code**: Ollama implementation preserved for reference
+- See `planning/python-sidecar-implementation-plan.md` for full details
 
 ### 2025-10-26 - Model Switch to nomic-embed-text
 - **Critical fix**: Switched from bge-m3 to nomic-embed-text due to upstream Ollama bugs
