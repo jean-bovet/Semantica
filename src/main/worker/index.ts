@@ -832,8 +832,8 @@ const handleFile = profileHandleFile(handleFileOriginal);
 
 async function search(query: string, k = 10) {
   try {
-    // Use embedder pool for query embedding
-    const vectors = await embedderPool!.embed([query], true);
+    // Use sidecar embedder for query embedding
+    const vectors = await sidecarEmbedder!.embed([query]);
     const qvec = vectors[0];
     const results = await tbl.search(qvec)
       .limit(k)
