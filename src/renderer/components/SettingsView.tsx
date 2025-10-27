@@ -61,19 +61,12 @@ function SettingsView() {
       } else {
         // Get folders from worker's persisted config
         try {
-          console.log('[UI] Calling getWatchedFolders...');
           const currentFolders = await window.api.indexer.getWatchedFolders();
-          console.log('[UI] getWatchedFolders returned:', currentFolders);
-          console.log('[UI] Type:', typeof currentFolders, 'Is array:', Array.isArray(currentFolders), 'Length:', currentFolders?.length);
-
           if (currentFolders && currentFolders.length > 0) {
-            console.log('[UI] Setting folders state to:', currentFolders);
             setFolders(currentFolders);
-          } else {
-            console.log('[UI] NOT setting folders state - currentFolders is empty or falsy');
           }
         } catch (e) {
-          console.error('[UI] Failed to get watched folders:', e);
+          console.error('Failed to get watched folders:', e);
         }
       }
     };

@@ -107,8 +107,11 @@ npm run dev
 The codebase uses a category-based logging system to reduce noise. Configure with `LOG_CATEGORIES`:
 
 ```bash
-# Default (minimal - only progress and errors)
+# Default (silent - only errors)
 npm run dev
+
+# Show progress
+LOG_CATEGORIES=PIPELINE-STATUS npm run dev
 
 # Debug file processing
 LOG_CATEGORIES=WORKER,INDEXING,QUEUE npm run dev
@@ -120,7 +123,7 @@ LOG_CATEGORIES=EMBEDDER-*,MEMORY npm run dev
 LOG_CATEGORIES=* npm run dev
 ```
 
-See [logging-migration.md](./docs/logging-migration.md) for available categories.
+See [logging.md](./docs/guides/logging.md) for available categories.
 
 ### Building for Production
 ```bash
@@ -168,7 +171,7 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 
 ### 2025-09-20 - Selective Logging System
 - **Category-based logging**: Replaced verbose logging with selective category system
-- **Silent by default**: Only shows PIPELINE-STATUS and errors unless configured
+- **Silent by default**: Only shows errors unless configured (updated 2025-10-27)
 - **Developer control**: Use LOG_CATEGORIES environment variable to enable specific logs
 - **Performance**: Reduced console I/O overhead by ~90%
 - **Debugging presets**: Common scenarios like `EMBEDDER-*` for embedder debugging

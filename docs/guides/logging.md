@@ -9,12 +9,12 @@ We've implemented a category-based logging system to reduce log noise while keep
 1. **Logger Utility**: `/src/shared/utils/logger.ts`
    - Central logging utility with category filtering
    - Configurable via `LOG_CATEGORIES` environment variable
-   - Always shows `PIPELINE-STATUS` and errors
+   - By default, only shows errors (silent mode)
 
 2. **Log Categories**:
    ```
    Core Operations:
-   - PIPELINE-STATUS (always on)
+   - PIPELINE-STATUS - Progress indicator
    - ERROR (always on)
 
    File Operations:
@@ -59,8 +59,11 @@ We've implemented a category-based logging system to reduce log noise while keep
 ### Configuration Examples
 
 ```bash
-# Default (minimal - only PIPELINE-STATUS and errors)
+# Default (silent - only errors)
 npm run dev
+
+# Show progress
+LOG_CATEGORIES=PIPELINE-STATUS npm run dev
 
 # Debug file processing
 LOG_CATEGORIES=WORKER,INDEXING,QUEUE npm run dev

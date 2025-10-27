@@ -45,17 +45,8 @@ const api = {
       return () => ipcRenderer.removeAllListeners('indexer:progress');
     },
     
-    getWatchedFolders: async (): Promise<string[]> => {
-      console.log('[PRELOAD] getWatchedFolders called');
-      try {
-        const result = await ipcRenderer.invoke('indexer:getWatchedFolders');
-        console.log('[PRELOAD] getWatchedFolders received:', result);
-        return result;
-      } catch (error) {
-        console.error('[PRELOAD] getWatchedFolders error:', error);
-        throw error;
-      }
-    },
+    getWatchedFolders: (): Promise<string[]> =>
+      ipcRenderer.invoke('indexer:getWatchedFolders'),
     
     reindexAll: () => ipcRenderer.invoke('indexer:reindexAll'),
     

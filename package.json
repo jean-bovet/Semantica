@@ -6,7 +6,7 @@
     "main": "dist/main.cjs",
     "private": true,
     "scripts": {
-        "dev": "node scripts/setup-dev.js && concurrently -k -n VITE,BUILD,ELEC -c blue,magenta,green \"vite\" \"node esbuild.watch.mjs\" \"wait-on tcp:5173 && LOG_CATEGORIES=* electronmon .\"",
+        "dev": "node scripts/setup-dev.js && concurrently -k -n VITE,BUILD,ELEC -c blue,magenta,green \"vite\" \"node esbuild.watch.mjs\" \"wait-on tcp:5173 && electronmon .\"",
         "build": "tsc -b && node esbuild.build.mjs && vite build",
         "dist": "npm run build && dotenv -e .env.local -- electron-builder",
         "dist:mac": "npm run dist -- --mac",

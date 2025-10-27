@@ -395,15 +395,7 @@ if (gotTheLock) {
   });
   
   ipcMain.handle('indexer:getWatchedFolders', async () => {
-    logger.log('IPC', 'indexer:getWatchedFolders called');
-    try {
-      const result = await sendToWorker('getWatchedFolders');
-      logger.log('IPC', `indexer:getWatchedFolders received from worker:`, result);
-      return result;
-    } catch (error) {
-      logger.error('IPC', 'indexer:getWatchedFolders error:', error);
-      throw error;
-    }
+    return sendToWorker('getWatchedFolders');
   });
   
   ipcMain.handle('settings:get', async () => {

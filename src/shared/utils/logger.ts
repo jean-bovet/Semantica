@@ -13,9 +13,9 @@
 
 // All available log categories
 const CATEGORIES = {
-  // Core operations (these are special)
-  'PIPELINE-STATUS': true,  // Always enabled - main progress indicator
-  'ERROR': true,           // Always enabled - all errors
+  // Core operations
+  'PIPELINE-STATUS': false,  // Main progress indicator (enable with LOG_CATEGORIES)
+  'ERROR': true,            // Always enabled - all errors
 
   // File operations
   'INDEXING': false,
@@ -66,7 +66,7 @@ export type LogCategory = keyof typeof CATEGORIES;
 
 class Logger {
   private enabled: Set<string>;
-  private readonly alwaysEnabled = ['PIPELINE-STATUS', 'ERROR'];
+  private readonly alwaysEnabled = ['ERROR'];
 
   constructor() {
     this.enabled = this.parseConfig();
@@ -213,6 +213,7 @@ export const LOG_PRESETS = {
   'embedder-debug': 'EMBEDDER-*,MEMORY',
   'performance': 'PERFORMANCE,PROFILING,MEMORY',
   'encoding-issues': 'ENCODING,FILE-STATUS,INDEXING',
+  'progress': 'PIPELINE-STATUS',  // Show progress only
   'full-debug': '*',
-  'quiet': '',  // Only PIPELINE-STATUS and errors
+  'silent': '',  // Only errors (default)
 };
