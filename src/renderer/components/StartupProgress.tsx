@@ -88,7 +88,7 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
 
   const handleRetry = async () => {
     setError(null);
-    setStage('checking');
+    setStage('sidecar_start');
     setStageMessage('Retrying...');
     try {
       await window.api.startup.retry();
@@ -99,7 +99,7 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
 
   // Error state
   if (error) {
-    const isOllamaNotFound = error.code === 'OLLAMA_NOT_FOUND';
+    const isSidecarError = error.code === 'SIDECAR_START_FAILED' || error.code === 'SIDECAR_NOT_HEALTHY';
 
     return (
       <div className="startup-error-overlay">
@@ -111,33 +111,16 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
               </svg>
             </div>
             <h2 className="startup-error-title">
-              {isOllamaNotFound ? 'Ollama Required' : 'Initialization Error'}
+              {isSidecarError ? 'Embedding Service Error' : 'Initialization Error'}
             </h2>
           </div>
           <p className="startup-error-message">{error.message}</p>
-          {isOllamaNotFound ? (
-            <div className="startup-error-actions">
-              <button
-                onClick={() => window.open('https://ollama.com/download')}
-                className="startup-error-button primary"
-              >
-                Open Ollama Website
-              </button>
-              <button
-                onClick={handleRetry}
-                className="startup-error-button secondary"
-              >
-                Retry
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleRetry}
-              className="startup-error-button primary"
-            >
-              Retry
-            </button>
-          )}
+          <button
+            onClick={handleRetry}
+            className="startup-error-button primary"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );

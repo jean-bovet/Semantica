@@ -12,9 +12,9 @@
  * - Faster timeout (30s vs 300s)
  */
 
-import { IEmbedder, EmbedderConfig } from '../IEmbedder';
-import { PythonSidecarClient, PythonSidecarClientError } from '../../../main/worker/PythonSidecarClient';
-import { logger } from '../../utils/logger';
+import { IEmbedder, EmbedderConfig } from './IEmbedder';
+import { PythonSidecarClient, PythonSidecarClientError } from '../PythonSidecarClient';
+import { logger } from '../../../shared/utils/logger';
 
 // Helper to log with category
 const log = (message: string, ...args: any[]) => logger.log('SIDECAR-EMBEDDER', message, ...args);

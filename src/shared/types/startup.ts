@@ -14,9 +14,10 @@
  * 3. db_load - Load existing indexed files
  * 4. folder_scan - Scan watched folders for changes
  * 5. sidecar_start - Start Python sidecar server
- * 6. sidecar_ready - Wait for sidecar to load model
- * 7. embedder_init - Initialize embedder
- * 8. ready - Application ready to use
+ * 6. downloading - Download embedding model (first run only)
+ * 7. sidecar_ready - Wait for sidecar to load model
+ * 8. embedder_init - Initialize embedder
+ * 9. ready - Application ready to use
  */
 export type StartupStage =
   | 'worker_spawn'
@@ -24,10 +25,8 @@ export type StartupStage =
   | 'db_load'
   | 'folder_scan'
   | 'sidecar_start'
+  | 'downloading'      // Model download (first run only)
   | 'sidecar_ready'
-  | 'checking'         // Legacy: Ollama check (kept for compatibility)
-  | 'downloading'      // Legacy: Model download (kept for compatibility)
-  | 'initializing'     // Legacy: kept as alias for embedder_init
   | 'embedder_init'
   | 'ready'
   | 'error';
@@ -42,6 +41,7 @@ export const STARTUP_STAGE_ORDER: readonly StartupStage[] = [
   'db_load',
   'folder_scan',
   'sidecar_start',
+  'downloading',
   'sidecar_ready',
   'embedder_init',
   'ready',

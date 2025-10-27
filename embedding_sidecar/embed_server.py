@@ -16,13 +16,21 @@ API:
 from __future__ import annotations
 import os
 import sys
+import json
 import signal
 from typing import List, Optional, Literal
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 import torch
+
+# -------- Progress Reporting --------
+def emit_progress(event_type: str, data: dict):
+    """Emit JSON progress event to stdout for parent process to parse"""
+    event = {"type": event_type, "data": data}
+    print(f"PROGRESS:{json.dumps(event)}", flush=True)
 
 # -------- Config --------
 DEFAULT_MODEL = os.getenv(
@@ -48,9 +56,32 @@ print(f"   Model: {DEFAULT_MODEL}")
 print(f"   Device: {DEVICE}")
 print(f"   Bind: {BIND_HOST}:{BIND_PORT}")
 
-# -------- Model load --------
-print(f"📦 Loading model (this may take a moment on first run)...")
-model = SentenceTransformer(DEFAULT_MODEL, device=DEVICE, cache_folder=CACHE_DIR)
+# -------- Model Load with Progress --------
+def load_model_with_progress():
+    """Load model with download progress reporting"""
+    cache_dir = CACHE_DIR or Path.home() / ".cache" / "huggingface"
+    model_repo = DEFAULT_MODEL.replace("/", "--")
+    model_path = Path(cache_dir) / f"hub" / f"models--{model_repo}"
+
+    if model_path.exists():
+        print("📦 Loading cached model...")
+        emit_progress("model_cached", {"model": DEFAULT_MODEL})
+    else:
+        print("📦 Downloading model (first run - this may take a few minutes)...")
+        emit_progress("download_started", {"model": DEFAULT_MODEL})
+
+    # Load model (sentence-transformers handles download automatically)
+    model = SentenceTransformer(DEFAULT_MODEL, device=DEVICE, cache_folder=str(cache_dir) if CACHE_DIR else None)
+
+    emit_progress("model_loaded", {
+        "model": DEFAULT_MODEL,
+        "dimensions": model.get_sentence_embedding_dimension()
+    })
+
+    return model
+
+print(f"📦 Loading model...")
+model = load_model_with_progress()
 print(f"✅ Model loaded successfully!")
 print(f"   Dimensions: {model.get_sentence_embedding_dimension()}")
 

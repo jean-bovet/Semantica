@@ -11,7 +11,7 @@
  */
 
 import { parentPort } from 'worker_threads';
-import { PythonSidecarService } from './PythonSidecarService';
+import { PythonSidecarService, type DownloadProgressEvent } from './PythonSidecarService';
 import { PythonSidecarClient } from './PythonSidecarClient';
 import { PythonSidecarEmbedder } from './embeddings/PythonSidecarEmbedder';
 import { logger } from '../../shared/utils/logger';
@@ -46,6 +46,7 @@ export class WorkerStartup {
     this.sidecarService = new PythonSidecarService({
       client: this.sidecarClient,
       autoRestart: true,
+      onProgress: (event) => this.handleProgressEvent(event),
     });
   }
 
@@ -192,6 +193,32 @@ export class WorkerStartup {
     // Keep buffer size limited
     if (this.ringBuffer.length > this.RING_BUFFER_SIZE) {
       this.ringBuffer.shift();
+    }
+  }
+
+  /**
+   * Handle progress events from Python sidecar (model loading/download)
+   */
+  private handleProgressEvent(event: DownloadProgressEvent) {
+    log(`Sidecar progress: ${event.type}`, event.data);
+
+    switch (event.type) {
+      case 'model_cached':
+        // Model already downloaded, loading from cache
+        log('Model found in cache, loading...');
+        break;
+
+      case 'download_started':
+        // Model needs to be downloaded (first run)
+        this.emitStage('downloading', `Downloading embedding model (${event.data.model})...`);
+        this.logToBuffer('MODEL-DOWNLOAD', `Downloading ${event.data.model}`);
+        break;
+
+      case 'model_loaded':
+        // Model loaded successfully (either from cache or after download)
+        log(`Model loaded: ${event.data.model}, dimensions: ${event.data.dimensions}`);
+        this.logToBuffer('MODEL-READY', `Model loaded with ${event.data.dimensions} dimensions`);
+        break;
     }
   }
 }

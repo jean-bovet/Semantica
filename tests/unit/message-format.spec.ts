@@ -15,12 +15,12 @@ import {
 describe('Startup Message Format', () => {
   describe('createStageMessage', () => {
     it('should create valid stage message with all fields', () => {
-      const msg = createStageMessage('checking', 'Verifying Ollama...', 50);
+      const msg = createStageMessage('sidecar_start', 'Starting Python sidecar...', 50);
 
       expect(msg).toEqual({
         channel: 'startup:stage',
-        stage: 'checking',
-        message: 'Verifying Ollama...',
+        stage: 'sidecar_start',
+        message: 'Starting Python sidecar...',
         progress: 50,
       });
     });
@@ -149,10 +149,11 @@ describe('Startup Message Format', () => {
       expect(getStageIndex('db_init')).toBe(1);
       expect(getStageIndex('db_load')).toBe(2);
       expect(getStageIndex('folder_scan')).toBe(3);
-      expect(getStageIndex('checking')).toBe(4);
+      expect(getStageIndex('sidecar_start')).toBe(4);
       expect(getStageIndex('downloading')).toBe(5);
-      expect(getStageIndex('initializing')).toBe(6);
-      expect(getStageIndex('ready')).toBe(7);
+      expect(getStageIndex('sidecar_ready')).toBe(6);
+      expect(getStageIndex('embedder_init')).toBe(7);
+      expect(getStageIndex('ready')).toBe(8);
     });
 
     it('should return -1 for error stage', () => {
@@ -166,7 +167,7 @@ describe('Startup Message Format', () => {
 
   describe('isStartupStageMessage', () => {
     it('should validate correct stage messages', () => {
-      const validMsg = createStageMessage('checking', 'Test');
+      const validMsg = createStageMessage('sidecar_start', 'Test');
       expect(isStartupStageMessage(validMsg)).toBe(true);
     });
 
@@ -181,7 +182,7 @@ describe('Startup Message Format', () => {
     it('should reject messages with invalid channel', () => {
       const invalidMsg = {
         channel: 'wrong:channel',
-        stage: 'checking',
+        stage: 'sidecar_start',
       };
       expect(isStartupStageMessage(invalidMsg)).toBe(false);
     });
@@ -196,7 +197,7 @@ describe('Startup Message Format', () => {
 
     it('should reject messages with missing required fields', () => {
       expect(isStartupStageMessage({ channel: 'startup:stage' })).toBe(false);
-      expect(isStartupStageMessage({ stage: 'checking' })).toBe(false);
+      expect(isStartupStageMessage({ stage: 'sidecar_start' })).toBe(false);
     });
 
     it('should reject null and undefined', () => {
@@ -299,7 +300,7 @@ describe('Startup Message Format', () => {
     });
 
     it('should have consistent channel values', () => {
-      const stageMsg = createStageMessage('checking');
+      const stageMsg = createStageMessage('sidecar_start');
       const errorMsg = createErrorMessage('STARTUP_TIMEOUT', 'Error');
       const progressMsg = createDownloadProgressMessage('file', 50, 500, 1000);
 
@@ -316,8 +317,8 @@ describe('Startup Message Format', () => {
 
   describe('STARTUP_STAGE_ORDER', () => {
     it('should have correct number of stages', () => {
-      // 8 stages: worker_spawn, db_init, db_load, folder_scan, checking, downloading, initializing, ready
-      expect(STARTUP_STAGE_ORDER).toHaveLength(8);
+      // 9 stages: worker_spawn, db_init, db_load, folder_scan, sidecar_start, downloading, sidecar_ready, embedder_init, ready
+      expect(STARTUP_STAGE_ORDER).toHaveLength(9);
     });
 
     it('should be in correct order', () => {
@@ -325,10 +326,11 @@ describe('Startup Message Format', () => {
       expect(STARTUP_STAGE_ORDER[1]).toBe('db_init');
       expect(STARTUP_STAGE_ORDER[2]).toBe('db_load');
       expect(STARTUP_STAGE_ORDER[3]).toBe('folder_scan');
-      expect(STARTUP_STAGE_ORDER[4]).toBe('checking');
+      expect(STARTUP_STAGE_ORDER[4]).toBe('sidecar_start');
       expect(STARTUP_STAGE_ORDER[5]).toBe('downloading');
-      expect(STARTUP_STAGE_ORDER[6]).toBe('initializing');
-      expect(STARTUP_STAGE_ORDER[7]).toBe('ready');
+      expect(STARTUP_STAGE_ORDER[6]).toBe('sidecar_ready');
+      expect(STARTUP_STAGE_ORDER[7]).toBe('embedder_init');
+      expect(STARTUP_STAGE_ORDER[8]).toBe('ready');
     });
 
     it('should not include error stage', () => {

@@ -14,6 +14,17 @@ import { logger } from '../../shared/utils/logger';
 // Helper to log with category
 const log = (message: string, ...args: any[]) => logger.log('SIDECAR-SERVICE', message, ...args);
 
+/**
+ * Progress events emitted by Python sidecar during model loading
+ */
+export interface DownloadProgressEvent {
+  type: 'download_started' | 'model_cached' | 'model_loaded';
+  data: {
+    model?: string;
+    dimensions?: number;
+  };
+}
+
 export interface PythonSidecarServiceConfig {
   client?: PythonSidecarClient;
   pythonPath?: string;      // Path to Python interpreter
@@ -21,6 +32,7 @@ export interface PythonSidecarServiceConfig {
   port?: number;            // Port to run sidecar on
   autoRestart?: boolean;    // Auto-restart on crash
   maxStartupTime?: number;  // Max time to wait for startup (ms)
+  onProgress?: (event: DownloadProgressEvent) => void; // Progress callback
 }
 
 export interface SidecarStatus {
@@ -42,12 +54,14 @@ export class PythonSidecarService {
   private maxStartupTime: number;
   private process: ChildProcess | null = null;
   private isShuttingDown: boolean = false;
+  private progressCallback?: (event: DownloadProgressEvent) => void;
 
   constructor(config: PythonSidecarServiceConfig = {}) {
     this.client = config.client || new PythonSidecarClient({ port: config.port });
     this.port = config.port || 8421;
     this.autoRestart = config.autoRestart !== false; // Default true
     this.maxStartupTime = config.maxStartupTime || 30000; // 30s
+    this.progressCallback = config.onProgress;
 
     // Determine Python path (development vs production)
     this.pythonPath = config.pythonPath || this.getDefaultPythonPath();
@@ -82,11 +96,33 @@ export class PythonSidecarService {
         }
       });
 
-      // Handle stdout
+      // Handle stdout - parse progress events and regular output
       this.process.stdout?.on('data', (data) => {
         const output = data.toString().trim();
-        if (output) {
-          logger.log('SIDECAR-STDOUT', output);
+        const lines = output.split('\n');
+
+        for (const line of lines) {
+          if (!line) continue;
+
+          // Parse progress events (format: PROGRESS:{"type":"...","data":{...}})
+          if (line.startsWith('PROGRESS:')) {
+            try {
+              const jsonStr = line.substring('PROGRESS:'.length);
+              const event = JSON.parse(jsonStr) as DownloadProgressEvent;
+
+              log(`Progress event: ${event.type}`, event.data);
+
+              // Forward to callback if registered
+              if (this.progressCallback) {
+                this.progressCallback(event);
+              }
+            } catch (err) {
+              logger.error('SIDECAR-SERVICE', 'Failed to parse progress event:', err);
+            }
+          } else {
+            // Regular stdout output
+            logger.log('SIDECAR-STDOUT', line);
+          }
         }
       });
 

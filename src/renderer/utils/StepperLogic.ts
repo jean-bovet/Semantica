@@ -29,9 +29,10 @@ export const STARTUP_STEPS: StepDefinition[] = [
   { id: 'db_init', label: 'Initializing Database', stage: 'db_init' },
   { id: 'db_load', label: 'Loading Files', stage: 'db_load' },
   { id: 'folder_scan', label: 'Scanning Folders', stage: 'folder_scan' },
-  { id: 'checking', label: 'Checking Ollama', stage: 'checking' },
+  { id: 'sidecar_start', label: 'Starting Python Sidecar', stage: 'sidecar_start' },
   { id: 'downloading', label: 'Downloading Model', stage: 'downloading' },
-  { id: 'initializing', label: 'Initializing Embedder', stage: 'initializing' },
+  { id: 'sidecar_ready', label: 'Loading Model', stage: 'sidecar_ready' },
+  { id: 'embedder_init', label: 'Initializing Embedder', stage: 'embedder_init' },
   { id: 'ready', label: 'Ready', stage: 'ready' },
 ];
 
@@ -109,11 +110,13 @@ export function getStageMessage(stage: StartupStage, customMessage?: string): st
       return 'Loading indexed files...';
     case 'folder_scan':
       return 'Scanning folders...';
-    case 'checking':
-      return 'Verifying Ollama installation...';
+    case 'sidecar_start':
+      return 'Starting Python sidecar server...';
     case 'downloading':
       return 'Downloading embedding model...';
-    case 'initializing':
+    case 'sidecar_ready':
+      return 'Loading embedding model...';
+    case 'embedder_init':
       return 'Initializing embedder...';
     case 'ready':
       return 'Ready to index files';
