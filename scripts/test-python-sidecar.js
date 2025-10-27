@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Test script for Python embedding sidecar with failed batches
+ * Test script for Python embedding sidecar with failed batches and performance testing
  *
  * Usage:
  *   node scripts/test-python-sidecar.js ~/Desktop/failed-batch-*.json
  *   node scripts/test-python-sidecar.js --all    # Test all failed batches on Desktop
+ *   node scripts/test-python-sidecar.js --perf   # Run performance benchmarks
  *   node scripts/test-python-sidecar.js --help
  *
  * This script:
@@ -14,6 +15,7 @@
  * 3. Tests each text individually
  * 4. Tests sub-batches to find problematic text
  * 5. Compares results with Ollama (optional)
+ * 6. Runs comprehensive performance benchmarks (--perf mode)
  */
 
 const fs = require('node:fs');
@@ -384,6 +386,376 @@ function analyzeBatch(batch) {
   }
 }
 
+// ============================================================================
+// PERFORMANCE TESTING FUNCTIONS
+// ============================================================================
+
+/**
+ * Generate test text of specific size
+ */
+function generateTestText(targetSize) {
+  const lorem = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. `;
+
+  let text = '';
+  while (text.length < targetSize) {
+    text += lorem;
+  }
+  return text.substring(0, targetSize);
+}
+
+/**
+ * Calculate statistics from array of numbers
+ */
+function calculateStats(numbers) {
+  if (numbers.length === 0) return {};
+
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const sum = numbers.reduce((a, b) => a + b, 0);
+
+  return {
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    avg: sum / numbers.length,
+    median: sorted[Math.floor(sorted.length / 2)],
+    p50: sorted[Math.floor(sorted.length * 0.50)],
+    p95: sorted[Math.floor(sorted.length * 0.95)],
+    p99: sorted[Math.floor(sorted.length * 0.99)]
+  };
+}
+
+/**
+ * Run serial benchmark for specific configuration
+ */
+async function runSerialBenchmark(textSize, batchSize, iterations) {
+  const texts = Array(batchSize).fill(null).map(() => generateTestText(textSize));
+  const durations = [];
+  let successCount = 0;
+
+  for (let i = 0; i < iterations; i++) {
+    const startTime = Date.now();
+    const result = await embedWithSidecar(texts, batchSize);
+    const duration = Date.now() - startTime;
+
+    durations.push(duration);
+    if (result.success) successCount++;
+  }
+
+  const stats = calculateStats(durations);
+  const totalChars = textSize * batchSize * iterations;
+  const totalTime = durations.reduce((a, b) => a + b, 0);
+
+  return {
+    textSize,
+    batchSize,
+    iterations,
+    threads: 1,
+
+    // Timing stats
+    ...stats,
+
+    // Throughput
+    textsPerSec: (batchSize * iterations) / (totalTime / 1000),
+    charsPerSec: totalChars / (totalTime / 1000),
+    batchesPerSec: iterations / (totalTime / 1000),
+
+    // Success rate
+    successCount,
+    successRate: (successCount / iterations) * 100
+  };
+}
+
+/**
+ * Run concurrent benchmark with multiple threads
+ */
+async function runConcurrentBenchmark(textSize, batchSize, threads, iterations) {
+  const texts = Array(batchSize).fill(null).map(() => generateTestText(textSize));
+
+  const startTime = Date.now();
+  const promises = [];
+
+  // Launch concurrent threads
+  for (let t = 0; t < threads; t++) {
+    const threadPromises = [];
+    for (let i = 0; i < iterations; i++) {
+      threadPromises.push(embedWithSidecar(texts, batchSize));
+    }
+    promises.push(Promise.all(threadPromises));
+  }
+
+  const results = await Promise.all(promises);
+  const totalDuration = Date.now() - startTime;
+
+  // Calculate per-thread statistics
+  const threadStats = results.map(threadResults => {
+    const successCount = threadResults.filter(r => r.success).length;
+    return { successCount, iterations };
+  });
+
+  const totalRequests = threads * iterations;
+  const successfulRequests = threadStats.reduce((sum, t) => sum + t.successCount, 0);
+  const totalTexts = batchSize * threads * iterations;
+  const totalChars = textSize * totalTexts;
+
+  return {
+    textSize,
+    batchSize,
+    iterations,
+    threads,
+
+    // Timing
+    duration: totalDuration,
+    avgLatency: totalDuration / totalRequests,
+
+    // Throughput (aggregate across all threads)
+    textsPerSec: totalTexts / (totalDuration / 1000),
+    charsPerSec: totalChars / (totalDuration / 1000),
+    perThreadTextsPerSec: totalTexts / threads / (totalDuration / 1000),
+
+    // Success rate
+    totalRequests,
+    successfulRequests,
+    successRate: (successfulRequests / totalRequests) * 100,
+
+    // Scaling
+    speedup: (totalTexts / (totalDuration / 1000)) / ((batchSize * iterations) / (totalDuration / threads / 1000))
+  };
+}
+
+/**
+ * Display performance results in table format
+ */
+function displaySerialResults(results) {
+  logSection('SERIAL PERFORMANCE TESTS');
+
+  // Group by text size
+  const byTextSize = {};
+  results.forEach(r => {
+    if (!byTextSize[r.textSize]) byTextSize[r.textSize] = [];
+    byTextSize[r.textSize].push(r);
+  });
+
+  Object.entries(byTextSize).forEach(([textSize, sizeResults]) => {
+    console.log(`\nText Size: ${textSize} chars (~${Math.round(textSize / 2.5)} tokens)`);
+    console.log('┌──────────┬──────────┬────────────┬──────────────┬───────────────┐');
+    console.log('│ Batch    │ Latency  │ p95        │ Throughput   │ Success Rate  │');
+    console.log('│ Size     │ (avg ms) │ (ms)       │ (texts/sec)  │               │');
+    console.log('├──────────┼──────────┼────────────┼──────────────┼───────────────┤');
+
+    sizeResults.forEach(r => {
+      console.log(`│ ${String(r.batchSize).padEnd(8)} │ ${String(Math.round(r.avg)).padEnd(8)} │ ${String(Math.round(r.p95)).padEnd(10)} │ ${r.textsPerSec.toFixed(1).padEnd(12)} │ ${r.successRate.toFixed(0).padEnd(13)}% │`);
+    });
+
+    console.log('└──────────┴──────────┴────────────┴──────────────┴───────────────┘');
+
+    // Find optimal batch size
+    const optimal = sizeResults.reduce((best, current) =>
+      current.textsPerSec > best.textsPerSec ? current : best
+    );
+    log(`\nOptimal batch size: ${optimal.batchSize} (${optimal.textsPerSec.toFixed(1)} texts/sec)`, 'green');
+  });
+}
+
+/**
+ * Display concurrent results in table format
+ */
+function displayConcurrentResults(results) {
+  logSection('CONCURRENT PERFORMANCE TESTS');
+
+  // Group by configuration
+  const byConfig = {};
+  results.forEach(r => {
+    const key = `${r.textSize}_${r.batchSize}`;
+    if (!byConfig[key]) byConfig[key] = [];
+    byConfig[key].push(r);
+  });
+
+  Object.entries(byConfig).forEach(([key, configResults]) => {
+    const [textSize, batchSize] = key.split('_');
+    console.log(`\nConfig: ${textSize} chars, ${batchSize} batch size`);
+    console.log('┌──────────┬──────────────┬────────────┬──────────────┬─────────────┐');
+    console.log('│ Threads  │ Aggregate    │ Per-Thread │ Speedup      │ Success %   │');
+    console.log('│          │ (texts/sec)  │ (texts/sec)│              │             │');
+    console.log('├──────────┼──────────────┼────────────┼──────────────┼─────────────┤');
+
+    const baseline = configResults.find(r => r.threads === 1);
+    configResults.forEach(r => {
+      const speedup = baseline ? (r.textsPerSec / baseline.textsPerSec) : 1.0;
+      const efficiency = (speedup / r.threads * 100).toFixed(0);
+      console.log(`│ ${String(r.threads).padEnd(8)} │ ${r.textsPerSec.toFixed(1).padEnd(12)} │ ${r.perThreadTextsPerSec.toFixed(1).padEnd(10)} │ ${speedup.toFixed(2).padEnd(12)}x │ ${r.successRate.toFixed(0).padEnd(10)}% │`);
+    });
+
+    console.log('└──────────┴──────────────┴────────────┴──────────────┴─────────────┘');
+
+    // Calculate scaling efficiency
+    const maxThreads = Math.max(...configResults.map(r => r.threads));
+    const maxResult = configResults.find(r => r.threads === maxThreads);
+    if (maxResult && baseline) {
+      const efficiency = ((maxResult.textsPerSec / baseline.textsPerSec) / maxThreads * 100).toFixed(0);
+      log(`\nScaling efficiency: ${efficiency}% (${maxThreads} threads = ${(maxResult.textsPerSec / baseline.textsPerSec).toFixed(2)}x vs ideal ${maxThreads}.00x)`, 'cyan');
+    }
+  });
+}
+
+/**
+ * Export results to CSV
+ */
+function exportCSV(results, filename) {
+  const headers = ['test_type', 'text_size', 'batch_size', 'threads', 'iterations',
+                   'avg_latency', 'p95_latency', 'texts_per_sec', 'chars_per_sec', 'success_rate'];
+
+  const rows = results.map(r => [
+    r.threads > 1 ? 'concurrent' : 'serial',
+    r.textSize,
+    r.batchSize,
+    r.threads,
+    r.iterations,
+    r.avg || r.avgLatency,
+    r.p95 || 'N/A',
+    r.textsPerSec.toFixed(2),
+    r.charsPerSec.toFixed(2),
+    r.successRate.toFixed(2)
+  ]);
+
+  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+  fs.writeFileSync(filename, csv);
+  log(`\n✅ Results exported to: ${filename}`, 'green');
+}
+
+/**
+ * Export results to JSON
+ */
+function exportJSON(results, filename) {
+  fs.writeFileSync(filename, JSON.stringify(results, null, 2));
+  log(`\n✅ Results exported to: ${filename}`, 'green');
+}
+
+/**
+ * Run comprehensive performance benchmark suite
+ */
+async function runPerformanceBenchmark(options = {}) {
+  const {
+    maxThreads = 5,
+    maxSize = 10000,
+    quick = false,
+    compareOllama = false,
+    exportCsv = null,
+    exportJson = null
+  } = options;
+
+  logSection('PERFORMANCE BENCHMARK - Python Sidecar');
+
+  // Get sidecar info
+  const infoResult = await httpRequest('/info', 'GET');
+  if (infoResult.success) {
+    console.log(`Model: ${infoResult.data.model_id}`);
+    console.log(`Dimensions: ${infoResult.data.dim}`);
+    console.log(`Device: ${infoResult.data.device}`);
+  }
+
+  // Define test configurations
+  const textSizes = quick ? [1000, 2000] : [500, 1000, 2000, 5000, Math.min(10000, maxSize)];
+  const batchSizes = quick ? [10, 32] : [1, 5, 10, 20, 32, 64];
+  const threadCounts = Array.from({length: maxThreads}, (_, i) => i + 1);
+  const iterations = quick ? 5 : 10;
+
+  console.log(`Iterations: ${iterations} per test`);
+  console.log(`${quick ? 'Quick mode' : 'Full mode'}`);
+
+  // Warm-up
+  log('\nWarm-up: Running 5 requests to load model into memory...', 'yellow');
+  for (let i = 0; i < 5; i++) {
+    await embedWithSidecar([generateTestText(1000)]);
+  }
+  log('✅ Warm-up complete\n', 'green');
+
+  const serialResults = [];
+  const concurrentResults = [];
+
+  // Serial tests
+  logSection('Running Serial Tests');
+  let testNum = 0;
+  const totalSerialTests = textSizes.length * batchSizes.length;
+
+  for (const textSize of textSizes) {
+    for (const batchSize of batchSizes) {
+      testNum++;
+      process.stdout.write(`Test ${testNum}/${totalSerialTests}: ${textSize} chars, ${batchSize} batch... `);
+
+      const result = await runSerialBenchmark(textSize, batchSize, iterations);
+      serialResults.push(result);
+
+      log(`✅ ${result.textsPerSec.toFixed(1)} texts/sec`, 'green');
+    }
+  }
+
+  // Concurrent tests (selected configurations only)
+  logSection('Running Concurrent Tests');
+  const concurrentConfigs = quick
+    ? [[1000, 32]]
+    : [[1000, 32], [2000, 32], [5000, 16]];
+
+  testNum = 0;
+  const totalConcurrentTests = concurrentConfigs.length * threadCounts.length;
+
+  for (const [textSize, batchSize] of concurrentConfigs) {
+    for (const threads of threadCounts) {
+      testNum++;
+      process.stdout.write(`Test ${testNum}/${totalConcurrentTests}: ${textSize} chars, ${batchSize} batch, ${threads} threads... `);
+
+      const result = await runConcurrentBenchmark(textSize, batchSize, threads, iterations);
+      concurrentResults.push(result);
+
+      log(`✅ ${result.textsPerSec.toFixed(1)} texts/sec`, 'green');
+    }
+  }
+
+  // Display results
+  displaySerialResults(serialResults);
+  displayConcurrentResults(concurrentResults);
+
+  // Summary
+  logSection('SUMMARY');
+
+  const bestSerial = serialResults.reduce((best, current) =>
+    current.textsPerSec > best.textsPerSec ? current : best
+  );
+
+  const bestConcurrent = concurrentResults.reduce((best, current) =>
+    current.textsPerSec > best.textsPerSec ? current : best
+  );
+
+  console.log('\nBest Serial Performance:');
+  console.log(`  - Text Size: ${bestSerial.textSize} chars`);
+  console.log(`  - Batch Size: ${bestSerial.batchSize}`);
+  console.log(`  - Throughput: ${bestSerial.textsPerSec.toFixed(1)} texts/sec (${bestSerial.charsPerSec.toFixed(0)} chars/sec)`);
+  console.log(`  - Latency: ${Math.round(bestSerial.avg)}ms (p95: ${Math.round(bestSerial.p95)}ms)`);
+
+  console.log('\nBest Concurrent Performance:');
+  console.log(`  - Threads: ${bestConcurrent.threads}`);
+  console.log(`  - Text Size: ${bestConcurrent.textSize} chars, Batch: ${bestConcurrent.batchSize}`);
+  console.log(`  - Throughput: ${bestConcurrent.textsPerSec.toFixed(1)} texts/sec (${bestConcurrent.charsPerSec.toFixed(0)} chars/sec)`);
+  const baseline = concurrentResults.find(r => r.textSize === bestConcurrent.textSize && r.batchSize === bestConcurrent.batchSize && r.threads === 1);
+  if (baseline) {
+    const efficiency = ((bestConcurrent.textsPerSec / baseline.textsPerSec) / bestConcurrent.threads * 100).toFixed(0);
+    console.log(`  - Efficiency: ${efficiency}%`);
+  }
+
+  // Export if requested
+  if (exportCsv) {
+    exportCSV([...serialResults, ...concurrentResults], exportCsv);
+  }
+
+  if (exportJson) {
+    exportJSON({ serial: serialResults, concurrent: concurrentResults, summary: { bestSerial, bestConcurrent }}, exportJson);
+  }
+
+  log('\n✅ Performance benchmark complete!', 'green');
+}
+
+// ============================================================================
+// END PERFORMANCE TESTING FUNCTIONS
+// ============================================================================
+
 /**
  * Test a single batch file
  */
@@ -442,6 +814,13 @@ Options:
   --all               Test all failed-batch-*.json files on Desktop
   --compare-ollama    Compare results with Ollama
 
+  --perf              Run performance benchmarks
+  --quick             Quick performance test (fewer iterations)
+  --max-threads=N     Max concurrent threads for perf tests (default: 5)
+  --max-size=N        Max text size for perf tests (default: 10000)
+  --export-csv=FILE   Export performance results to CSV
+  --export-json=FILE  Export performance results to JSON
+
 Examples:
   # Test single batch
   node scripts/test-python-sidecar.js ~/Desktop/failed-batch-2025-10-26.json
@@ -451,6 +830,15 @@ Examples:
 
   # Test with Ollama comparison
   node scripts/test-python-sidecar.js --compare-ollama ~/Desktop/failed-batch-*.json
+
+  # Run full performance benchmark
+  node scripts/test-python-sidecar.js --perf
+
+  # Quick performance test
+  node scripts/test-python-sidecar.js --perf --quick
+
+  # Performance test with custom config and export
+  node scripts/test-python-sidecar.js --perf --max-threads=3 --export-csv=results.csv
 
   # Use custom sidecar port
   EMBED_PORT=8421 node scripts/test-python-sidecar.js --all
@@ -466,6 +854,14 @@ Environment variables:
 
   let batchFiles = [];
   let compareWithOllama = false;
+  let perfMode = false;
+  let perfOptions = {
+    quick: false,
+    maxThreads: 5,
+    maxSize: 10000,
+    exportCsv: null,
+    exportJson: null
+  };
 
   // Parse arguments
   for (const arg of args) {
@@ -480,6 +876,18 @@ Environment variables:
       log(`Found ${batchFiles.length} failed batch files`, 'cyan');
     } else if (arg === '--compare-ollama') {
       compareWithOllama = true;
+    } else if (arg === '--perf' || arg === '--benchmark') {
+      perfMode = true;
+    } else if (arg === '--quick') {
+      perfOptions.quick = true;
+    } else if (arg.startsWith('--max-threads=')) {
+      perfOptions.maxThreads = parseInt(arg.split('=')[1], 10);
+    } else if (arg.startsWith('--max-size=')) {
+      perfOptions.maxSize = parseInt(arg.split('=')[1], 10);
+    } else if (arg.startsWith('--export-csv=')) {
+      perfOptions.exportCsv = arg.split('=')[1];
+    } else if (arg.startsWith('--export-json=')) {
+      perfOptions.exportJson = arg.split('=')[1];
     } else if (arg.startsWith('--')) {
       log(`❌ Unknown option: ${arg}`, 'red');
       process.exit(1);
@@ -497,17 +905,24 @@ Environment variables:
     }
   }
 
-  if (batchFiles.length === 0) {
-    log('❌ No batch files specified', 'red');
-    log('   Use --all or provide file path(s)', 'yellow');
-    process.exit(1);
-  }
-
   // Check sidecar health first
   const healthy = await checkSidecarHealth();
   if (!healthy) {
     log('\n⚠️  Sidecar health check failed. Start the sidecar before testing.', 'yellow');
     log(`   cd embedding_sidecar && python embed_server.py`, 'cyan');
+    process.exit(1);
+  }
+
+  // Performance mode
+  if (perfMode) {
+    await runPerformanceBenchmark(perfOptions);
+    process.exit(0);
+  }
+
+  // Batch file mode
+  if (batchFiles.length === 0) {
+    log('❌ No batch files specified', 'red');
+    log('   Use --all, --perf, or provide file path(s)', 'yellow');
     process.exit(1);
   }
 
