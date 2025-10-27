@@ -13,9 +13,9 @@
  * 2. db_init - Database initialization
  * 3. db_load - Load existing indexed files
  * 4. folder_scan - Scan watched folders for changes
- * 5. checking - Check Ollama installation and start server
- * 6. downloading - Download ML model (only if needed)
- * 7. initializing - Initialize embedder
+ * 5. sidecar_start - Start Python sidecar server
+ * 6. sidecar_ready - Wait for sidecar to load model
+ * 7. embedder_init - Initialize embedder
  * 8. ready - Application ready to use
  */
 export type StartupStage =
@@ -23,9 +23,12 @@ export type StartupStage =
   | 'db_init'
   | 'db_load'
   | 'folder_scan'
-  | 'checking'
-  | 'downloading'
-  | 'initializing'
+  | 'sidecar_start'
+  | 'sidecar_ready'
+  | 'checking'         // Legacy: Ollama check (kept for compatibility)
+  | 'downloading'      // Legacy: Model download (kept for compatibility)
+  | 'initializing'     // Legacy: kept as alias for embedder_init
+  | 'embedder_init'
   | 'ready'
   | 'error';
 
@@ -38,9 +41,9 @@ export const STARTUP_STAGE_ORDER: readonly StartupStage[] = [
   'db_init',
   'db_load',
   'folder_scan',
-  'checking',
-  'downloading',
-  'initializing',
+  'sidecar_start',
+  'sidecar_ready',
+  'embedder_init',
   'ready',
 ] as const;
 
@@ -48,8 +51,10 @@ export const STARTUP_STAGE_ORDER: readonly StartupStage[] = [
  * Error codes for startup failures
  */
 export type StartupErrorCode =
-  | 'OLLAMA_NOT_FOUND'       // Ollama not installed
-  | 'OLLAMA_START_FAILED'    // Failed to start Ollama server
+  | 'SIDECAR_START_FAILED'   // Failed to start Python sidecar
+  | 'SIDECAR_NOT_HEALTHY'    // Python sidecar not healthy
+  | 'OLLAMA_NOT_FOUND'       // Ollama not installed (legacy)
+  | 'OLLAMA_START_FAILED'    // Failed to start Ollama server (legacy)
   | 'MODEL_DOWNLOAD_FAILED'  // Failed to download model
   | 'EMBEDDER_INIT_FAILED'   // Failed to initialize embedder
   | 'STARTUP_TIMEOUT';       // Startup exceeded timeout

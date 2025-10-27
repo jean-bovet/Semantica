@@ -2,19 +2,18 @@
  * WorkerStartup - State machine for worker initialization
  *
  * Owns the full startup sequence:
- * 1. Check Ollama installation
- * 2. Start Ollama server if needed
- * 3. Check/download model
- * 4. Initialize embedder
- * 5. Start file watching
+ * 1. Start Python sidecar server
+ * 2. Wait for sidecar to be ready
+ * 3. Initialize embedder
+ * 4. Start file watching
  *
  * Emits stage events via parentPort for main to relay to renderer.
  */
 
 import { parentPort } from 'worker_threads';
-import { OllamaService } from './OllamaService';
-import { OllamaClient } from './OllamaClient';
-import { OllamaEmbedder } from '../../shared/embeddings/implementations/OllamaEmbedder';
+import { PythonSidecarService } from './PythonSidecarService';
+import { PythonSidecarClient } from './PythonSidecarClient';
+import { PythonSidecarEmbedder } from '../../shared/embeddings/implementations/PythonSidecarEmbedder';
 import { logger } from '../../shared/utils/logger';
 import {
   type StartupStage,
@@ -34,81 +33,55 @@ interface RingBufferEntry {
 }
 
 export class WorkerStartup {
-  private ollamaService: OllamaService;
-  private ollamaClient: OllamaClient;
-  private embedder: OllamaEmbedder | null = null;
+  private sidecarService: PythonSidecarService;
+  private sidecarClient: PythonSidecarClient;
+  private embedder: PythonSidecarEmbedder | null = null;
   private abortController: AbortController | null = null;
   private ringBuffer: RingBufferEntry[] = [];
   private readonly RING_BUFFER_SIZE = 100;
-  private readonly MODEL_NAME = 'nomic-embed-text';
+  private readonly MODEL_NAME = 'paraphrase-multilingual-mpnet-base-v2';
 
   constructor() {
-    this.ollamaClient = new OllamaClient();
-    this.ollamaService = new OllamaService({
-      client: this.ollamaClient,
-      autoStart: true,
-      defaultModel: this.MODEL_NAME,
+    this.sidecarClient = new PythonSidecarClient();
+    this.sidecarService = new PythonSidecarService({
+      client: this.sidecarClient,
+      autoRestart: true,
     });
   }
 
   /**
    * Main initialization sequence
    */
-  async initialize(settings?: any): Promise<OllamaEmbedder | null> {
+  async initialize(settings?: any): Promise<PythonSidecarEmbedder | null> {
     try {
       this.logToBuffer('WORKER-STARTUP', 'Starting initialization sequence');
 
-      // Stage 1: Check Ollama installation and health
-      this.emitStage('checking', 'Checking Ollama installation...');
-      const installed = await this.ollamaService.checkInstallation();
-      if (!installed) {
-        this.emitError('OLLAMA_NOT_FOUND', 'Ollama is not installed. Please install from https://ollama.ai');
+      // Stage 1: Start Python sidecar
+      this.emitStage('sidecar_start', 'Starting Python sidecar server...');
+      const started = await this.sidecarService.startSidecar();
+      if (!started) {
+        this.emitError('SIDECAR_START_FAILED', 'Failed to start Python sidecar server');
         return null;
       }
 
-      // Stage 2: Ensure Ollama is running
-      this.emitStage('checking', 'Starting Ollama server...');
-      const ollamaStatus = await this.ollamaService.ensureReady();
-      if (!ollamaStatus.running) {
-        this.emitError('OLLAMA_START_FAILED', 'Failed to start Ollama server');
+      log('Python sidecar started successfully');
+
+      // Stage 2: Wait for sidecar to be ready (model loading)
+      this.emitStage('sidecar_ready', 'Loading embedding model...');
+      const status = await this.sidecarService.getStatus();
+      if (!status.healthy) {
+        this.emitError('SIDECAR_NOT_HEALTHY', 'Python sidecar is not healthy');
         return null;
       }
 
-      log('Ollama is ready, version:', ollamaStatus.version);
+      log('Python sidecar is healthy and ready');
 
-      // Stage 3: Check/download model
-      const hasModel = await this.ollamaClient.hasModel(this.MODEL_NAME);
-      if (!hasModel) {
-        this.emitStage('downloading', `Downloading ${this.MODEL_NAME} model...`, 0);
-
-        const downloaded = await this.ollamaService.ensureModelDownloaded(
-          this.MODEL_NAME,
-          (progress) => {
-            // Emit progress for UI
-            this.emitDownloadProgress({
-              file: progress.file,
-              progress: progress.progress,
-              loaded: progress.loaded,
-              total: progress.total,
-            });
-          }
-        );
-
-        if (!downloaded) {
-          this.emitError('MODEL_DOWNLOAD_FAILED', `Failed to download ${this.MODEL_NAME} model`);
-          return null;
-        }
-      } else {
-        log(`Model ${this.MODEL_NAME} already available`);
-      }
-
-      // Stage 4: Initialize embedder
-      this.emitStage('initializing', 'Initializing embedder...');
-      this.embedder = new OllamaEmbedder({
+      // Stage 3: Initialize embedder
+      this.emitStage('embedder_init', 'Initializing embedder...');
+      this.embedder = new PythonSidecarEmbedder({
         modelName: this.MODEL_NAME,
         batchSize: settings?.embeddingBatchSize ?? 32,
-        client: this.ollamaClient,
-        keepAlive: '2m',
+        client: this.sidecarClient,
         normalizeVectors: true,
       });
 
@@ -120,7 +93,7 @@ export class WorkerStartup {
 
       log('Embedder initialized successfully');
 
-      // Stage 5: Ready
+      // Stage 4: Ready
       this.emitStage('ready', 'Worker ready');
       this.logToBuffer('WORKER-STARTUP', 'Initialization complete');
 
@@ -135,8 +108,15 @@ export class WorkerStartup {
   /**
    * Get the initialized embedder
    */
-  getEmbedder(): OllamaEmbedder | null {
+  getEmbedder(): PythonSidecarEmbedder | null {
     return this.embedder;
+  }
+
+  /**
+   * Get the sidecar service
+   */
+  getSidecarService(): PythonSidecarService {
+    return this.sidecarService;
   }
 
   /**

@@ -299,7 +299,7 @@ export class EmbeddingQueue {
 
       // Generate embeddings
       logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Starting embedding for ${texts.length} texts`);
-      const vectors = await this.embedder!.embed(texts, false);
+      const vectors = await this.embedder!.embed(texts);
       logger.log('EMBEDDING-QUEUE', `Batch ${batchId}: Embedding completed successfully`);
 
       // Batch completed successfully - remove from tracking

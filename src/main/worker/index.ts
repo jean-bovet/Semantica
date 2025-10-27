@@ -86,8 +86,15 @@ setInterval(async () => {
       backpressureActive: false
     };
 
-    // Ollama embedder stats (simplified - no pool management needed)
-    const embedderStats = ollamaEmbedder ? [ollamaEmbedder.getStats()] : [];
+    // Python sidecar embedder stats (simplified - no pool management needed)
+    const embedderStats = sidecarEmbedder ? [{
+      id: 'sidecar-0',
+      filesProcessed: sidecarEmbedder.getStats().filesSinceSpawn,
+      memoryUsage: 0, // Sidecar manages its own memory
+      isHealthy: sidecarEmbedder.getStats().isReady,
+      loadCount: 0, // Not applicable for sidecar
+      restartCount: 0 // Sidecar doesn't restart like old embedders
+    }] : [];
     const processingFiles = fileQueue.getProcessingFiles();
     const fileTrackers = embeddingQueue ? embeddingQueue.getFileTrackers() : new Map();
     const maxConcurrent = fileQueue.getCurrentMaxConcurrent();
@@ -124,10 +131,10 @@ try {
 } catch (_e) {
   logger.log('STARTUP', 'PDF parsing not available');
 }
-// Use isolated embedder for better memory management
+// Use Python sidecar embedder for better reliability
 import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
-import { OllamaEmbedder } from '../../shared/embeddings/implementations/OllamaEmbedder';
-import { OllamaClient } from './OllamaClient'; // Now in worker directory
+import { PythonSidecarEmbedder } from '../../shared/embeddings/implementations/PythonSidecarEmbedder';
+import { PythonSidecarService } from './PythonSidecarService';
 import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
 import { WorkerStartup } from './WorkerStartup'; // New state machine
 import crypto from 'node:crypto';
@@ -146,7 +153,8 @@ let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
 let embedderPool: EmbedderPool | null = null;
-let ollamaEmbedder: OllamaEmbedder | null = null;
+let sidecarEmbedder: PythonSidecarEmbedder | null = null;
+let sidecarService: PythonSidecarService | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
 let workerStartup: WorkerStartup | null = null; // New startup state machine
 
@@ -197,7 +205,8 @@ declare global {
 // Version 1: 384-dimensional vectors (old Xenova multilingual-e5-small model)
 // Version 2: 1024-dimensional vectors (Ollama bge-m3 model - buggy, deprecated)
 // Version 3: 768-dimensional vectors (Ollama nomic-embed-text - stable)
-const DB_VERSION = 3;
+// Version 4: 768-dimensional vectors (Python sidecar paraphrase-multilingual-mpnet-base-v2 - production)
+const DB_VERSION = 4;
 const DB_VERSION_FILE = '.db-version';
 
 /**
@@ -1276,10 +1285,11 @@ parentPort!.on('message', async (msg: any) => {
             workerStartup = new WorkerStartup();
             const settings = configManager?.getSettings();
 
-            // This handles: Ollama check → model download → embedder init
-            ollamaEmbedder = await workerStartup.initialize(settings);
+            // This handles: Python sidecar start → model load → embedder init
+            sidecarEmbedder = await workerStartup.initialize(settings);
+            sidecarService = workerStartup.getSidecarService();
 
-            if (!ollamaEmbedder) {
+            if (!sidecarEmbedder) {
               logger.error('WORKER', 'Startup failed - no embedder created');
               return;
             }
@@ -1299,8 +1309,8 @@ parentPort!.on('message', async (msg: any) => {
               }
             });
 
-            // Initialize with batch processor
-            embeddingQueue.initialize(ollamaEmbedder, async (batch: any) => {
+            // Initialize with batch processor using sidecar embedder
+            embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
               // Extract file metadata from the first chunk
               const filePath = batch.chunks[0].metadata.filePath;
               const fileExt = path.extname(filePath).slice(1).toLowerCase();
@@ -1403,9 +1413,10 @@ parentPort!.on('message', async (msg: any) => {
           try {
             workerStartup = new WorkerStartup();
             const settings = configManager?.getSettings();
-            ollamaEmbedder = await workerStartup.initialize(settings);
+            sidecarEmbedder = await workerStartup.initialize(settings);
+            sidecarService = workerStartup.getSidecarService();
 
-            if (!ollamaEmbedder) {
+            if (!sidecarEmbedder) {
               logger.error('WORKER', 'Startup retry failed - no embedder created');
               return;
             }
@@ -1419,7 +1430,7 @@ parentPort!.on('message', async (msg: any) => {
               backpressureThreshold: 1000
             });
 
-            embeddingQueue.initialize(ollamaEmbedder, async (batch: any) => {
+            embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
               const filePath = batch.chunks[0].metadata.filePath;
               const fileExt = path.extname(filePath).slice(1).toLowerCase();
               const stat = await fs.promises.stat(filePath);
@@ -1667,10 +1678,10 @@ parentPort!.on('message', async (msg: any) => {
           clearInterval(healthCheckInterval);
           healthCheckInterval = null;
         }
-        // Shutdown embedder pool
-        if (embedderPool) {
-          await embedderPool.dispose();
-        }
+        // Shutdown embedder pool (legacy - not used with sidecar)
+        // if (embedderPool) {
+        //   await embedderPool.dispose();
+        // }
         if (db) {
           await db.close();
         }
@@ -1699,8 +1710,11 @@ process.on('exit', async () => {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (ollamaEmbedder) {
-    await ollamaEmbedder.shutdown();
+  if (sidecarEmbedder) {
+    await sidecarEmbedder.shutdown();
+  }
+  if (sidecarService) {
+    await sidecarService.stopSidecar();
   }
 });
 
@@ -1717,8 +1731,11 @@ process.on('SIGTERM', async () => {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (ollamaEmbedder) {
-    await ollamaEmbedder.shutdown();
+  if (sidecarEmbedder) {
+    await sidecarEmbedder.shutdown();
+  }
+  if (sidecarService) {
+    await sidecarService.stopSidecar();
   }
   process.exit(0);
 });

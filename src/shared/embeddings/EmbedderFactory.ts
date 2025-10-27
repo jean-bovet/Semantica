@@ -4,6 +4,8 @@ import { ModelPathResolver } from './ModelPathResolver';
 import { ProcessMemoryMonitor } from '../utils/ProcessMemoryMonitor';
 import { OllamaEmbedder, OllamaEmbedderConfig } from './implementations/OllamaEmbedder';
 import { OllamaClient } from '../../main/worker/OllamaClient';
+import { PythonSidecarEmbedder, PythonSidecarEmbedderConfig } from './implementations/PythonSidecarEmbedder';
+import { PythonSidecarClient } from '../../main/worker/PythonSidecarClient';
 
 /**
  * Configuration for creating embedders
@@ -30,6 +32,9 @@ export interface EmbedderFactoryConfig extends EmbedderConfig {
   ollamaKeepAlive?: string;
   normalizeVectors?: boolean;
 
+  // Python sidecar-specific configuration
+  sidecarClient?: PythonSidecarClient;
+
   // Logging
   enableVerboseLogging?: boolean;
   logPrefix?: string;
@@ -38,7 +43,7 @@ export interface EmbedderFactoryConfig extends EmbedderConfig {
 /**
  * Types of embedders that can be created
  */
-export type EmbedderType = 'ollama' | 'isolated' | 'pool' | 'mock';
+export type EmbedderType = 'python-sidecar' | 'ollama' | 'isolated' | 'pool' | 'mock';
 
 /**
  * Factory for creating configured embedder instances with consistent settings
@@ -50,15 +55,17 @@ export class EmbedderFactory {
 
   constructor(config: EmbedderFactoryConfig = {}) {
     this.config = {
-      // Default embedder config - now optimized for Ollama
-      modelName: 'nomic-embed-text', // Ollama model (768-dim, stable)
+      // Default embedder config - optimized for Python sidecar
+      modelName: 'paraphrase-multilingual-mpnet-base-v2', // Python sidecar model (768-dim)
       maxFilesBeforeRestart: 5000,
       maxMemoryMB: 1500,
       batchSize: 32,
 
-      // Ollama defaults
-      ollamaKeepAlive: '2m',
+      // Python sidecar defaults
       normalizeVectors: true,
+
+      // Ollama defaults (legacy)
+      ollamaKeepAlive: '2m',
 
       // Default factory config (legacy for IsolatedEmbedder)
       spawnTimeout: 60000,
@@ -77,8 +84,9 @@ export class EmbedderFactory {
     };
 
     // Initialize path resolver with factory config (legacy for IsolatedEmbedder)
+    const modelName = this.config.modelName || 'Xenova/multilingual-e5-small';
     this.pathResolver = new ModelPathResolver(
-      this.config.modelName.startsWith('Xenova/') ? this.config.modelName : 'Xenova/multilingual-e5-small',
+      modelName.startsWith('Xenova/') ? modelName : 'Xenova/multilingual-e5-small',
       {
         transformersCache: this.config.transformersCache,
         userDataPath: this.config.userDataPath,
@@ -87,11 +95,32 @@ export class EmbedderFactory {
     );
 
     // Initialize memory monitor (legacy for IsolatedEmbedder)
-    this.memoryMonitor = ProcessMemoryMonitor.forEmbedder(this.config.maxMemoryMB!);
+    this.memoryMonitor = ProcessMemoryMonitor.forEmbedder(this.config.maxMemoryMB || 1500);
   }
 
   /**
-   * Create an Ollama embedder instance (recommended)
+   * Create a Python sidecar embedder instance (recommended)
+   */
+  createPythonSidecarEmbedder(): PythonSidecarEmbedder {
+    const embedderConfig: PythonSidecarEmbedderConfig = {
+      modelName: this.config.modelName,
+      batchSize: this.config.batchSize,
+      client: this.config.sidecarClient,
+      normalizeVectors: this.config.normalizeVectors
+    };
+
+    const embedder = new PythonSidecarEmbedder(embedderConfig);
+
+    if (this.config.enableVerboseLogging) {
+      this.log(`Created Python sidecar embedder with model: ${this.config.modelName}`);
+    }
+
+    return embedder;
+  }
+
+  /**
+   * Create an Ollama embedder instance
+   * @deprecated Use createPythonSidecarEmbedder() instead for better reliability
    */
   createOllamaEmbedder(): OllamaEmbedder {
     const embedderConfig: OllamaEmbedderConfig = {
@@ -243,7 +272,29 @@ export class EmbedderFactory {
   }
 
   /**
+   * Create Python sidecar embedder with validation (recommended)
+   */
+  async createValidatedPythonSidecarEmbedder(): Promise<PythonSidecarEmbedder> {
+    // For Python sidecar, validation is simple - just check config basics
+    const issues: string[] = [];
+
+    if (!this.config.modelName) {
+      issues.push('Model name is required');
+    }
+    if (this.config.batchSize! <= 0) {
+      issues.push('batchSize must be greater than 0');
+    }
+
+    if (issues.length > 0) {
+      throw new Error(`Invalid Python sidecar embedder configuration: ${issues.join(', ')}`);
+    }
+
+    return this.createPythonSidecarEmbedder();
+  }
+
+  /**
    * Create Ollama embedder with validation
+   * @deprecated Use createValidatedPythonSidecarEmbedder() instead
    */
   async createValidatedOllamaEmbedder(): Promise<OllamaEmbedder> {
     // For Ollama, validation is simpler - just check config basics
@@ -363,13 +414,12 @@ export function createTestFactory(overrides: Partial<EmbedderFactoryConfig> = {}
 }
 
 /**
- * Create a factory optimized for production use with Ollama
+ * Create a factory optimized for production use with Python sidecar
  */
 export function createProductionFactory(overrides: Partial<EmbedderFactoryConfig> = {}): EmbedderFactory {
   return new EmbedderFactory({
-    modelName: 'nomic-embed-text',
+    modelName: 'paraphrase-multilingual-mpnet-base-v2',
     batchSize: 32,
-    ollamaKeepAlive: '2m',
     normalizeVectors: true,
     enableVerboseLogging: false,
     // Legacy settings for backward compatibility

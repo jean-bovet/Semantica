@@ -13,19 +13,37 @@ export interface PDFPage {
 export async function parsePdf(filePath: string): Promise<PDFPage[]> {
   try {
     const dataBuffer = await fsPromises.readFile(filePath);
-    
+
     // Check if file is actually a PDF
     const header = dataBuffer.toString('utf8', 0, Math.min(5, dataBuffer.length));
     if (!header.startsWith('%PDF')) {
       logger.warn('INDEXING', `File ${filePath} is not a valid PDF (header: ${header})`);
       throw new Error('Not a valid PDF file');
     }
-    
-    const data = await pdfParse(dataBuffer, {
-      // Options to handle more PDF types
-      max: 0, // Parse all pages (0 = no limit)
-      version: 'v2.0.550' // Use latest pdf.js version
-    });
+
+    // Suppress pdf.js font warnings during parsing (noisy but harmless)
+    const originalWarn = console.warn;
+    console.warn = (...args: any[]) => {
+      // Filter out the specific font warning that floods logs
+      const message = args.join(' ');
+      if (message.includes('font private use area') ||
+          message.includes('Ran out of space')) {
+        return; // Ignore this warning
+      }
+      originalWarn.apply(console, args);
+    };
+
+    let data;
+    try {
+      data = await pdfParse(dataBuffer, {
+        // Options to handle more PDF types
+        max: 0, // Parse all pages (0 = no limit)
+        version: 'v2.0.550' // Use latest pdf.js version
+      });
+    } finally {
+      // Restore original console.warn
+      console.warn = originalWarn;
+    }
     
     // Check if we got any text
     if (!data.text || data.text.trim().length === 0) {
