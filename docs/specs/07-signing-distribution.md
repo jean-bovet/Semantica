@@ -156,8 +156,8 @@ Modify the `dist` script to automatically load credentials from `.env.local`:
 **Important**: When using electron-builder with CSC_NAME, only provide the name without the "Developer ID Application:" prefix:
 ```bash
 # .env.local
-CSC_NAME=Jean Bovet (28XRU7S6GA)  # ✅ Correct
-# NOT: CSC_NAME=Developer ID Application: Jean Bovet (28XRU7S6GA)  # ❌ Wrong
+CSC_NAME=Your Name (YOUR_TEAM_ID)  # ✅ Correct
+# NOT: CSC_NAME=Developer ID Application: Your Name (YOUR_TEAM_ID)  # ❌ Wrong
 ```
 
 ### 5. Update package.json Build Configuration
