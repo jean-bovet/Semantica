@@ -85,6 +85,7 @@
         "appId": "ch.arizona-software.semantica",
         "productName": "Semantica",
         "afterSign": "scripts/notarize.js",
+        "generateUpdatesFilesForAllChannels": false,
         "directories": {
             "output": "dist-app",
             "buildResources": "build"
@@ -131,7 +132,13 @@
             "!**/.cache/**",
             "!node_modules/@lancedb/lancedb-darwin-x64/**",
             "!node_modules/@lancedb/lancedb-linux-*/**",
-            "!node_modules/@lancedb/lancedb-win32-*/**"
+            "!node_modules/@lancedb/lancedb-win32-*/**",
+            "!embedding_sidecar/.venv/**",
+            "!embedding_sidecar/__pycache__/**",
+            "!playwright-report/**",
+            "!test-results/**",
+            "!test-update/**",
+            "!perf-results.*"
         ],
         "asar": true,
         "asarUnpack": [
@@ -142,6 +149,6 @@
             "node_modules/@lancedb/lancedb-*/dist/**",
             "node_modules/apache-arrow/**"
         ],
-        "compression": "maximum"
+        "compression": "normal"
     }
 }
