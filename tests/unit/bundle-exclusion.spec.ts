@@ -35,6 +35,9 @@ describe('Bundle Exclusion', () => {
       expect(config.settings.bundlePatterns).toContain('**/*.kext/**');
       expect(config.settings.bundlePatterns).toContain('**/*.xcodeproj/**');
       expect(config.settings.bundlePatterns).toContain('**/*.photoslibrary/**');
+      expect(config.settings.bundlePatterns).toContain('**/*.key/**');
+      expect(config.settings.bundlePatterns).toContain('**/*.pages/**');
+      expect(config.settings.bundlePatterns).toContain('**/*.numbers/**');
     });
 
     it('should merge bundle patterns with exclude patterns when enabled', () => {
@@ -120,11 +123,19 @@ describe('Bundle Exclusion', () => {
 
     it('should detect files inside other bundle types', () => {
       const patterns = configManager.getConfig().settings.bundlePatterns;
-      
+
       expect(isInsideBundle('/Users/test/Project.xcodeproj/project.pbxproj', patterns)).toBe(true);
       expect(isInsideBundle('/Users/test/Photos.photoslibrary/database/photos.db', patterns)).toBe(true);
       expect(isInsideBundle('/System/Library/Extensions/IOUSBFamily.kext/Contents/Info.plist', patterns)).toBe(true);
       expect(isInsideBundle('/Library/PreferencePanes/Flash.prefPane/Contents/MacOS/Flash', patterns)).toBe(true);
+    });
+
+    it('should detect files inside iWork bundles', () => {
+      const patterns = configManager.getConfig().settings.bundlePatterns;
+
+      expect(isInsideBundle('/Users/test/PhD Defense.key/index.xml', patterns)).toBe(true);
+      expect(isInsideBundle('/Users/test/Documents/Report.pages/Data/st0-1.xml', patterns)).toBe(true);
+      expect(isInsideBundle('/Users/test/Budget 2024.numbers/Index/Document.iwa', patterns)).toBe(true);
     });
 
     it('should not detect regular files and directories', () => {
@@ -165,7 +176,8 @@ describe('Bundle Exclusion', () => {
       const expectedExtensions = [
         'app', 'framework', 'bundle', 'plugin', 'kext',
         'prefPane', 'qlgenerator', 'dSYM', 'xcodeproj',
-        'playground', 'photoslibrary', 'musiclibrary'
+        'playground', 'key', 'pages', 'numbers',
+        'photoslibrary', 'musiclibrary'
       ];
       
       expectedExtensions.forEach(ext => {
