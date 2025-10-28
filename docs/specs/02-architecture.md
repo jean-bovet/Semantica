@@ -95,7 +95,6 @@ Organized by domain:
   - `FolderRemovalManager.ts`: Handles folder removal from index
 
 #### Application Services (`src/main/services/`)
-- `ModelService.ts`: Handles model downloads sequentially
 - `PipelineService.ts`: Formats pipeline status for monitoring
 - `ReindexService.ts`: High-level re-indexing operations
 

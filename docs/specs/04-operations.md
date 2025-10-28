@@ -13,6 +13,7 @@
    - Worker thread spawns and initializes database
 
 2. **Model Check & Download**
+   > **Note**: This section describes the legacy Transformers.js architecture. The current implementation uses a Python sidecar with sentence-transformers that manages model downloads independently.
    - Worker checks for model files in `~/Library/Application Support/Semantica/models/`
    - If missing, sequential download begins:
      - config.json (~0.6KB)

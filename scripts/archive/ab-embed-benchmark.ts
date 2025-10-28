@@ -1,5 +1,8 @@
 // scripts/ab-embed-benchmark.ts
-/* 
+// ⚠️ LEGACY: This script is for the old Transformers.js/ONNX architecture.
+// The current implementation uses a Python sidecar with sentence-transformers.
+// Kept for historical reference on memory testing methodology.
+/*
   A/B memory harness for @xenova/transformers.
   - Detects backend: WASM (no onnxruntime-node installed) vs Node (if installed).
   - Embeds batches repeatedly, logs memory each iteration, computes RSS slope (MB/iter).

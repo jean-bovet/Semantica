@@ -132,11 +132,6 @@ Handles file updates and folder management.
 
 Application services provide high-level operations using core domain logic:
 
-- **`ModelService.ts`**: ML model management
-  - Downloads model files sequentially
-  - Verifies model integrity
-  - Manages model cache
-
 - **`PipelineService.ts`**: Pipeline monitoring
   - Formats pipeline status for display
   - Aggregates processing metrics
@@ -248,7 +243,6 @@ The refactoring moved files from a flat worker directory to domain-specific fold
 | `worker/fileScanner.ts` | `core/indexing/fileScanner.ts` | Domain organization |
 | `worker/EmbeddingQueue.ts` | `core/embedding/EmbeddingQueue.ts` | Domain organization |
 | `worker/reindexManager.ts` | `core/reindex/reindexManager.ts` | Domain organization |
-| `worker/modelDownloader.ts` | `services/ModelService.ts` | Service layer |
 | `worker/PipelineStatusFormatter.ts` | `services/PipelineService.ts` | Service layer |
 
 ## Benefits

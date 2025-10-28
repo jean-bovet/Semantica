@@ -202,7 +202,7 @@ The app currently has these entitlements in `build/entitlements.mac.plist`:
 - ✅ `com.apple.security.cs.disable-library-validation` - Required for native Node modules
 - ✅ `com.apple.security.files.user-selected.read-write` - Required for file system access
 
-These are appropriate for an Electron app with native modules (ONNX runtime, transformers.js).
+These are appropriate for an Electron app with native modules (LanceDB, Python sidecar).
 
 ## Build & Sign Process
 

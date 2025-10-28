@@ -1,5 +1,7 @@
 # Embedding Performance Optimization Plan
 
+> **⚠️ LEGACY DOCUMENT**: This plan was for the old Transformers.js/ONNX architecture. The project ultimately migrated to a Python sidecar with sentence-transformers instead of following this optimization path. Kept for historical reference.
+
 ## Current Situation Analysis
 
 ### Performance Metrics

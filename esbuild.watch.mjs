@@ -12,12 +12,10 @@ async function watch(entry, outfile) {
     platform: 'node',
     format: 'cjs',
     external: [
-      'electron', 
-      '@lancedb/lancedb', 
-      'apache-arrow', 
+      'electron',
+      '@lancedb/lancedb',
+      'apache-arrow',
       'pdf-parse',
-      '@xenova/transformers',
-      'onnxruntime-node',
       'sharp',
       'mammoth',
       'fsevents'

@@ -197,7 +197,7 @@ MIT License - see LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
-- [Transformers.js](https://github.com/xenova/transformers.js) for local embeddings
+- [sentence-transformers](https://www.sbert.net/) for local embeddings
 - [LanceDB](https://lancedb.com) for vector database
 - [Electron](https://electronjs.org) for desktop framework
 - The open-source community for invaluable tools and libraries

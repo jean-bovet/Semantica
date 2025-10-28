@@ -1,5 +1,7 @@
 # Build Optimization
 
+> **⚠️ LEGACY DOCUMENT**: This document describes build optimizations for the old Transformers.js/ONNX architecture. The current implementation uses a Python sidecar with sentence-transformers. Kept for historical reference.
+
 *Previous: [05-api-reference.md](./05-api-reference.md) | Next: [07-signing-distribution.md](./07-signing-distribution.md)*
 
 ---
