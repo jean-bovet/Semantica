@@ -1,7 +1,19 @@
 # Message Bus Refactoring Plan
 
+> **Status:** PARTIALLY OBSOLETE (Python Sidecar Architecture)
+>
+> **Update 2025-10-28:** This plan was written for Node.js child process architecture. With the move to Python sidecar (HTTP/REST API), the Worker ↔ Embedder sections are no longer applicable. However, the Main ↔ Worker communication patterns may still provide value.
+>
+> **Current Architecture:**
+> - Main ↔ Worker: Worker threads with `postMessage` (could benefit from this plan)
+> - Worker ↔ Python Sidecar: HTTP REST API on port 8421 (NOT child process message passing)
+>
+> **Recommendation:** Consider archiving unless Main ↔ Worker communication needs improvement.
+
 ## Overview
 Refactor inter-process communication to use a typed Message Bus pattern with supervision capabilities, making the code more testable, maintainable, and resilient while avoiding the complexity overhead of a full Actor Model.
+
+**NOTE:** Original plan assumed Node.js child processes throughout. With Python sidecar using HTTP, only Main ↔ Worker sections remain relevant.
 
 ## Problem Statement
 

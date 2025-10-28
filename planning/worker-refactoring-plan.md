@@ -1,10 +1,20 @@
 # Worker Refactoring Plan
 
+> **Status:** NEEDS UPDATE (Current: 1735 lines)
+>
+> **Update 2025-10-28:**
+> - Worker file has grown from 1543 to **1735 lines** (+192 lines since plan written)
+> - **EmbeddingQueue** is already extracted (✅ completed)
+> - Python sidecar architecture changes "EmbedderPool" and "ModelManager" concepts
+> - Core refactoring goals remain valid and increasingly important
+>
+> **Next Steps:** Update plan to reflect current architecture and completed work.
+
 ## Overview
-The `src/main/worker/index.ts` file has grown to 1543 lines and handles multiple responsibilities. This plan outlines a refactoring strategy to break it down into smaller, testable, and maintainable components.
+The `src/main/worker/index.ts` file has grown to **1735 lines** (was 1543 at time of writing) and handles multiple responsibilities. This plan outlines a refactoring strategy to break it down into smaller, testable, and maintainable components.
 
 ## Current Issues
-- **File too large**: 1543 lines in a single file
+- **File too large**: 1735 lines in a single file (and growing!)
 - **Mixed responsibilities**: Database, file processing, queue management, watching, etc.
 - **Hard to test**: Tightly coupled components make unit testing difficult
 - **Difficult to maintain**: Finding specific functionality requires scrolling through large file
@@ -23,7 +33,8 @@ src/main/worker/
 │   ├── ChunkingService.ts   (Text chunking logic)
 │   └── EmbeddingService.ts  (Embedding generation wrapper)
 ├── queue/
-│   ├── FileQueue.ts         (Already exists)
+│   ├── FileQueue.ts         (Already exists - legacy, may be superseded)
+│   ├── EmbeddingQueue.ts    (✅ Already extracted - producer-consumer pattern)
 │   └── QueueProcessor.ts    (Queue processing logic)
 ├── scanning/
 │   ├── FileScanner.ts       (Scan directories for files)

@@ -1,5 +1,14 @@
 # Startup Testing Strategy
 
+> **Status:** NEEDS UPDATE (Python Sidecar Architecture)
+>
+> **Update 2025-10-28:** References to "model download" and "embedder process" need updating for Python sidecar architecture. The core StartupCoordinator pattern is still valid, but implementation details differ:
+> - **Model loading**: Now handled by Python sidecar (sentence-transformers), not Node.js
+> - **waitForModel()**: Should be waitForPythonSidecar() - HTTP health check on port 8421
+> - **Embedder process**: Now FastAPI HTTP server, not Node.js child process
+>
+> Core concepts (sensors/actions pattern, async coordination, testing strategy) remain applicable.
+
 ## Overview
 
 This document outlines the testing strategy for the Electron app startup sequence, based on research of current best practices (2024) and the specific needs of this project.
