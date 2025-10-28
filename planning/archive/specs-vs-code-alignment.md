@@ -1,5 +1,19 @@
 # Specs vs Code Alignment Report
 
+> **OUTDATED - Pre-Python Sidecar Migration**
+>
+> **Date:** 2025-09-01
+> **Status:** This audit was conducted before the Python sidecar migration (Oct 2025)
+>
+> **Major Changes Since This Audit:**
+> - **EmbedderPool** → Removed, replaced with Python sidecar HTTP client
+> - **Model download** → Now handled by Python sentence-transformers automatically
+> - **Embedder process** → Now FastAPI HTTP server on port 8421
+> - **Ollama support** → Removed
+> - **Transformers.js/ONNX** → Removed
+>
+> **Recommendation:** Archive this document and create new alignment audit post-Python sidecar if needed.
+
 Date: 2025-09-01
 
 Scope: Review `specs/` against the implementation under `src/` to identify matches, divergences, and recommended documentation updates.

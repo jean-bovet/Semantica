@@ -16,13 +16,11 @@ Planning documents reference these technologies. See individual docs for Python 
 ## Active Planning Documents
 
 ### Technical Debt & Refactoring
-- 🔧 [Worker Refactoring Plan](./worker-refactoring-plan.md) - Break down 1735-line worker/index.ts (needs update for Python sidecar)
-- 📝 [Specs vs Code Alignment](./specs-vs-code-alignment.md) - Documentation drift audit (Sept 2025)
-- ⚙️ [Config Audit](./config-audit.md) - Frontend build & TypeScript config review
+- 🔧 [Worker Refactoring Plan](./worker-refactoring-plan.md) - Break down 1735-line worker/index.ts (✅ updated for Python sidecar)
+- ⚙️ [Config Audit](./config-audit.md) - Frontend build & TypeScript config review (actionable, some items addressed)
 
 ### Architecture & Testing
-- 🧪 [Startup Testing Strategy](./startup-testing-strategy.md) - StartupCoordinator pattern with sensors/actions (needs update for Python sidecar)
-- 📨 [Message Bus Refactoring](./message-bus-refactoring.md) - Typed message passing for Main ↔ Worker (partially obsolete with Python HTTP architecture)
+- 🧪 [Startup Testing Strategy](./startup-testing-strategy.md) - StartupCoordinator pattern with sensors/actions (✅ updated for Python sidecar)
 
 ### Future Enhancements
 - 🚀 [Adaptive Performance Management](./adaptive-performance-management.md) - Intelligent concurrency based on hardware, battery, thermals
@@ -30,14 +28,22 @@ Planning documents reference these technologies. See individual docs for Python 
 ## Completed/Archived Documents
 
 See [archive/](./archive/) for:
-- ✅ **Database Version Marker** - Implemented & tested (Oct 2025)
-- ✅ **Token Estimation Fix** - Implemented (Oct 2025)
-- ✅ **Producer-Consumer Architecture** - Implemented as EmbeddingQueue (Oct 2025)
-- ✅ **Auto-Update Implementation** - Completed (Aug 2025)
-- ✅ **Performance Optimization** - Completed (Sept 2025)
-- 📦 **Ollama-related Plans** - Obsolete (Ollama removed in favor of Python sidecar)
-- 📦 **Testing Plans** - Various completed testing initiatives
-- 📦 **Integration Testing Strategy** - Obsolete (referenced removed Transformers.js)
+
+### ✅ Implemented (Oct 2025)
+- **Database Version Marker** - Implemented & tested
+- **Token Estimation Fix** - Implemented
+- **Producer-Consumer Architecture** - Implemented as EmbeddingQueue
+
+### ✅ Completed (Earlier)
+- **Auto-Update Implementation** - Completed (Aug 2025)
+- **Performance Optimization** - Completed (Sept 2025)
+- **Testing Plans** - Various completed testing initiatives
+
+### 📦 Archived (Outdated/Obsolete)
+- **Message Bus Refactoring** - Archived Oct 2025 (mostly obsolete with Python HTTP architecture)
+- **Specs vs Code Alignment** - Archived Oct 2025 (pre-Python sidecar migration audit)
+- **Integration Testing Strategy** - Obsolete (referenced removed Transformers.js)
+- **Ollama-related Plans** - Obsolete (Ollama removed in favor of Python sidecar)
 
 ## Planning Document Template
 
