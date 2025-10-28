@@ -61,6 +61,7 @@ test.describe('Settings Folders Display', () => {
       args: ['dist/main.cjs'],
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         USER_DATA_PATH: testUserDataPath,
         ELECTRON_DISABLE_SINGLETON: 'true'
       }
@@ -139,6 +140,7 @@ test.describe('Settings Folders Display', () => {
       args: ['dist/main.cjs'],
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         USER_DATA_PATH: testUserDataPath,
         ELECTRON_DISABLE_SINGLETON: 'true'
       }
@@ -199,6 +201,7 @@ test.describe('Settings Folders Display', () => {
       args: ['dist/main.cjs'],
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         USER_DATA_PATH: testUserDataPath,
         ELECTRON_DISABLE_SINGLETON: 'true'
       }

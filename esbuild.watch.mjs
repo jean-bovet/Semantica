@@ -45,12 +45,8 @@ async function main() {
       path.join(__dirname, 'src/main/worker/index.ts'),
       path.join(__dirname, 'dist/worker.cjs')
     ),
-    watch(
-      path.join(__dirname, 'src/main/worker/embedder.child.ts'),
-      path.join(__dirname, 'dist/embedder.child.cjs')
-    ),
   ]);
-  
+
   console.log('Build watchers started. Press Ctrl+C to stop.');
 }
 

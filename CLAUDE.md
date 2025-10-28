@@ -16,11 +16,12 @@ Semantica is an Electron-based application that provides offline semantic search
 
 ### Technology Stack
 - **Frontend**: React, TypeScript, Tailwind CSS
-- **Backend**: Electron, Node.js Worker Threads
+- **Backend**: Electron 38.4.0, Node.js 22.19.0 (via Electron), Worker Threads
 - **Database**: LanceDB for vector storage
 - **ML Model**: Python sidecar with sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768-dim)
 - **Embedding Service**: FastAPI HTTP server running locally on port 8421
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
+- **Build System**: electron-builder 25.1.8 (see Build Notes below)
 
 ## Important Guidelines
 
@@ -56,7 +57,8 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- All 517 tests should pass before committing
+- Unit tests: 509 tests (508 passing, 1 known timeout in Python sidecar)
+- E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
@@ -67,6 +69,17 @@ Documentation is organized under `/docs/`:
 - LanceDB requires initialization with dummy data
 - File status tracked in separate table
 - Avoid complex WHERE clauses (not yet implemented)
+
+### Build System Notes
+- **Electron Version**: 38.4.0 (upgraded from 33.x)
+  - Chromium 140, Node.js 22.19.0
+  - macOS 12+ (Monterey or later) required
+  - Native modules rebuilt for Node.js 22
+- **electron-builder**: Must use v25.1.8 (not v26.x)
+  - electron-builder 26.x has a bug with LanceDB's optional dependencies
+  - It scans all platform-specific packages even if not installed
+  - v25.1.8 works perfectly with Electron 38 and handles optional deps correctly
+- **Security**: All modern Electron security practices enabled (context isolation, sandbox, secure IPC)
 
 ## Common Tasks
 

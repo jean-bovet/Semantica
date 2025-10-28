@@ -50,12 +50,8 @@ async function main() {
       path.join(__dirname, 'src/main/worker/index.ts'),
       path.join(__dirname, 'dist/worker.cjs')
     ),
-    buildFile(
-      path.join(__dirname, 'src/main/worker/embedder.child.ts'),
-      path.join(__dirname, 'dist/embedder.child.cjs')
-    ),
   ]);
-  
+
   console.log('Production build complete.');
 }
 

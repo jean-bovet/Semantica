@@ -47,8 +47,8 @@
         "concurrently": "^9.0.0",
         "depcheck": "^1.4.7",
         "dotenv-cli": "^10.0.0",
-        "electron": "^33.0.0",
-        "electron-builder": "^25.0.0",
+        "electron": "^38.0.0",
+        "electron-builder": "^25.1.8",
         "electron-log": "^5.4.3",
         "electronmon": "^2.0.0",
         "esbuild": "^0.25.9",
@@ -128,7 +128,10 @@
             "!**/*.md",
             "!**/*.ts",
             "!**/*.map",
-            "!**/.cache/**"
+            "!**/.cache/**",
+            "!node_modules/@lancedb/lancedb-darwin-x64/**",
+            "!node_modules/@lancedb/lancedb-linux-*/**",
+            "!node_modules/@lancedb/lancedb-win32-*/**"
         ],
         "extraResources": [
             {
@@ -144,7 +147,8 @@
             "**/*.node",
             "**/sharp/vendor/**",
             "**/sharp/build/**",
-            "node_modules/@lancedb/**",
+            "node_modules/@lancedb/lancedb/dist/**",
+            "node_modules/@lancedb/lancedb-*/dist/**",
             "node_modules/apache-arrow/**"
         ],
         "compression": "maximum"

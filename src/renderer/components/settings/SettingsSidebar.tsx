@@ -1,6 +1,6 @@
 import React from 'react';
 import './SettingsSidebar.css';
-import { FolderOpen, FileText, Search, RefreshCw, Info } from 'lucide-react';
+import { FolderOpen, FileText, Search, RefreshCw, Info, LucideIcon } from 'lucide-react';
 import Icon from '../Icon';
 
 export type SettingsSection = 'folders' | 'filetypes' | 'indexing' | 'updates' | 'about';
@@ -13,7 +13,7 @@ interface SettingsSidebarProps {
 interface SidebarItem {
   id: SettingsSection;
   label: string;
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
 }
 
 const sidebarItems: SidebarItem[] = [

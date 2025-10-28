@@ -2,10 +2,11 @@ import { test, expect, _electron as electron } from '@playwright/test';
 
 test.describe('App Startup', () => {
   test('should launch and display main window', async () => {
-    const app = await electron.launch({ 
+    const app = await electron.launch({
       args: ['dist/main.cjs'],
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         ELECTRON_DISABLE_SINGLETON: 'true'
       }
     });
@@ -28,10 +29,11 @@ test.describe('App Startup', () => {
   });
 
   test('should display search interface', async () => {
-    const app = await electron.launch({ 
+    const app = await electron.launch({
       args: ['dist/main.cjs'],
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         ELECTRON_DISABLE_SINGLETON: 'true'
       }
     });
