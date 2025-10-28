@@ -13,12 +13,10 @@ Welcome to the technical documentation for Semantica, an offline semantic search
 | [03-implementation.md](./03-implementation.md) | Technical details, memory management, parsers | ✅ Current |
 | [04-operations.md](./04-operations.md) | Troubleshooting, monitoring, deployment | ✅ Current |
 | [05-api-reference.md](./05-api-reference.md) | API documentation, schemas, configuration | ✅ Current |
-| [06-build-optimization.md](./06-build-optimization.md) | Build system, optimization, two-package architecture | ✅ Current |
 | [07-signing-distribution.md](./07-signing-distribution.md) | Code signing, notarization, distribution | ✅ Current |
 | [08-startup-flow.md](./08-startup-flow.md) | Detailed startup sequence and model download flow | ✅ Current |
 | [09-auto-update-deployment.md](./09-auto-update-deployment.md) | Auto-update system and deployment | ✅ Current |
 | [10-release-process.md](./10-release-process.md) | Release management and versioning process | ✅ Current |
-| [11-performance-architecture.md](./11-performance-architecture.md) | Consolidated performance optimizations and profiling | ✅ Current |
 | [12-folder-structure.md](./12-folder-structure.md) | Code organization and domain-driven structure | ✅ Current |
 | [embedder-architecture.md](./embedder-architecture.md) | Detailed embedder system architecture | ✅ Current |
 
@@ -27,7 +25,9 @@ Welcome to the technical documentation for Semantica, an offline semantic search
 | Document | Description | Status |
 |----------|-------------|--------|
 | [archive/complete-specification-v2.md](./archive/complete-specification-v2.md) | Original comprehensive spec | 📦 Archived |
+| [archive/06-build-optimization.md](./archive/06-build-optimization.md) | Build system optimization for Transformers.js/ONNX | 📦 Archived |
 | [archive/performance-architecture-old.md](./archive/performance-architecture-old.md) | Previous performance documentation | 📦 Archived |
+| [archive/11-performance-architecture-embedder-pool.md](./archive/11-performance-architecture-embedder-pool.md) | EmbedderPool performance architecture (Transformers.js/Ollama) | 📦 Archived |
 | [archive/transformers-memory-leak-analysis.md](./archive/transformers-memory-leak-analysis.md) | Historical memory leak investigation | 📦 Archived |
 
 ### Related Documentation
@@ -62,7 +62,7 @@ Jump to [04-operations.md](./04-operations.md) for troubleshooting and maintenan
 | **Parser Versioning** | ✅ Production | 1.0 | Automatic re-indexing on upgrades |
 | **Search Engine** | ✅ Production | 1.0 | Multilingual E5 model |
 | **UI Framework** | ✅ Production | 1.0 | React with search-first design |
-| **Memory Management** | ✅ Production | 4.0 | EmbedderPool with auto-restart |
+| **Memory Management** | ✅ Production | 5.0 | Python sidecar with stable memory |
 | **Error Recovery** | ✅ Production | 1.0 | Auto-restart and retry logic |
 | **Embedding Queue** | ✅ Production | 1.0 | Producer-consumer with retry mechanism |
 | **Retry System** | ✅ Production | 1.0 | Bounded retries (max 3 attempts) with graceful failure |

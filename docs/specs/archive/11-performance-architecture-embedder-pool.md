@@ -1,12 +1,14 @@
-# Performance Architecture
+# Performance Architecture (LEGACY - EmbedderPool)
 
-*Previous: [10-release-process.md](./10-release-process.md) | Next: [embedder-architecture.md](./embedder-architecture.md)*
+> **⚠️ LEGACY DOCUMENTATION**: This document describes the performance architecture for the obsolete Transformers.js/ONNX and Ollama embedding systems (v1.0.0-v1.0.3). The current implementation uses a Python FastAPI sidecar with sentence-transformers, which has simpler performance characteristics. For current performance documentation, see:
+> - [python-sidecar-performance-guide.md](../../guides/python-sidecar-performance-guide.md) - Current performance tuning
+> - [python-sidecar-performance-results.md](../../analysis/python-sidecar-performance-results.md) - Current benchmarks
 
 ---
 
 ## Overview
 
-This document consolidates all performance optimizations implemented in Semantica, focusing on the EmbedderPool architecture, CPU-aware concurrency, memory management, and profiling systems that achieved a 4x throughput improvement.
+This document consolidates all performance optimizations implemented for the legacy EmbedderPool architecture, focusing on the ONNX/Ollama embedding systems, CPU-aware concurrency, memory management, and profiling systems that achieved a 4x throughput improvement.
 
 ## Performance Evolution
 

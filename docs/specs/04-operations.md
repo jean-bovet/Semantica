@@ -6,33 +6,24 @@
 
 ## Application Startup Flow
 
-### First-Time User (No Model)
+### First-Time User
 1. **Application Launch**
    - Single instance lock ensures only one app instance
    - Main process creates BrowserWindow
    - Worker thread spawns and initializes database
 
-2. **Model Check & Download**
-   > **Note**: This section describes the legacy Transformers.js architecture. The current implementation uses a Python sidecar with sentence-transformers that manages model downloads independently.
-   - Worker checks for model files in `~/Library/Application Support/Semantica/models/`
-   - If missing, sequential download begins:
-     - config.json (~0.6KB)
-     - tokenizer_config.json (~0.4KB)
-     - tokenizer.json (~16MB)
-     - special_tokens_map.json (~0.2KB)
-     - model_quantized.onnx (~113MB)
-   - Progress shown in UI with per-file updates
-   - Total download: ~115MB
+2. **Python Sidecar Initialization**
+   - Python FastAPI server starts on port 8421
+   - sentence-transformers model loads (managed by Python)
+   - Models cached in `~/.cache/huggingface/` (handled automatically)
 
 3. **Initialization Complete**
-   - Embedder child process spawns after model ready
    - File indexing begins automatically
    - Search UI becomes available
 
-### Returning User (Model Exists)
+### Returning User
 1. **Fast Startup** (<1 second)
-   - Model files verified (not re-downloaded)
-   - Embedder spawns on first embedding request
+   - Python sidecar starts with cached models
    - Search UI available immediately
    - Background indexing resumes
 

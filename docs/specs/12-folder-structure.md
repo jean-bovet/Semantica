@@ -1,6 +1,6 @@
 # Folder Structure
 
-*Previous: [11-performance-architecture.md](./11-performance-architecture.md)*
+*Previous: [10-release-process.md](./10-release-process.md)*
 
 ---
 

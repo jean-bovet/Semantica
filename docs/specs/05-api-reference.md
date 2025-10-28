@@ -363,53 +363,39 @@ const PARSER_VERSIONS = {
 
 ## Embedder Architecture
 
-### EmbedderPool
+### Python Sidecar
 
-The application uses a pool of embedder processes for parallel embedding generation:
+The application uses a Python FastAPI sidecar for embedding generation:
 
 ```typescript
-interface EmbedderPoolConfig {
-  modelName?: string;              // Default: 'Xenova/multilingual-e5-small'
-  poolSize?: number;               // Default: 2
-  maxFilesBeforeRestart?: number;  // Default: 5000
-  maxMemoryMB?: number;            // Default: 300
+interface PythonSidecarConfig {
+  modelName: string;               // Default: 'paraphrase-multilingual-mpnet-base-v2'
+  port: number;                    // Default: 8421
+  batchSize: number;               // Default: 32
+  normalizeVectors: boolean;       // Default: true
 }
 
-class EmbedderPool {
-  // Initialize pool of embedder processes
+class PythonSidecarEmbedder {
+  // Initialize and start Python sidecar
   async initialize(): Promise<void>;
-  
-  // Generate embeddings with round-robin distribution
+
+  // Generate embeddings via HTTP POST
   async embed(texts: string[], isQuery?: boolean): Promise<number[][]>;
-  
-  // Get pool statistics
-  getStats(): Array<{
-    index: number;
-    filesProcessed: number;
-    memoryUsage: number;
-    needsRestart: boolean;
-  }>;
-  
-  // Health check and auto-recovery
-  async checkHealth(): Promise<void>;
-  
-  // Restart specific or all embedders
-  async restart(index?: number): Promise<void>;
-  
+
+  // Health check
+  async health(): Promise<{ status: string; model: string }>;
+
   // Clean shutdown
   async dispose(): Promise<void>;
 }
 ```
 
-### Memory Management
+**HTTP Endpoints:**
+- `POST http://127.0.0.1:8421/embed` - Generate embeddings
+- `GET http://127.0.0.1:8421/health` - Health check
+- `GET http://127.0.0.1:8421/info` - Model information
 
-Each embedder process has automatic memory management:
-
-- RSS memory limit: 300MB per process
-- Files before restart: 5000
-- Memory check frequency: Every 10 files after 50
-- Restart threshold: 95% of memory limit
-- Mutex-protected restarts prevent race conditions
+For complete details, see [python-sidecar.md](./python-sidecar.md).
 
 ## Performance Profiling
 
@@ -459,22 +445,21 @@ PROFILING=true
 
 # Custom paths
 USER_DATA_PATH=/custom/path
-TRANSFORMERS_CACHE=/path/to/models
 DB_PATH=/custom/db/path
 
 # Memory limits (MB)
 WORKER_MAX_RSS=1500
-EMBEDDER_MAX_RSS=300
 
 # Concurrency
 CPU_CONCURRENCY_OVERRIDE=8
 
-# Model configuration
-MODEL_NAME=Xenova/multilingual-e5-small
-EMBEDDER_POOL_SIZE=2
+# Python sidecar configuration
+PYTHON_SIDECAR_PORT=8421
+PYTHON_SIDECAR_MODEL=paraphrase-multilingual-mpnet-base-v2
 
 # Debug logging
 DEBUG=fss:*
+LOG_CATEGORIES=STARTUP,WORKER,PIPELINE-STATUS
 ```
 
 ## Event System
@@ -506,9 +491,10 @@ watcher.on('unlink', handleFileRemove);
 watcher.on('ready', handleWatcherReady);
 watcher.on('error', handleWatchError);
 
-// Embedder pool events
-embedderPool.on('restart', handleEmbedderRestart);
-embedderPool.on('error', handleEmbedderError);
+// Python sidecar events
+sidecar.on('started', handleSidecarStart);
+sidecar.on('stopped', handleSidecarStop);
+sidecar.on('error', handleSidecarError);
 ```
 
 ## Error Handling
