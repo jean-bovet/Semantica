@@ -202,6 +202,73 @@ Simple progress bar overlay showing initialization progress:
 4. HTTP call to Python sidecar: `POST http://127.0.0.1:8421/embed`
 5. Python returns vectors → Save to LanceDB
 
+### Page Reload / Wake from Sleep
+
+**Issue:** Race condition where startup overlay briefly appears when worker already ready.
+
+**Scenario:**
+1. App fully initialized and running
+2. User reloads page (Cmd+R) or Mac wakes from sleep
+3. Renderer process reloads, but worker thread stays alive
+4. Startup overlay flashes briefly before recognizing worker is ready
+
+**Solution: Dual-Layer Defense**
+
+The app implements two defensive checks to prevent the overlay from appearing unnecessarily:
+
+**Layer 1: Pre-render Check (App.tsx)**
+```typescript
+const [isCheckingWorkerStatus, setIsCheckingWorkerStatus] = useState(true);
+
+useEffect(() => {
+  const checkWorkerReady = async () => {
+    const isReady = await window.api.worker.isReady();
+    if (isReady) {
+      setAppReady(true);
+    }
+    setIsCheckingWorkerStatus(false);
+  };
+  checkWorkerReady();
+}, []);
+
+// Only render overlay after check completes
+{!isCheckingWorkerStatus && !appReady && (
+  <StartupProgress onComplete={handleStartupComplete} />
+)}
+```
+
+**Benefits:**
+- Prevents overlay from rendering until worker status confirmed
+- Eliminates flash when worker already ready
+- Fast check (~5-10ms)
+
+**Layer 2: Immediate Completion (StartupProgress.tsx)**
+```typescript
+useEffect(() => {
+  const checkWorkerReady = async () => {
+    const isReady = await window.api.worker.isReady();
+    if (isReady && mounted) {
+      // Worker is already ready, complete immediately
+      onComplete();
+      return;
+    }
+    // Otherwise, listen for startup:stage events
+    // ...
+  };
+  checkWorkerReady();
+}, []);
+```
+
+**Benefits:**
+- Redundant safety check if overlay does render
+- Completes immediately without waiting for events
+- Handles edge cases where Layer 1 might miss
+
+**Performance:**
+- Check completes in 5-10ms
+- No impact on cold startup (worker not ready)
+- Seamless experience on reload/wake
+
 ## Python Sidecar Progress Events
 
 The Python sidecar emits progress events via stdout during model loading:
@@ -299,6 +366,35 @@ interface StartupErrorMessage {
 - `SIDECAR_NOT_HEALTHY` - Health check failed
 - `EMBEDDER_INIT_FAILED` - Embedder initialization failed
 - `STARTUP_TIMEOUT` - Startup exceeded timeout
+
+### Worker Status Check
+
+**New in v1.0.3+:** Added to fix reload/wake race condition.
+
+```typescript
+ipcMain.handle('worker:isReady', async () => {
+  return workerReady;
+});
+```
+
+**Returns:** `boolean` - `true` if worker initialized and reached 'ready' stage
+
+**Usage:** Called by renderer on mount to prevent showing startup overlay when worker already ready. Used in both `App.tsx` and `StartupProgress.tsx` for dual-layer defense.
+
+**Implementation:**
+```typescript
+// In main.ts
+let workerReady = false; // Set to true when worker reaches 'ready' stage
+
+// In App.tsx
+const isReady = await window.api.worker.isReady();
+
+// In StartupProgress.tsx
+const isReady = await window.api.worker.isReady();
+if (isReady) {
+  onComplete(); // Hide overlay immediately
+}
+```
 
 ## Important Notes
 
