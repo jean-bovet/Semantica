@@ -25,8 +25,8 @@ A privacy-first, offline semantic search application for macOS that indexes your
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/semantica.git
-cd semantica
+git clone https://github.com/jean-bovet/Semantica.git
+cd Semantica
 
 # Install Node dependencies
 npm install
@@ -90,12 +90,12 @@ The application implements sophisticated memory management through process isola
 - **Automatic Recovery**: Child process restarts when thresholds exceeded
 - **Configurable Limits**: Tune memory limits based on your system
 
-For details on the memory solution, see [specs/archive/memory-solution.md](specs/archive/memory-solution.md).
+For details on the memory solution, see [docs/specs/archive/memory-solution.md](docs/specs/archive/memory-solution.md).
 
 ## 🧪 Testing
 
-✅ **All tests passing** - 81 tests across 10 files  
-⏱️ **Fast execution** - Complete suite runs in ~3.3 seconds  
+✅ **Comprehensive test suite** - 510 tests across 33 files
+⏱️ **Fast execution** - Unit tests complete in ~3 seconds
 📊 **85%+ coverage** - Core functionality well tested
 
 ```bash
@@ -185,25 +185,30 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 
 ```
 Semantica/
-├── app/
-│   ├── electron/          # Main process & worker
+├── src/
+│   ├── main/              # Main process
 │   │   ├── main.ts
 │   │   ├── preload.ts
-│   │   └── worker/
-│   │       ├── index.ts
-│   │       └── embedder.child.ts
-│   └── renderer/          # React UI
-│       ├── App.tsx
-│       └── components/
+│   │   ├── worker/        # Worker thread
+│   │   ├── core/          # Core business logic
+│   │   ├── services/      # Application services
+│   │   └── parsers/       # File format parsers
+│   ├── renderer/          # React UI
+│   │   ├── App.tsx
+│   │   └── components/
+│   ├── shared/            # Shared types and utilities
+│   └── ipc/               # IPC definitions
+├── embedding_sidecar/     # Python FastAPI service
+│   ├── main.py
+│   └── requirements.txt
 ├── dist/                  # Build outputs
 ├── docs/                  # Documentation
-│   ├── build-instructions.md
-│   └── release-checklist.md
-├── scripts/               # Utility scripts
-│   ├── ab-embed-benchmark.ts
-│   └── db-ingest-benchmark.ts
-├── specs/                 # Specifications
-└── tests/                 # Test files
+│   ├── specs/             # System specifications
+│   └── guides/            # How-to guides
+├── tests/                 # Test files
+│   ├── unit/              # Unit tests
+│   └── e2e/               # E2E tests
+└── planning/              # Future plans
 ```
 
 ## 🤝 Contributing
