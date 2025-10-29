@@ -360,7 +360,11 @@ if (gotTheLock) {
     const progress = await sendToWorker('progress');
     return { ...progress, initialized: workerReady };
   });
-  
+
+  ipcMain.handle('worker:isReady', async () => {
+    return workerReady;
+  });
+
   ipcMain.handle('search:query', async (_, { q, k }) => {
     return sendToWorker('search', { q, k });
   });
@@ -444,15 +448,26 @@ app.on('activate', () => {
   }
 });
 
+// Guard flag to prevent before-quit infinite loop
+let isQuitting = false;
+
 app.on('before-quit', async (event) => {
+  // Prevent re-entry if already quitting
+  if (isQuitting) {
+    return;
+  }
+
+  // Prevent default quit to do cleanup first
   event.preventDefault();
-  
+  isQuitting = true;
+
   // Send shutdown signal to worker and wait
   if (worker) {
     worker.postMessage({ type: 'shutdown' });
     await new Promise(resolve => setTimeout(resolve, 500));
     worker.terminate();
   }
-  
-  app.exit(0);
+
+  // Use app.quit() instead of app.exit(0) for clean shutdown
+  app.quit();
 });

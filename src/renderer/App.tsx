@@ -16,10 +16,7 @@ declare global {
 }
 
 function App() {
-  // Persist appReady state across reloads (e.g., wake from sleep, hot-reload)
-  const [appReady, setAppReady] = useState(() => {
-    return sessionStorage.getItem('appReady') === 'true';
-  });
+  const [appReady, setAppReady] = useState(false);
   const [_filesLoaded, setFilesLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
@@ -35,7 +32,17 @@ function App() {
   // Memoized callback to prevent re-creating on every render
   const handleStartupComplete = useCallback(() => {
     setAppReady(true);
-    sessionStorage.setItem('appReady', 'true');
+  }, []);
+
+  // Check if worker is already ready on mount (e.g., after reload/wake from sleep)
+  useEffect(() => {
+    const checkWorkerReady = async () => {
+      const isReady = await window.api.worker.isReady();
+      if (isReady) {
+        setAppReady(true);
+      }
+    };
+    checkWorkerReady();
   }, []);
 
   // Listen for files loaded event

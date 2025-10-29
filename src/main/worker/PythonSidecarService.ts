@@ -266,7 +266,8 @@ export class PythonSidecarService {
       // Try graceful shutdown first
       this.process.kill('SIGTERM');
 
-      // Wait up to 5s for graceful shutdown
+      // Wait for graceful shutdown (shorter timeout in test/production for faster teardown)
+      const shutdownTimeout = process.env.NODE_ENV === 'production' ? 1000 : 5000;
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           if (this.process) {
@@ -274,7 +275,7 @@ export class PythonSidecarService {
             this.process.kill('SIGKILL');
           }
           resolve();
-        }, 5000);
+        }, shutdownTimeout);
 
         if (this.process) {
           this.process.once('exit', () => {

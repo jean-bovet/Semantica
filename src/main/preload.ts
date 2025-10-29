@@ -95,6 +95,10 @@ const api = {
     retry: () => ipcRenderer.invoke('startup:retry')
   },
 
+  worker: {
+    isReady: (): Promise<boolean> => ipcRenderer.invoke('worker:isReady')
+  },
+
   on: (channel: string, callback: (event: any, ...args: any[]) => void) => {
     ipcRenderer.on(channel, callback);
   },

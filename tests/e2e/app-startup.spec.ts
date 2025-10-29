@@ -62,16 +62,12 @@ test.describe('App Startup', () => {
 
     const window = await app.firstWindow();
 
-    // Wait for initial startup to complete (mocked, so should be fast)
-    await window.waitForTimeout(3000);
+    // Wait for startup to complete by waiting for overlay to disappear
+    await window.locator('.startup-overlay').waitFor({ state: 'hidden', timeout: 15000 });
 
     // Verify app is ready by checking that the app-ready div is present
     const appReady = await window.locator('[data-testid="app-ready"]').count();
     expect(appReady).toBeGreaterThan(0);
-
-    // Verify startup overlay is NOT visible
-    const startupOverlay = await window.locator('.startup-overlay').count();
-    expect(startupOverlay).toBe(0);
 
     // Reload the page (simulates what happens on wake from sleep)
     await window.reload();

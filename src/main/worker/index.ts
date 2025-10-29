@@ -1701,16 +1701,14 @@ process.on('uncaughtException', (error) => {
 });
 
 // Cleanup on exit
-process.on('exit', async () => {
+// Note: 'exit' event handlers CANNOT be async - Node.js will exit immediately
+// Async cleanup (sidecar shutdown) is handled in the 'shutdown' message handler
+// and in main process before-quit handler
+process.on('exit', () => {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (sidecarEmbedder) {
-    await sidecarEmbedder.shutdown();
-  }
-  if (sidecarService) {
-    await sidecarService.stopSidecar();
-  }
+  // Cannot await async operations here - they will be ignored
 });
 
 process.on('SIGTERM', async () => {
