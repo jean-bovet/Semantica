@@ -105,6 +105,20 @@ Organized by domain:
 - Automatic startup and lifecycle management
 - 100% reliability (no EOF errors or segfaults)
 
+**Prerequisites:**
+- Python 3.9 or later required
+- Dependencies: `fastapi`, `uvicorn`, `pydantic`, `sentence-transformers`, `torch`, `pypdf`
+- Virtual environment auto-detection (`.venv` in `embedding_sidecar/`)
+- Falls back to system `python3` if no venv found
+- Pre-flight dependency check runs before startup (~3.5s)
+- Context-aware error messages (development vs production)
+
+**Lifecycle Management:**
+- Auto-restart on crash (max 3 attempts)
+- Health check polling during startup
+- Graceful shutdown with SIGTERM/SIGKILL fallback
+- Progress events for model downloading and loading
+
 ### 4. Startup System (`src/main/startup/`)
 - `StartupCoordinator.ts`: Manages staged initialization
 - `StartupStages.ts`: Defines startup stages and progress

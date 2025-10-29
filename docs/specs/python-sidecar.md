@@ -261,6 +261,41 @@ const status = await service.getStatus(); // Check status
 
 ## Development
 
+### Prerequisites
+
+**Python Requirements:**
+- Python 3.9 or later
+- pip (Python package installer)
+- 2.2 GB free disk space for dependencies
+
+**Automatic Detection:**
+
+The app automatically detects and uses a virtual environment if present at `embedding_sidecar/.venv/`:
+
+```bash
+cd embedding_sidecar
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Fallback Behavior:**
+- **Development:** If no venv found, falls back to system `python3` with warning
+- **Production:** Uses system `python3` (bundling deferred to Phase 3)
+
+**Pre-flight Checks:**
+
+On startup, the app verifies:
+1. Python interpreter is available
+2. All required dependencies are installed:
+   - fastapi, uvicorn, pydantic
+   - sentence-transformers, torch
+   - pypdf
+
+If any check fails, the app shows a context-aware error message with installation instructions.
+
+See [Python Setup Guide](../guides/python-setup.md) for detailed installation instructions and troubleshooting.
+
 ### Running Standalone
 
 ```bash
@@ -301,6 +336,10 @@ LOG_CATEGORIES=SIDECAR-CLIENT,SIDECAR-SERVICE npm run dev
 **Timeout:** 30s default
 
 **Error types:**
+- `PYTHON_NOT_FOUND`: Python interpreter not found in PATH
+- `PYTHON_DEPS_MISSING`: Required Python dependencies not installed
+- `PYTHON_VERSION_INCOMPATIBLE`: Python version < 3.9
+- `SIDECAR_START_FAILED`: Failed to spawn Python process
 - `NETWORK_ERROR`: Connection refused, network issues
 - `TIMEOUT`: Request exceeded timeout
 - `HTTP_ERROR`: HTTP 4xx/5xx responses

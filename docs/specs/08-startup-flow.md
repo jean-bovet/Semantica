@@ -292,6 +292,9 @@ interface StartupErrorMessage {
 ```
 
 **Error Codes:**
+- `PYTHON_NOT_FOUND` - Python interpreter not found in PATH
+- `PYTHON_DEPS_MISSING` - Required Python dependencies not installed
+- `PYTHON_VERSION_INCOMPATIBLE` - Python version < 3.9
 - `SIDECAR_START_FAILED` - Failed to start Python process
 - `SIDECAR_NOT_HEALTHY` - Health check failed
 - `EMBEDDER_INIT_FAILED` - Embedder initialization failed
@@ -308,6 +311,36 @@ interface StartupErrorMessage {
 7. **Port**: Python sidecar runs on `http://127.0.0.1:8421`
 
 ## Error Handling
+
+### Python Environment Errors
+
+**Pre-flight Dependency Check:**
+- Runs before spawning Python process (~3.5s)
+- Validates all required dependencies: `fastapi`, `uvicorn`, `pydantic`, `sentence-transformers`, `torch`, `pypdf`
+- Returns detailed status: Python version, installed deps, missing deps
+
+**Virtual Environment Detection:**
+- Auto-detects `.venv` in `embedding_sidecar/` directory
+- Falls back to system `python3` with context-aware warnings
+- Development: Shows venv setup instructions
+- Production: Shows global pip install instructions
+
+**Context-Aware Error Messages:**
+- Development mode: Recommends creating virtual environment
+  ```
+  cd embedding_sidecar && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+  ```
+- Production mode: Shows global installation command
+  ```
+  pip3 install fastapi uvicorn pydantic sentence-transformers torch pypdf
+  ```
+
+**Auto-Restart Protection:**
+- Max 3 restart attempts before disabling auto-restart
+- Prevents infinite restart loops
+- Shows diagnostic help after max restarts exceeded
+
+### General Error Handling
 
 - **Python spawn fails** → Show error with Retry button
 - **Health check fails** → Retry with exponential backoff

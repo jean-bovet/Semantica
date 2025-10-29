@@ -42,6 +42,12 @@ We've implemented a category-based logging system to reduce log noise while keep
    - MODEL-LOADER - Model loading
    - NODE-MESSENGER - Process messages
 
+   Python Sidecar:
+   - SIDECAR-SERVICE - Sidecar lifecycle management
+   - SIDECAR-STDOUT - Python process stdout
+   - SIDECAR-STDERR - Python process stderr
+   - WORKER-STARTUP - Worker initialization
+
    System:
    - MEMORY - Memory monitoring
    - PERFORMANCE - Performance metrics
@@ -70,6 +76,9 @@ LOG_CATEGORIES=WORKER,INDEXING,QUEUE npm run dev
 
 # Debug embedder issues
 LOG_CATEGORIES=EMBEDDER-*,MEMORY npm run dev
+
+# Debug Python sidecar issues
+LOG_CATEGORIES=SIDECAR-*,WORKER-STARTUP npm run dev
 
 # Debug encoding issues
 LOG_CATEGORIES=ENCODING,FILE-STATUS npm run dev
