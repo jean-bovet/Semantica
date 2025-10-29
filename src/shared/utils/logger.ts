@@ -42,10 +42,16 @@ const CATEGORIES = {
   'MODEL-LOADER': false,
   'NODE-MESSENGER': false,
 
-  // Ollama integration
+  // Ollama integration (legacy)
   'OLLAMA-SERVICE': false,
   'OLLAMA-EMBEDDER': false,
   'OLLAMA-CLIENT': false,
+
+  // Python Sidecar (embedding service)
+  'SIDECAR-SERVICE': false,
+  'SIDECAR-STDOUT': false,
+  'SIDECAR-STDERR': false,
+  'WORKER-STARTUP': false,
 
   // System monitoring
   'MEMORY': false,
@@ -211,6 +217,7 @@ export { Logger };
 export const LOG_PRESETS = {
   'file-processing': 'WORKER,PROCESS-QUEUE,INDEXING,QUEUE',
   'embedder-debug': 'EMBEDDER-*,MEMORY',
+  'sidecar-debug': 'SIDECAR-*,WORKER-STARTUP',  // Python sidecar debugging
   'performance': 'PERFORMANCE,PROFILING,MEMORY',
   'encoding-issues': 'ENCODING,FILE-STATUS,INDEXING',
   'progress': 'PIPELINE-STATUS',  // Show progress only

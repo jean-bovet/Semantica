@@ -17,8 +17,9 @@ A privacy-first, offline semantic search application for macOS that indexes your
 ### Prerequisites
 - macOS 13.0 or later
 - Node.js 18+ and npm
+- **Python 3.9 or later** (for embedding service)
 - 8GB RAM recommended
-- ~500MB disk space for models and index
+- ~3GB disk space for Python dependencies, models, and index
 
 ### Development
 
@@ -27,12 +28,21 @@ A privacy-first, offline semantic search application for macOS that indexes your
 git clone https://github.com/yourusername/semantica.git
 cd semantica
 
-# Install dependencies
+# Install Node dependencies
 npm install
+
+# Set up Python environment (required for embeddings)
+cd embedding_sidecar
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cd ..
 
 # Start development server
 npm run dev
 ```
+
+**Note:** The app automatically detects and uses the Python virtual environment. For detailed Python setup instructions, troubleshooting, and alternative installation methods, see [docs/guides/python-setup.md](docs/guides/python-setup.md).
 
 This will:
 - Start Vite dev server for the UI (with HMR)
@@ -60,17 +70,17 @@ Main Process (Electron)
         ├── File Watching
         ├── Document Parsing
         ├── LanceDB Operations
-        └── Embedder Child Process (Isolated)
-            └── Transformers.js
+        └── Python Sidecar (HTTP API)
+            └── FastAPI + sentence-transformers
 ```
 
 **Key Design Decisions:**
 - Worker thread owns the database for thread safety
-- Embeddings run in isolated child process to prevent memory leaks
-- Automatic process restart when memory thresholds exceeded
-- Process isolation allows unlimited file indexing
+- Embeddings run in Python sidecar process (HTTP API) for stability
+- Process isolation prevents memory leaks during indexing
+- Python-based embeddings provide better performance and compatibility
 
-For detailed architecture documentation, see [specs/02-architecture.md](specs/02-architecture.md).
+For detailed architecture documentation, see [docs/specs/02-architecture.md](docs/specs/02-architecture.md).
 
 ## 💾 Memory Management
 
@@ -107,7 +117,9 @@ See [planning/testing-strategy.md](planning/testing-strategy.md) for detailed te
 - **TypeScript**: Type-safe development
 - **React**: UI components with Vite for fast HMR
 - **LanceDB**: Vector database for semantic search
-- **Transformers.js**: Local, quantized embeddings (no cloud API)
+- **Python FastAPI**: HTTP API for embedding service
+- **sentence-transformers**: Local embeddings (no cloud API)
+- **PyTorch**: Machine learning framework
 - **Chokidar**: File system watching
 - **esbuild**: Fast bundling for Electron files
 
@@ -142,6 +154,17 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 
 ## 🛠️ Troubleshooting
 
+### Python Dependency Issues
+- **Error:** "Required Python dependencies are not installed"
+- **Solution:** Follow the Python setup steps in [docs/guides/python-setup.md](docs/guides/python-setup.md)
+- Quick fix:
+  ```bash
+  cd embedding_sidecar
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  ```
+
 ### High Memory Usage
 - Check Settings → File Types and disable PDF if needed
 - Reduce the number of watched folders
@@ -151,6 +174,7 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 - Verify folders are added in Settings
 - Check that file types are enabled
 - Look for errors in DevTools console (Cmd+Option+I)
+- Ensure Python dependencies are installed (see above)
 
 ### Search Not Finding Results
 - Wait for initial indexing to complete

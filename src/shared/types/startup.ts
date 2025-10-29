@@ -51,6 +51,9 @@ export const STARTUP_STAGE_ORDER: readonly StartupStage[] = [
  * Error codes for startup failures
  */
 export type StartupErrorCode =
+  | 'PYTHON_NOT_FOUND'       // Python interpreter not found in PATH
+  | 'PYTHON_DEPS_MISSING'    // Required Python dependencies not installed
+  | 'PYTHON_VERSION_INCOMPATIBLE' // Python version incompatible (requires 3.9+)
   | 'SIDECAR_START_FAILED'   // Failed to start Python sidecar
   | 'SIDECAR_NOT_HEALTHY'    // Python sidecar not healthy
   | 'OLLAMA_NOT_FOUND'       // Ollama not installed (legacy)

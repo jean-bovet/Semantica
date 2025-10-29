@@ -199,7 +199,7 @@ def shutdown():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "embed_server:app",
+        app,  # Pass app object directly to avoid double import
         host=BIND_HOST,
         port=BIND_PORT,
         reload=False,

@@ -8,6 +8,7 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 import { PythonSidecarClient } from './PythonSidecarClient';
 import { logger } from '../../shared/utils/logger';
 
@@ -55,6 +56,8 @@ export class PythonSidecarService {
   private process: ChildProcess | null = null;
   private isShuttingDown: boolean = false;
   private progressCallback?: (event: DownloadProgressEvent) => void;
+  private restartCount: number = 0;
+  private readonly MAX_RESTARTS = 3;
 
   constructor(config: PythonSidecarServiceConfig = {}) {
     this.client = config.client || new PythonSidecarClient({ port: config.port });
@@ -68,6 +71,68 @@ export class PythonSidecarService {
 
     // Determine script path (development vs production)
     this.scriptPath = config.scriptPath || this.getDefaultScriptPath();
+  }
+
+  /**
+   * Check if Python dependencies are installed
+   * @returns Object with dependency status or null if check failed
+   */
+  async checkDependencies(): Promise<{
+    all_present: boolean;
+    python_version: string;
+    deps: Record<string, boolean>;
+    missing?: string[];
+    error?: string;
+  } | null> {
+    return new Promise((resolve) => {
+      const projectRoot = this.getProjectRoot();
+      const checkScript = path.join(projectRoot, 'embedding_sidecar/check_deps.py');
+
+      // Check if check script exists
+      if (!fs.existsSync(checkScript)) {
+        log('Dependency check script not found, skipping pre-flight check');
+        resolve(null);
+        return;
+      }
+
+      const proc = spawn(this.pythonPath, [checkScript], {
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      proc.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      proc.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      proc.on('exit', (code) => {
+        try {
+          const result = JSON.parse(output.trim());
+          if (code === 0) {
+            log('✅ All Python dependencies are installed');
+          } else {
+            log('❌ Missing Python dependencies:', result.missing || []);
+          }
+          resolve(result);
+        } catch (err) {
+          log('Failed to parse dependency check output:', err);
+          if (errorOutput) {
+            log('Dependency check stderr:', errorOutput);
+          }
+          resolve(null);
+        }
+      });
+
+      proc.on('error', (error) => {
+        log(`Dependency check failed: ${error.message}`);
+        resolve(null);
+      });
+    });
   }
 
   /**
@@ -141,7 +206,19 @@ export class PythonSidecarService {
 
         // Auto-restart if enabled and not shutting down
         if (this.autoRestart && !this.isShuttingDown) {
-          log('Auto-restarting sidecar in 2s...');
+          this.restartCount++;
+
+          if (this.restartCount >= this.MAX_RESTARTS) {
+            logger.error('SIDECAR-SERVICE', `❌ Sidecar crashed ${this.MAX_RESTARTS} times, disabling auto-restart`);
+            logger.error('SIDECAR-SERVICE', 'Check logs above for errors. Common issues:');
+            logger.error('SIDECAR-SERVICE', '  - Script not found: Verify embedding_sidecar/embed_server.py exists');
+            logger.error('SIDECAR-SERVICE', '  - Dependencies missing: Run pip install -r requirements.txt');
+            logger.error('SIDECAR-SERVICE', '  - Port in use: Check if another process is using port ' + this.port);
+            this.autoRestart = false; // Disable further restarts
+            return;
+          }
+
+          log(`Auto-restarting sidecar in 2s... (attempt ${this.restartCount}/${this.MAX_RESTARTS})`);
           setTimeout(() => this.startSidecar(), 2000);
         }
       });
@@ -159,6 +236,7 @@ export class PythonSidecarService {
 
       if (isReady) {
         log('✅ Python sidecar started successfully');
+        this.restartCount = 0; // Reset counter on successful start
         return true;
       } else {
         log('❌ Python sidecar failed to start (health check timeout)');
@@ -293,19 +371,59 @@ export class PythonSidecarService {
   }
 
   /**
+   * Get project root directory based on runtime context
+   *
+   * Handles different scenarios:
+   * - Running from source (src/main/worker/)
+   * - Running from compiled dist (dist/)
+   * - Running from packaged app (app.asar/dist/)
+   */
+  private getProjectRoot(): string {
+    // Detect if running from bundled asar archive
+    if (__dirname.includes('app.asar')) {
+      // In packaged app: __dirname is like /app.asar/dist
+      // Extract asar root path
+      const asarRoot = __dirname.substring(0, __dirname.indexOf('app.asar') + 8);
+      return asarRoot;
+    }
+
+    // Check if running from compiled dist/ or source src/
+    if (__dirname.includes('/dist')) {
+      // Running from dist/ - go up 1 level to project root
+      return path.join(__dirname, '..');
+    } else {
+      // Running from src/main/worker/ - go up 3 levels to project root
+      return path.join(__dirname, '../../..');
+    }
+  }
+
+  /**
    * Get default Python path based on environment
    */
   private getDefaultPythonPath(): string {
-    // In development, use system Python or venv
-    if (process.env.NODE_ENV !== 'production') {
-      // Try venv first
-      const venvPath = path.join(__dirname, '../../../embedding_sidecar/.venv/bin/python');
-      // For now, return python3 (we'll use venv when available)
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // In development, try venv first
+    if (!isProduction) {
+      const projectRoot = this.getProjectRoot();
+      const venvPath = path.join(projectRoot, 'embedding_sidecar/.venv/bin/python');
+
+      // Check if venv exists and use it
+      if (fs.existsSync(venvPath)) {
+        log(`✅ Using virtual environment: ${venvPath}`);
+        return venvPath;
+      }
+
+      // Fallback to system Python with development-specific warning
+      logger.warn('SIDECAR-SERVICE', '⚠️  Virtual environment not found at embedding_sidecar/.venv');
+      logger.warn('SIDECAR-SERVICE', '⚠️  Falling back to system python3 (dependencies must be installed globally)');
+      logger.warn('SIDECAR-SERVICE', '   Recommended: cd embedding_sidecar && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt');
       return 'python3';
     }
 
-    // In production, use bundled Python
-    // TODO: Implement bundled Python path resolution
+    // In production, use system Python (bundling deferred to Phase 3)
+    logger.warn('SIDECAR-SERVICE', '⚠️  Using system python3 (Python runtime not bundled in this build)');
+    logger.warn('SIDECAR-SERVICE', '   Dependencies must be installed globally: pip3 install fastapi uvicorn pydantic sentence-transformers torch pypdf');
     return 'python3';
   }
 
@@ -313,14 +431,8 @@ export class PythonSidecarService {
    * Get default script path based on environment
    */
   private getDefaultScriptPath(): string {
-    // In development, use local script
-    if (process.env.NODE_ENV !== 'production') {
-      return path.join(__dirname, '../../../embedding_sidecar/embed_server.py');
-    }
-
-    // In production, use bundled script
-    // TODO: Implement bundled script path resolution
-    return path.join(__dirname, '../../../embedding_sidecar/embed_server.py');
+    const projectRoot = this.getProjectRoot();
+    return path.join(projectRoot, 'embedding_sidecar/embed_server.py');
   }
 
   /**

@@ -2,10 +2,11 @@
  * WorkerStartup - State machine for worker initialization
  *
  * Owns the full startup sequence:
- * 1. Start Python sidecar server
- * 2. Wait for sidecar to be ready
- * 3. Initialize embedder
- * 4. Start file watching
+ * 1. Check Python dependencies (pre-flight check)
+ * 2. Start Python sidecar server
+ * 3. Wait for sidecar to be ready (model loading)
+ * 4. Initialize embedder
+ * 5. Ready
  *
  * Emits stage events via parentPort for main to relay to renderer.
  */
@@ -57,7 +58,33 @@ export class WorkerStartup {
     try {
       this.logToBuffer('WORKER-STARTUP', 'Starting initialization sequence');
 
-      // Stage 1: Start Python sidecar
+      // Stage 1: Pre-flight check for Python dependencies (silent, no stage emission)
+      const depsCheck = await this.sidecarService.checkDependencies();
+
+      if (depsCheck && !depsCheck.all_present) {
+        // Dependencies are missing - provide detailed error
+        const missingPackages = depsCheck.missing?.join(', ') || 'unknown';
+
+        // Context-aware help message
+        const isProduction = process.env.NODE_ENV === 'production';
+        const helpMessage = isProduction
+          ? 'Please install Python dependencies globally: pip3 install fastapi uvicorn pydantic sentence-transformers torch pypdf'
+          : 'Please install dependencies: cd embedding_sidecar && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt';
+
+        this.emitError(
+          'PYTHON_DEPS_MISSING',
+          'Required Python dependencies are not installed',
+          {
+            missing: depsCheck.missing,
+            python_version: depsCheck.python_version,
+            help: helpMessage
+          }
+        );
+        log(`Missing Python dependencies: ${missingPackages}`);
+        return null;
+      }
+
+      // Stage 2: Start Python sidecar
       this.emitStage('sidecar_start', 'Starting Python sidecar server...');
       const started = await this.sidecarService.startSidecar();
       if (!started) {
@@ -67,7 +94,7 @@ export class WorkerStartup {
 
       log('Python sidecar started successfully');
 
-      // Stage 2: Wait for sidecar to be ready (model loading)
+      // Stage 3: Wait for sidecar to be ready (model loading)
       this.emitStage('sidecar_ready', 'Loading embedding model...');
       const status = await this.sidecarService.getStatus();
       if (!status.healthy) {
@@ -77,7 +104,7 @@ export class WorkerStartup {
 
       log('Python sidecar is healthy and ready');
 
-      // Stage 3: Initialize embedder
+      // Stage 4: Initialize embedder
       this.emitStage('embedder_init', 'Initializing embedder...');
       this.embedder = new PythonSidecarEmbedder({
         modelName: this.MODEL_NAME,
@@ -94,7 +121,7 @@ export class WorkerStartup {
 
       log('Embedder initialized successfully');
 
-      // Stage 4: Ready
+      // Stage 5: Ready
       this.emitStage('ready', 'Worker ready');
       this.logToBuffer('WORKER-STARTUP', 'Initialization complete');
 
