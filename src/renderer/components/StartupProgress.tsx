@@ -23,6 +23,16 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   useEffect(() => {
     let mounted = true;
 
+    // Check if worker is already ready (e.g., after page reload)
+    const checkWorkerReady = async () => {
+      const isReady = await window.api.worker.isReady();
+      if (isReady && mounted) {
+        // Worker is already ready, complete immediately
+        onComplete();
+      }
+    };
+    checkWorkerReady();
+
     // Listen for startup stage events
     const handleStage = (_: any, data: StartupStageMessage) => {
       if (!mounted) return;

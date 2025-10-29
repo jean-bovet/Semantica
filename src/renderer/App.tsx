@@ -17,6 +17,7 @@ declare global {
 
 function App() {
   const [appReady, setAppReady] = useState(false);
+  const [isCheckingWorkerStatus, setIsCheckingWorkerStatus] = useState(true);
   const [_filesLoaded, setFilesLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
@@ -41,6 +42,7 @@ function App() {
       if (isReady) {
         setAppReady(true);
       }
+      setIsCheckingWorkerStatus(false);
     };
     checkWorkerReady();
   }, []);
@@ -103,7 +105,7 @@ function App() {
       </div>
 
       {/* Startup progress overlay - rendered outside .app to avoid flex container issues */}
-      {!appReady && (
+      {!isCheckingWorkerStatus && !appReady && (
         <StartupProgress onComplete={handleStartupComplete} />
       )}
     </SearchProvider>
