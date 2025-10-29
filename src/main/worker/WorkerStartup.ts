@@ -62,14 +62,8 @@ export class WorkerStartup {
       const depsCheck = await this.sidecarService.checkDependencies();
 
       if (depsCheck && !depsCheck.all_present) {
-        // Dependencies are missing - provide detailed error
+        // Dependencies are missing - provide error with README link
         const missingPackages = depsCheck.missing?.join(', ') || 'unknown';
-
-        // Context-aware help message
-        const isProduction = process.env.NODE_ENV === 'production';
-        const helpMessage = isProduction
-          ? 'Please install Python dependencies globally: pip3 install fastapi uvicorn pydantic sentence-transformers torch pypdf'
-          : 'Please install dependencies: cd embedding_sidecar && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt';
 
         this.emitError(
           'PYTHON_DEPS_MISSING',
@@ -77,7 +71,7 @@ export class WorkerStartup {
           {
             missing: depsCheck.missing,
             python_version: depsCheck.python_version,
-            help: helpMessage
+            help: 'Please install Python dependencies. See installation instructions: https://github.com/jean-bovet/Semantica/blob/main/README.md'
           }
         );
         log(`Missing Python dependencies: ${missingPackages}`);

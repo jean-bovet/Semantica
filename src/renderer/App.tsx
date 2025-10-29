@@ -16,7 +16,10 @@ declare global {
 }
 
 function App() {
-  const [appReady, setAppReady] = useState(false);
+  // Persist appReady state across reloads (e.g., wake from sleep, hot-reload)
+  const [appReady, setAppReady] = useState(() => {
+    return sessionStorage.getItem('appReady') === 'true';
+  });
   const [_filesLoaded, setFilesLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
@@ -32,30 +35,17 @@ function App() {
   // Memoized callback to prevent re-creating on every render
   const handleStartupComplete = useCallback(() => {
     setAppReady(true);
+    sessionStorage.setItem('appReady', 'true');
   }, []);
 
   // Listen for files loaded event
   useEffect(() => {
-    // Check if indexer is already initialized (happens during hot-reload)
-    const checkInitialState = async () => {
-      try {
-        const progress = await window.api.indexer.progress();
-        if (progress?.initialized) {
-          setFilesLoaded(true);
-        }
-      } catch (err) {
-        console.error('Failed to check indexer state:', err);
-      }
-    };
-    
-    checkInitialState();
-    
     const handleFilesLoaded = () => {
       setFilesLoaded(true);
     };
-    
+
     window.api.on('files:loaded', handleFilesLoaded);
-    
+
     return () => {
       window.api.off('files:loaded', handleFilesLoaded);
     };

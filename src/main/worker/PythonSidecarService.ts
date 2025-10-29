@@ -398,32 +398,12 @@ export class PythonSidecarService {
   }
 
   /**
-   * Get default Python path based on environment
+   * Get default Python path
+   *
+   * Always uses system python3. If dependencies are not installed,
+   * the startup check will catch it and show setup instructions.
    */
   private getDefaultPythonPath(): string {
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    // In development, try venv first
-    if (!isProduction) {
-      const projectRoot = this.getProjectRoot();
-      const venvPath = path.join(projectRoot, 'embedding_sidecar/.venv/bin/python');
-
-      // Check if venv exists and use it
-      if (fs.existsSync(venvPath)) {
-        log(`✅ Using virtual environment: ${venvPath}`);
-        return venvPath;
-      }
-
-      // Fallback to system Python with development-specific warning
-      logger.warn('SIDECAR-SERVICE', '⚠️  Virtual environment not found at embedding_sidecar/.venv');
-      logger.warn('SIDECAR-SERVICE', '⚠️  Falling back to system python3 (dependencies must be installed globally)');
-      logger.warn('SIDECAR-SERVICE', '   Recommended: cd embedding_sidecar && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt');
-      return 'python3';
-    }
-
-    // In production, use system Python (bundling deferred to Phase 3)
-    logger.warn('SIDECAR-SERVICE', '⚠️  Using system python3 (Python runtime not bundled in this build)');
-    logger.warn('SIDECAR-SERVICE', '   Dependencies must be installed globally: pip3 install fastapi uvicorn pydantic sentence-transformers torch pypdf');
     return 'python3';
   }
 
