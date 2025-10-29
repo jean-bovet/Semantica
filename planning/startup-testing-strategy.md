@@ -1,5 +1,9 @@
 # Startup Testing Strategy
 
+> **Architecture Note:** Updated 2025-10-28 for Python Sidecar (v3)
+>
+> This plan uses Python sidecar architecture (FastAPI HTTP server on port 8421) for embedding generation, replacing previous Ollama (v2) and Transformers.js (v1) implementations.
+
 ## Overview
 
 This document outlines the testing strategy for the Electron app startup sequence, based on research of current best practices (2024) and the specific needs of this project.
@@ -9,9 +13,10 @@ This document outlines the testing strategy for the Electron app startup sequenc
 - **Project Size**: Small team/solo project
 - **Focus Area**: App startup sequence and initialization
 - **Current Issue**: Delay before UI shows loading indicator
-- **Solution Implemented**: Load window immediately, initialize worker async, wait for both model and files before dismissing loading
+- **Solution Implemented**: Load window immediately, initialize worker async, wait for both Python sidecar and files before dismissing loading
 - **Testing Framework**: Vitest (already in use)
 - **E2E Framework**: Playwright (already configured with `test:e2e`)
+- **Embedding Service**: Python sidecar with sentence-transformers (HTTP health check on port 8421)
 
 ## Research Findings
 
@@ -30,7 +35,7 @@ The `StartupCoordinator` class will manage the startup sequence with clear respo
 
 #### Inputs (Sensors)
 - `waitForWorker(): Promise<void>` - Resolves when worker thread is ready
-- `waitForModel(): Promise<void>` - Resolves when ML model is loaded
+- `waitForPythonSidecar(): Promise<void>` - Resolves when Python sidecar HTTP server is ready (GET /health on port 8421)
 - `waitForFiles(): Promise<void>` - Resolves when file index is loaded from DB
 - `waitForStats(): Promise<StatsData>` - Resolves when folder stats are computed
 
@@ -41,13 +46,13 @@ The `StartupCoordinator` class will manage the startup sequence with clear respo
 
 #### Error Handling
 - Worker timeout (10s default) → Surface error to renderer
-- Model check/download failure → Fallback UI with retry option
+- Python sidecar startup failure → Fallback UI with retry option
 - Files load failure → Show empty state with error message
 
 #### Sequencing Rules
 1. Window loads immediately (no blocking)
-2. Model and files can load in parallel (race allowed)
-3. Only signal ready when BOTH model and files are loaded
+2. Python sidecar and files can load in parallel (race allowed)
+3. Only signal ready when BOTH Python sidecar and files are loaded
 4. Stats must be computed before sending `files:loaded`
 
 #### Lifecycle
@@ -59,7 +64,7 @@ The `StartupCoordinator` class will manage the startup sequence with clear respo
 // src/main/startup/StartupCoordinator.ts
 export interface StartupSensors {
   waitForWorker(): Promise<void>;
-  waitForModel(): Promise<void>;
+  waitForPythonSidecar(): Promise<void>;
   waitForFiles(): Promise<void>;
   waitForStats(): Promise<StatsData>;
 }
@@ -93,14 +98,14 @@ export class StartupCoordinator {
         'Worker initialization timeout'
       );
       
-      // Load model and files in parallel
-      const [modelResult, filesResult] = await Promise.allSettled([
-        this.sensors.waitForModel(),
+      // Load Python sidecar and files in parallel
+      const [sidecarResult, filesResult] = await Promise.allSettled([
+        this.sensors.waitForPythonSidecar(),
         this.sensors.waitForFiles()
       ]);
-      
-      if (modelResult.status === 'rejected') {
-        throw new StartupError('model-failed', modelResult.reason);
+
+      if (sidecarResult.status === 'rejected') {
+        throw new StartupError('sidecar-failed', sidecarResult.reason);
       }
       
       if (filesResult.status === 'rejected') {
@@ -138,7 +143,7 @@ app.whenReady().then(async () => {
   const coordinator = new StartupCoordinator(
     {
       waitForWorker: () => waitForWorker(),
-      waitForModel: () => sendToWorker('checkModel'),
+      waitForPythonSidecar: () => sendToWorker('checkPythonSidecar'), // HTTP health check on port 8421
       waitForFiles: () => new Promise(resolve => {
         ipcMain.once('files:loaded', resolve);
       }),
@@ -188,7 +193,7 @@ describe('StartupCoordinator', () => {
     vi.useFakeTimers();
     sensors = {
       waitForWorker: vi.fn().mockResolvedValue(undefined),
-      waitForModel: vi.fn().mockResolvedValue(undefined),
+      waitForPythonSidecar: vi.fn().mockResolvedValue(undefined),
       waitForFiles: vi.fn().mockResolvedValue(undefined),
       waitForStats: vi.fn().mockResolvedValue({ total: 100, indexed: 50 })
     };
@@ -216,17 +221,17 @@ describe('StartupCoordinator', () => {
     await promise;
   });
   
-  it('should wait for both model AND files before notifying ready', async () => {
-    // Delay model loading
-    sensors.waitForModel.mockImplementation(
+  it('should wait for both Python sidecar AND files before notifying ready', async () => {
+    // Delay Python sidecar startup
+    sensors.waitForPythonSidecar.mockImplementation(
       () => new Promise(resolve => setTimeout(resolve, 1000))
     );
-    
+
     const promise = coordinator.coordinate();
-    
-    // Advance time for model
+
+    // Advance time for sidecar startup
     await vi.advanceTimersByTimeAsync(1000);
-    
+
     // Ready should only be called after both complete
     await promise;
     expect(actions.notifyReady).toHaveBeenCalledTimes(1);
@@ -256,26 +261,26 @@ describe('StartupCoordinator', () => {
     expect(statsIndex).toBeLessThan(filesLoadedIndex);
   });
   
-  it('should handle files loading before model', async () => {
-    // Files resolve immediately, model takes time
-    sensors.waitForModel.mockImplementation(
+  it('should handle files loading before Python sidecar', async () => {
+    // Files resolve immediately, sidecar takes time
+    sensors.waitForPythonSidecar.mockImplementation(
       () => new Promise(resolve => setTimeout(resolve, 2000))
     );
-    
+
     const promise = coordinator.coordinate();
     await vi.advanceTimersByTimeAsync(2000);
     await promise;
-    
+
     expect(actions.notifyReady).toHaveBeenCalled();
   });
-  
-  it('should propagate model loading errors', async () => {
-    const error = new Error('Model download failed');
-    sensors.waitForModel.mockRejectedValue(error);
-    
-    await expect(coordinator.coordinate()).rejects.toThrow('model-failed');
+
+  it('should propagate Python sidecar startup errors', async () => {
+    const error = new Error('Python sidecar failed to start');
+    sensors.waitForPythonSidecar.mockRejectedValue(error);
+
+    await expect(coordinator.coordinate()).rejects.toThrow('sidecar-failed');
     expect(actions.notifyError).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'model-failed' })
+      expect.objectContaining({ type: 'sidecar-failed' })
     );
   });
 });
@@ -296,11 +301,11 @@ test.describe('App Startup', () => {
     // Loading indicator should appear immediately
     const loading = window.getByTestId('loading-indicator');
     await expect(loading).toBeVisible({ timeout: 1000 });
-    
-    // Loading message should update when model is ready
+
+    // Loading message should update when Python sidecar is ready
     await expect(loading).toContainText('Initializing database', { timeout: 5000 });
-    
-    // Loading should dismiss after both model and files are ready
+
+    // Loading should dismiss after both Python sidecar and files are ready
     await expect(loading).toBeHidden({ timeout: 15000 });
     
     // Status bar should show non-zero stats

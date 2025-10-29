@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
+import { logger } from '../../shared/utils/logger';
 
 // Parser version - increment when parser logic changes
 export const XLSX_PARSER_VERSION = 1;
@@ -42,11 +43,11 @@ export async function parseXLSX(filePath: string): Promise<string> {
     
     // Return empty string if no content found
     if (!fullText) {
-      console.log(`[XLSX PARSER] No text content found in: ${filePath}`);
+      logger.log('INDEXING', `XLSX parser - no content in ${filePath}`);
       return '';
     }
-    
-    console.log(`[XLSX PARSER] Successfully parsed: ${filePath} (${fullText.length} characters)`);
+
+    logger.log('INDEXING', `XLSX parser - ${filePath}: ${fullText.length} characters`);
     return fullText;
     
   } catch (error) {

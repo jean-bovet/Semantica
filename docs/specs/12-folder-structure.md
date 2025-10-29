@@ -1,6 +1,6 @@
 # Folder Structure
 
-*Previous: [11-performance-architecture.md](./11-performance-architecture.md)*
+*Previous: [10-release-process.md](./10-release-process.md)*
 
 ---
 
@@ -20,6 +20,11 @@ semantica/
 │   │   │   └── reindex/          # Re-indexing domain
 │   │   ├── services/             # Application services layer
 │   │   ├── worker/               # Worker thread entry point
+│   │   │   ├── embeddings/       # Embedder implementations
+│   │   │   ├── index.ts          # Worker main entry
+│   │   │   ├── WorkerStartup.ts  # Startup state machine
+│   │   │   ├── PythonSidecarService.ts  # Sidecar lifecycle
+│   │   │   └── PythonSidecarClient.ts   # HTTP client
 │   │   ├── parsers/              # File format parsers
 │   │   ├── startup/              # Application startup coordination
 │   │   ├── pipeline/             # Processing pipeline utilities
@@ -35,10 +40,11 @@ semantica/
 │   │   ├── App.tsx               # Root component
 │   │   └── main.tsx              # Renderer entry point
 │   │
-│   └── shared/                    # Shared between processes
-│       ├── embeddings/           # Embedder implementations
-│       ├── utils/                # Shared utilities
-│       └── test-utils/           # Test utilities
+│   └── shared/                    # Shared between main & renderer
+│       ├── config/               # Configuration types & I/O
+│       ├── types/                # Shared TypeScript types
+│       ├── utils/                # Shared utilities (logger)
+│       └── parserRegistry.ts     # Parser definitions
 │
 ├── tests/
 │   ├── unit/                     # Unit tests
@@ -126,11 +132,6 @@ Handles file updates and folder management.
 
 Application services provide high-level operations using core domain logic:
 
-- **`ModelService.ts`**: ML model management
-  - Downloads model files sequentially
-  - Verifies model integrity
-  - Manages model cache
-
 - **`PipelineService.ts`**: Pipeline monitoring
   - Formats pipeline status for display
   - Aggregates processing metrics
@@ -145,41 +146,71 @@ Application services provide high-level operations using core domain logic:
 
 ### `src/main/worker/`
 
-Minimal worker thread implementation:
+Worker thread implementation with Python sidecar integration:
 
 - **`index.ts`**: Worker thread entry point
   - Initializes core components
   - Sets up IPC communication
   - Manages worker lifecycle
+  - Orchestrates file processing
 
-- **`config.ts`**: Configuration management
-  - Loads user preferences
-  - Manages runtime configuration
-  - Handles config persistence
+- **`WorkerStartup.ts`**: Startup state machine
+  - Manages 9-stage initialization sequence
+  - Listens for Python sidecar progress events
+  - Emits `startup:stage` messages to main process
 
-- **`embedder.child.ts`**: Child process for embeddings
-  - Isolated process for memory safety
-  - Runs transformer model
-  - Auto-restarts on memory threshold
+- **`PythonSidecarService.ts`**: Python process lifecycle
+  - Spawns and manages Python child process
+  - Handles `embed_server.py` on port 8421
+  - Parses PROGRESS events from stdout
+  - Provides health checks and auto-restart
+
+- **`PythonSidecarClient.ts`**: HTTP client for embeddings
+  - Makes HTTP requests to Python sidecar API
+  - Handles retries and error recovery
+  - Timeout management (30s default)
+
+#### `embeddings/` - Embedder Implementations
+
+Worker-specific embedder code:
+
+- **`IEmbedder.ts`**: Embedder interface definition
+- **`PythonSidecarEmbedder.ts`**: Python sidecar implementation
+  - Implements IEmbedder interface
+  - Wraps PythonSidecarClient
+  - Provides retry logic and stats tracking
+- **`TestEmbedder.ts`**: Mock embedder for tests
+- **`EmbedderFactory.ts`**: Factory for creating embedders
 
 ## Shared Code
 
 ### `src/shared/`
 
-Code shared between main and renderer processes:
+**Code truly shared between main and renderer processes only.**
 
-#### `embeddings/` - Embedder Implementations
-- **`embedder-pool.ts`**: Pool of embedder processes
-- **`isolated.ts`**: Isolated embedder process
-- **`HealthManager.ts`**: Health monitoring
-- **`interfaces/`**: TypeScript interfaces
-- **`implementations/`**: Concrete implementations
+After cleanup (2025-10-27), this folder contains only code that needs to be accessible from both processes:
 
-#### `utils/` - Shared Utilities
-- **`logger.ts`**: Centralized logging
-- **`ProcessMemoryMonitor.ts`**: Memory monitoring
-- **`SerialQueue.ts`**: Serial task execution
-- **`LoadBalancer.ts`**: Load distribution
+- **`config/configIO.ts`**: Configuration I/O
+  - Read/write app configuration
+  - Validate and migrate config schemas
+  - Shared between main (worker) and settings UI
+
+- **`types/startup.ts`**: Startup types (SINGLE SOURCE OF TRUTH)
+  - StartupStage type definitions
+  - STARTUP_STAGE_ORDER constant
+  - IPC message types (StartupStageMessage, StartupErrorMessage)
+  - Type-safe message creators
+
+- **`utils/logger.ts`**: Logging utility
+  - Category-based logging system
+  - Used by all processes (main, worker, renderer)
+  - Silent by default unless LOG_CATEGORIES set
+
+- **`parserRegistry.ts`**: Parser definitions
+  - File type to parser mappings
+  - Shared between file scanner and settings UI
+
+**Note:** Embedder code previously in `src/shared/embeddings/` has been moved to `src/main/worker/embeddings/` since it's only used by the worker thread, not the renderer.
 
 ## Design Principles
 
@@ -212,7 +243,6 @@ The refactoring moved files from a flat worker directory to domain-specific fold
 | `worker/fileScanner.ts` | `core/indexing/fileScanner.ts` | Domain organization |
 | `worker/EmbeddingQueue.ts` | `core/embedding/EmbeddingQueue.ts` | Domain organization |
 | `worker/reindexManager.ts` | `core/reindex/reindexManager.ts` | Domain organization |
-| `worker/modelDownloader.ts` | `services/ModelService.ts` | Service layer |
 | `worker/PipelineStatusFormatter.ts` | `services/PipelineService.ts` | Service layer |
 
 ## Benefits

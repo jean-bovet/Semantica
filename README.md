@@ -17,22 +17,32 @@ A privacy-first, offline semantic search application for macOS that indexes your
 ### Prerequisites
 - macOS 13.0 or later
 - Node.js 18+ and npm
+- **Python 3.9 or later** (for embedding service)
 - 8GB RAM recommended
-- ~500MB disk space for models and index
+- ~3GB disk space for Python dependencies, models, and index
 
 ### Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/semantica.git
-cd semantica
+git clone https://github.com/jean-bovet/Semantica.git
+cd Semantica
 
-# Install dependencies
+# Install Node dependencies
 npm install
+
+# Set up Python environment (required for embeddings)
+cd embedding_sidecar
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cd ..
 
 # Start development server
 npm run dev
 ```
+
+**Note:** The app automatically detects and uses the Python virtual environment. For detailed Python setup instructions, troubleshooting, and alternative installation methods, see [docs/guides/python-setup.md](docs/guides/python-setup.md).
 
 This will:
 - Start Vite dev server for the UI (with HMR)
@@ -60,17 +70,17 @@ Main Process (Electron)
         ├── File Watching
         ├── Document Parsing
         ├── LanceDB Operations
-        └── Embedder Child Process (Isolated)
-            └── Transformers.js
+        └── Python Sidecar (HTTP API)
+            └── FastAPI + sentence-transformers
 ```
 
 **Key Design Decisions:**
 - Worker thread owns the database for thread safety
-- Embeddings run in isolated child process to prevent memory leaks
-- Automatic process restart when memory thresholds exceeded
-- Process isolation allows unlimited file indexing
+- Embeddings run in Python sidecar process (HTTP API) for stability
+- Process isolation prevents memory leaks during indexing
+- Python-based embeddings provide better performance and compatibility
 
-For detailed architecture documentation, see [specs/02-architecture.md](specs/02-architecture.md).
+For detailed architecture documentation, see [docs/specs/02-architecture.md](docs/specs/02-architecture.md).
 
 ## 💾 Memory Management
 
@@ -80,12 +90,12 @@ The application implements sophisticated memory management through process isola
 - **Automatic Recovery**: Child process restarts when thresholds exceeded
 - **Configurable Limits**: Tune memory limits based on your system
 
-For details on the memory solution, see [specs/archive/memory-solution.md](specs/archive/memory-solution.md).
+For details on the memory solution, see [docs/specs/archive/memory-solution.md](docs/specs/archive/memory-solution.md).
 
 ## 🧪 Testing
 
-✅ **All tests passing** - 81 tests across 10 files  
-⏱️ **Fast execution** - Complete suite runs in ~3.3 seconds  
+✅ **Comprehensive test suite** - 510 tests across 33 files
+⏱️ **Fast execution** - Unit tests complete in ~3 seconds
 📊 **85%+ coverage** - Core functionality well tested
 
 ```bash
@@ -107,7 +117,9 @@ See [planning/testing-strategy.md](planning/testing-strategy.md) for detailed te
 - **TypeScript**: Type-safe development
 - **React**: UI components with Vite for fast HMR
 - **LanceDB**: Vector database for semantic search
-- **Transformers.js**: Local, quantized embeddings (no cloud API)
+- **Python FastAPI**: HTTP API for embedding service
+- **sentence-transformers**: Local embeddings (no cloud API)
+- **PyTorch**: Machine learning framework
 - **Chokidar**: File system watching
 - **esbuild**: Fast bundling for Electron files
 
@@ -142,6 +154,17 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 
 ## 🛠️ Troubleshooting
 
+### Python Dependency Issues
+- **Error:** "Required Python dependencies are not installed"
+- **Solution:** Follow the Python setup steps in [docs/guides/python-setup.md](docs/guides/python-setup.md)
+- Quick fix:
+  ```bash
+  cd embedding_sidecar
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  ```
+
 ### High Memory Usage
 - Check Settings → File Types and disable PDF if needed
 - Reduce the number of watched folders
@@ -151,6 +174,7 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 - Verify folders are added in Settings
 - Check that file types are enabled
 - Look for errors in DevTools console (Cmd+Option+I)
+- Ensure Python dependencies are installed (see above)
 
 ### Search Not Finding Results
 - Wait for initial indexing to complete
@@ -161,25 +185,30 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 
 ```
 Semantica/
-├── app/
-│   ├── electron/          # Main process & worker
+├── src/
+│   ├── main/              # Main process
 │   │   ├── main.ts
 │   │   ├── preload.ts
-│   │   └── worker/
-│   │       ├── index.ts
-│   │       └── embedder.child.ts
-│   └── renderer/          # React UI
-│       ├── App.tsx
-│       └── components/
+│   │   ├── worker/        # Worker thread
+│   │   ├── core/          # Core business logic
+│   │   ├── services/      # Application services
+│   │   └── parsers/       # File format parsers
+│   ├── renderer/          # React UI
+│   │   ├── App.tsx
+│   │   └── components/
+│   ├── shared/            # Shared types and utilities
+│   └── ipc/               # IPC definitions
+├── embedding_sidecar/     # Python FastAPI service
+│   ├── main.py
+│   └── requirements.txt
 ├── dist/                  # Build outputs
 ├── docs/                  # Documentation
-│   ├── build-instructions.md
-│   └── release-checklist.md
-├── scripts/               # Utility scripts
-│   ├── ab-embed-benchmark.ts
-│   └── db-ingest-benchmark.ts
-├── specs/                 # Specifications
-└── tests/                 # Test files
+│   ├── specs/             # System specifications
+│   └── guides/            # How-to guides
+├── tests/                 # Test files
+│   ├── unit/              # Unit tests
+│   └── e2e/               # E2E tests
+└── planning/              # Future plans
 ```
 
 ## 🤝 Contributing
@@ -197,7 +226,7 @@ MIT License - see LICENSE file for details.
 
 ## 🙏 Acknowledgments
 
-- [Transformers.js](https://github.com/xenova/transformers.js) for local embeddings
+- [sentence-transformers](https://www.sbert.net/) for local embeddings
 - [LanceDB](https://lancedb.com) for vector database
 - [Electron](https://electronjs.org) for desktop framework
 - The open-source community for invaluable tools and libraries

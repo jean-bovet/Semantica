@@ -177,6 +177,9 @@ The indexer automatically excludes macOS bundle directories to improve performan
   '**/*.dSYM/**',       // Debug symbols
   '**/*.xcodeproj/**',  // Xcode projects
   '**/*.playground/**', // Swift playgrounds
+  '**/*.key/**',        // Keynote presentations
+  '**/*.pages/**',      // Pages documents
+  '**/*.numbers/**',    // Numbers spreadsheets
   '**/*.photoslibrary/**', // Photos libraries
   '**/*.musiclibrary/**',  // Music libraries
   ```

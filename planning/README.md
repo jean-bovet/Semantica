@@ -1,25 +1,49 @@
 # Planning Documents
 
-This folder contains detailed plans for future enhancements to the Offline Mac Search application.
+This folder contains detailed plans for future enhancements to Semantica.
 
-## Planned Enhancements
+**Last Updated:** 2025-10-28
 
-### High Priority
-- 📋 [Parser Version Tracking](./parser-version-tracking.md) - Automatic re-indexing when parsers improve
-- 🧪 [Core Logic Testing](./core-logic-testing-plan.md) - Comprehensive testing for business logic
-- 🔍 [OCR Integration](./ocr-integration.md) - *To be planned* - Support for scanned documents
+## Architecture Context
 
-### Medium Priority  
-- 📈 [Test Coverage Gaps](./test-coverage-gaps.md) - Analysis of testing gaps and priorities
-- 🎯 [Testing Strategy](./testing-strategy.md) - Test optimization and best practices
-- 📊 [Testing Implementation](./testing-implementation-summary.md) - Detailed testing implementation plan
-- 🔐 [Encrypted Files](./encrypted-files.md) - *To be planned* - Support for password-protected documents
+**Current Stack (v1.0.3+):**
+- **Embedding Service:** Python sidecar with sentence-transformers (FastAPI HTTP server on port 8421)
+- **Previous Versions:** Removed Ollama (v2) and Transformers.js/ONNX (v1) support
+- **Communication:** Worker ↔ Python Sidecar via HTTP REST API (not child process messages)
 
-### Low Priority
-- 📊 [Analytics Dashboard](./analytics-dashboard.md) - *To be planned* - Indexing statistics and insights
-- 🌍 [Multi-language Support](./multi-language.md) - *To be planned* - Better non-English text handling
-- 📱 [Mobile Companion](./mobile-companion.md) - *To be planned* - iOS app for remote search
-- ☁️ [Cloud Backup](./cloud-backup.md) - *To be planned* - Index backup and sync
+Planning documents reference these technologies. See individual docs for Python sidecar compatibility notes.
+
+## Active Planning Documents
+
+### Technical Debt & Refactoring
+- 🔧 [Worker Refactoring Plan](./worker-refactoring-plan.md) - Break down 1735-line worker/index.ts (✅ updated for Python sidecar)
+- ⚙️ [Config Audit](./config-audit.md) - Frontend build & TypeScript config review (actionable, some items addressed)
+
+### Architecture & Testing
+- 🧪 [Startup Testing Strategy](./startup-testing-strategy.md) - StartupCoordinator pattern with sensors/actions (✅ updated for Python sidecar)
+
+### Future Enhancements
+- 🚀 [Adaptive Performance Management](./adaptive-performance-management.md) - Intelligent concurrency based on hardware, battery, thermals
+
+## Completed/Archived Documents
+
+See [archive/](./archive/) for:
+
+### ✅ Implemented (Oct 2025)
+- **Database Version Marker** - Implemented & tested
+- **Token Estimation Fix** - Implemented
+- **Producer-Consumer Architecture** - Implemented as EmbeddingQueue
+
+### ✅ Completed (Earlier)
+- **Auto-Update Implementation** - Completed (Aug 2025)
+- **Performance Optimization** - Completed (Sept 2025)
+- **Testing Plans** - Various completed testing initiatives
+
+### 📦 Archived (Outdated/Obsolete)
+- **Message Bus Refactoring** - Archived Oct 2025 (mostly obsolete with Python HTTP architecture)
+- **Specs vs Code Alignment** - Archived Oct 2025 (pre-Python sidecar migration audit)
+- **Integration Testing Strategy** - Obsolete (referenced removed Transformers.js)
+- **Ollama-related Plans** - Obsolete (Ollama removed in favor of Python sidecar)
 
 ## Planning Document Template
 
@@ -56,9 +80,16 @@ How we measure success
 
 Major technical decisions and their rationale:
 
-1. **Parser Version Tracking** (2024-08-24): Chosen over simple retry mechanism for better control and transparency
-2. **File Status in Database** (2024-08-24): Persistent status tracking enables better debugging and user feedback
-3. **Search-First UI** (2024-08-24): Modal settings to maximize search space and focus user attention
+### 2025
+1. **Python Sidecar Architecture** (Oct 2025): Replaced Ollama with Python FastAPI server using sentence-transformers for 100% reliability vs 98-99% with Ollama
+2. **Database Version Marker** (Oct 2025): Track schema versions with `.db-version` file for automatic migrations
+3. **Producer-Consumer Queue** (Oct 2025): Implemented EmbeddingQueue to prevent deadlocks when processing multiple large files
+4. **Remove Transformers.js/ONNX** (Oct 2025): Cleaned up legacy embedding implementation after Python sidecar proved stable
+5. **Electron 38 Upgrade** (Oct 2025): Updated to Chromium 140, Node.js 22.19.0 (requires macOS 12+)
+
+### 2024
+6. **Search-First UI** (Aug 2024): Modal settings to maximize search space and focus user attention
+7. **File Status in Database** (Aug 2024): Persistent status tracking enables better debugging and user feedback
 
 ## Contributing
 

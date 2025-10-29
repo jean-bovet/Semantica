@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-export function mockEmbed(texts: string[], dim: number = 384, isQuery = false): number[][] {
+export function mockEmbed(texts: string[], dim: number = 768, isQuery = false): number[][] {
   // Apply E5 prefixes to match production behavior
   const prefixedTexts = texts.map(text => {
     const prefix = isQuery ? 'query: ' : 'passage: ';

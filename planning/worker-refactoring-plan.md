@@ -1,10 +1,20 @@
 # Worker Refactoring Plan
 
+> **Status:** NEEDS UPDATE (Current: 1735 lines)
+>
+> **Update 2025-10-28:**
+> - Worker file has grown from 1543 to **1735 lines** (+192 lines since plan written)
+> - **EmbeddingQueue** is already extracted (✅ completed)
+> - Python sidecar architecture changes "EmbedderPool" and "ModelManager" concepts
+> - Core refactoring goals remain valid and increasingly important
+>
+> **Next Steps:** Update plan to reflect current architecture and completed work.
+
 ## Overview
-The `src/main/worker/index.ts` file has grown to 1543 lines and handles multiple responsibilities. This plan outlines a refactoring strategy to break it down into smaller, testable, and maintainable components.
+The `src/main/worker/index.ts` file has grown to **1735 lines** (was 1543 at time of writing) and handles multiple responsibilities. This plan outlines a refactoring strategy to break it down into smaller, testable, and maintainable components.
 
 ## Current Issues
-- **File too large**: 1543 lines in a single file
+- **File too large**: 1735 lines in a single file (and growing!)
 - **Mixed responsibilities**: Database, file processing, queue management, watching, etc.
 - **Hard to test**: Tightly coupled components make unit testing difficult
 - **Difficult to maintain**: Finding specific functionality requires scrolling through large file
@@ -21,16 +31,17 @@ src/main/worker/
 ├── processing/
 │   ├── FileProcessor.ts     (File parsing and chunking)
 │   ├── ChunkingService.ts   (Text chunking logic)
-│   └── EmbeddingService.ts  (Embedding generation wrapper)
+│   └── EmbeddingService.ts  (HTTP wrapper for Python sidecar /embed API)
 ├── queue/
-│   ├── FileQueue.ts         (Already exists)
+│   ├── FileQueue.ts         (Already exists - legacy, may be superseded)
+│   ├── EmbeddingQueue.ts    (✅ Already extracted - producer-consumer pattern)
 │   └── QueueProcessor.ts    (Queue processing logic)
 ├── scanning/
 │   ├── FileScanner.ts       (Scan directories for files)
 │   ├── FileWatcher.ts       (File system watching)
 │   └── ReindexService.ts    (Already exists)
 ├── services/
-│   ├── ModelManager.ts      (Model download/initialization)
+│   ├── PythonSidecarManager.ts  (Python sidecar HTTP server management)
 │   └── WorkerMessageHandler.ts (Handle parent port messages)
 └── utils/
     ├── FileHasher.ts        (File hash calculations)
@@ -146,24 +157,26 @@ class FileScanner {
 }
 ```
 
-### 6. ModelManager (~150 lines)
+### 6. PythonSidecarManager (~150 lines)
 **Responsibilities:**
-- Check if ML model exists
-- Download model if needed
-- Initialize embedder pool
-- Track model readiness
+- Start Python sidecar HTTP server
+- Health check (GET /health on port 8421)
+- Monitor sidecar process status
+- Track sidecar readiness
+
+**Note:** With Python sidecar architecture, model download is handled by Python's sentence-transformers library automatically on first run.
 
 **Key Methods:**
 ```typescript
-class ModelManager {
-  private modelReady: boolean = false;
-  private embedderPool: EmbedderPool | null = null;
-  
-  async checkModel(userDataPath: string): Promise<boolean>
-  async downloadModel(userDataPath: string): Promise<void>
-  async initialize(userDataPath: string, poolSize: number): Promise<void>
-  getEmbedderPool(): EmbedderPool
+class PythonSidecarManager {
+  private sidecarReady: boolean = false;
+  private sidecarProcess: ChildProcess | null = null;
+
+  async startSidecar(): Promise<void>
+  async checkHealth(): Promise<boolean>
+  async waitForReady(timeout?: number): Promise<void>
   isReady(): boolean
+  async stop(): Promise<void>
 }
 ```
 
@@ -181,7 +194,7 @@ class WorkerMessageHandler {
       database: DatabaseManager,
       scanner: FileScanner,
       queue: QueueProcessor,
-      model: ModelManager,
+      sidecar: PythonSidecarManager,
       fileStatus: FileStatusManager,
       search: SearchService
     }
@@ -225,7 +238,7 @@ class QueueProcessor {
 ### 9. SearchService (~100 lines)
 **Responsibilities:**
 - Handle search queries
-- Generate query embeddings
+- Generate query embeddings via Python sidecar HTTP API
 - Format search results
 
 **Key Methods:**
@@ -233,11 +246,11 @@ class QueueProcessor {
 class SearchService {
   constructor(
     private databaseManager: DatabaseManager,
-    private modelManager: ModelManager
+    private sidecarManager: PythonSidecarManager
   ) {}
-  
+
   async search(query: string, k: number): Promise<SearchResult[]>
-  private async generateQueryEmbedding(query: string): Promise<number[]>
+  private async generateQueryEmbedding(query: string): Promise<number[]>  // HTTP POST to /embed
   private formatResults(results: any[]): SearchResult[]
 }
 ```
@@ -277,7 +290,7 @@ class SearchService {
 
 ### Phase 2: Extract Services (Low Risk)
 **Timeline: 1 hour**
-- Extract ModelManager
+- Extract PythonSidecarManager (replaces legacy ModelManager/EmbedderPool)
 - Extract SearchService
 - Update imports and references
 - Create unit tests
@@ -292,7 +305,7 @@ class SearchService {
 ### Phase 4: Extract Processing Logic (Medium Risk)
 **Timeline: 2 hours**
 - Extract FileProcessor
-- Extract EmbeddingService wrapper
+- Extract EmbeddingService wrapper (HTTP client for Python sidecar /embed endpoint)
 - Extract QueueProcessor
 - Maintain performance profiling hooks
 
@@ -328,7 +341,7 @@ src/main/worker/__tests__/
 │   ├── FileScanner.spec.ts
 │   └── FileWatcher.spec.ts
 ├── services/
-│   ├── ModelManager.spec.ts
+│   ├── PythonSidecarManager.spec.ts
 │   └── WorkerMessageHandler.spec.ts
 ├── queue/
 │   └── QueueProcessor.spec.ts
@@ -392,6 +405,9 @@ src/main/worker/__tests__/
 ## Notes
 
 - The existing FileQueue and ReindexService can remain as-is
+- EmbeddingQueue is already extracted (producer-consumer pattern) ✅
 - Performance profiling should be preserved through dependency injection
 - Configuration management should remain centralized
 - Worker message protocol should not change (backward compatibility)
+- **Python Sidecar Architecture**: EmbedderPool concept replaced with HTTP client to Python sidecar on port 8421
+- Model download handled automatically by sentence-transformers (not manual download process)

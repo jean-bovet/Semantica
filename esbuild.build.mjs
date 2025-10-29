@@ -15,10 +15,8 @@ async function buildFile(entry, outfile) {
       'electron',
       '@lancedb/lancedb',
       'apache-arrow',
-      'onnxruntime-node',
       'sharp',
       'fsevents',
-      '@xenova/transformers',
       'chokidar',
       'pdf-parse',
       'mammoth',
@@ -50,12 +48,8 @@ async function main() {
       path.join(__dirname, 'src/main/worker/index.ts'),
       path.join(__dirname, 'dist/worker.cjs')
     ),
-    buildFile(
-      path.join(__dirname, 'src/main/worker/embedder.child.ts'),
-      path.join(__dirname, 'dist/embedder.child.cjs')
-    ),
   ]);
-  
+
   console.log('Production build complete.');
 }
 

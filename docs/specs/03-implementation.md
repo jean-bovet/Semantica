@@ -6,66 +6,21 @@
 
 ## Memory Management
 
-### Recent Optimizations (August 2025)
-- **Intelligent Memory Logging**: Memory usage now only logs when values change significantly (>10MB RSS, >5MB Heap, or file count changes), reducing console spam
+### Python Sidecar Architecture
+
+The application uses a Python FastAPI sidecar for embeddings, providing complete process isolation and stable memory usage.
+
+**Benefits:**
+- **Stable Memory**: Python process manages its own memory independently
+- **No Memory Leaks**: sentence-transformers library handles memory correctly
+- **Process Isolation**: Embeddings run in separate Python process on port 8421
+- **Typical Usage**: 400-600MB for embedding service, 1500MB limit for worker thread
+
+**Recent Optimizations (August 2025):**
+- **Intelligent Memory Logging**: Worker thread memory usage only logs when values change significantly (>10MB RSS, >5MB Heap, or file count changes), reducing console spam
 - **Threshold-based Reporting**: Prevents redundant memory status messages during stable operation
 
-## Memory Management
-
-### Problem Background
-The application initially experienced severe memory leaks (1.2GB+ after 20 files) due to the transformers.js library not properly releasing tensors and native memory buffers.
-
-### Solution: Process Isolation
-
-We implemented complete process isolation for the embedding model, which resolved the memory leak entirely.
-
-#### Key Components
-
-**1. Embedder Child Process**
-A separate Node.js process that exclusively handles embedding generation:
-- Loads the transformer model in isolation
-- Processes embedding requests via IPC
-- Automatically restarts when memory limits exceeded
-- Uses dynamic imports for ES module compatibility
-
-**2. Memory Governor**
-Monitors memory usage and triggers automatic restarts:
-```javascript
-const thresholds = {
-  rssLimit: 1500,       // MB (optimized from 900)
-  externalLimit: 300,   // MB (optimized from 150)
-  filesLimit: 500       // Files before restart (optimized from 200)
-};
-```
-
-**3. Optimizations Applied**
-- Reduced batch size from 32 to 8 items
-- Added explicit tensor disposal
-- Immediate array cleanup after processing
-- Yield to event loop between batches
-- Force garbage collection when available
-- **CPU-aware parallel processing**: Scales with CPU cores (cores - 1, minimum 4)
-- **Memory-based throttling**: Reduces to 1/4 of cores if RSS > 800MB
-
-### Memory Performance Results
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| Memory after 20 files | 1,200MB | 273MB | 77% reduction |
-| Memory growth rate | 50MB/file | ~0MB/file | Eliminated |
-| Crash frequency | Every 20-30 files | Never | 100% stable |
-| Log frequency | Every 2 seconds | On significant change | 90% reduction |
-| Max files indexed | ~30 | Unlimited | ∞ |
-
-### Real-time Monitoring
-Memory logging shows stable operation:
-```
-Memory: RSS=273MB, Heap=17MB/31MB, External=5MB, Files processed: 100
-Memory: RSS=274MB, Heap=18MB/32MB, External=5MB, Files processed: 200
-Memory: RSS=273MB, Heap=17MB/31MB, External=5MB, Files processed: 300
-```
-
-> **Historical Note**: For the complete evolution of our memory management solution, including the initial problems and iterative improvements, see [specs/archive/memory-solution.md](./archive/memory-solution.md).
+> **Historical Note**: The application previously used Transformers.js/ONNX with child process isolation to manage memory leaks. For the complete evolution of the memory management solution, see [specs/archive/memory-solution.md](./archive/memory-solution.md) and [specs/python-sidecar-cleanup.md](./python-sidecar-cleanup.md).
 
 ## CPU-Aware Concurrency
 
@@ -286,26 +241,21 @@ export function chunkText(text: string): Chunk[] {
 ```
 
 ### Embedding Generation
-Chunks are processed in batches through the isolated embedder:
+Chunks are processed through the EmbeddingQueue with efficient batching:
 
 ```typescript
-// Batch processing with memory safety
-async function generateEmbeddings(chunks: string[]): Promise<number[][]> {
-  const batchSize = 8;
-  const embeddings: number[][] = [];
-  
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    const batchEmbeddings = await embedder.embed(batch);
-    embeddings.push(...batchEmbeddings);
-    
-    // Yield to event loop
-    await new Promise(resolve => setImmediate(resolve));
-  }
-  
-  return embeddings;
-}
+const embeddingQueue = new EmbeddingQueue({
+  maxQueueSize: 2000,
+  batchSize: 32,              // Chunks per batch
+  backpressureThreshold: 1000
+});
+
+await embeddingQueue.addChunks(chunks, filePath, fileIndex);
 ```
+
+**Batching Strategy**: The queue processes chunks in batches to maximize throughput. Embeddings are generated via HTTP POST to the Python sidecar (`http://127.0.0.1:8421/embed`), which handles the sentence-transformers model.
+
+See `src/main/core/embedding/EmbeddingQueue.ts` for implementation details.
 
 ## Database Implementation
 
@@ -440,16 +390,16 @@ class IndexingQueue {
 ## Build Configuration
 
 ### Electron Build Setup
+The application uses esbuild for bundling the main, preload, and worker processes:
+
 ```javascript
-// build.config.js
+// esbuild.build.mjs
 const files = [
-  { input: 'src/main/main.ts', output: 'dist/main.cjs' },
-  { input: 'src/main/preload.ts', output: 'dist/preload.cjs' },
-  { input: 'src/main/worker/index.ts', output: 'dist/worker.cjs' },
-  { input: 'src/main/worker/embedder.child.ts', output: 'dist/embedder.child.cjs' }
+  'src/main/main.ts' → 'dist/main.cjs',
+  'src/main/preload.ts' → 'dist/preload.cjs',
+  'src/main/worker/index.ts' → 'dist/worker.cjs'
 ];
 
-// Each file built with esbuild
 await esbuild.build({
   entryPoints: [input],
   bundle: true,
@@ -457,19 +407,21 @@ await esbuild.build({
   target: 'node18',
   format: 'cjs',
   outfile: output,
-  external: ['electron', '@xenova/transformers']
+  external: [
+    'electron',
+    '@lancedb/lancedb',
+    'apache-arrow',
+    'sharp',
+    'fsevents',
+    'chokidar',
+    'pdf-parse',
+    'mammoth',
+    'word-extractor'
+  ]
 });
 ```
 
-### ES Module Compatibility
-Dynamic imports for ES-only modules:
-```typescript
-// Handles ERR_REQUIRE_ESM error
-let transformers: any;
-async function loadTransformers() {
-  transformers = await import('@xenova/transformers');
-}
-```
+**Note**: ML/embedding dependencies are handled by the external Python sidecar, not bundled in the Electron app.
 
 ## Configuration & Tuning
 
@@ -479,19 +431,16 @@ const MEMORY_CONFIG = {
   // Worker process limits
   WORKER_RSS_LIMIT: 1500,        // MB
   WORKER_THROTTLE_RSS: 800,      // MB - reduce parallelism
-  
-  // Embedder process limits  
-  EMBEDDER_RSS_LIMIT: 900,        // MB
-  EMBEDDER_EXTERNAL_LIMIT: 300,   // MB
-  EMBEDDER_FILES_LIMIT: 500,      // Files before restart
-  
+
   // Processing parameters
-  MAX_CONCURRENT_FILES: 5,
-  EMBEDDING_BATCH_SIZE: 8,
+  MAX_CONCURRENT_FILES: 5,        // CPU-aware (see cpuConcurrency.ts)
+  EMBEDDING_BATCH_SIZE: 32,       // Chunks per batch
   CHUNK_SIZE: 500,                // characters
-  CHUNK_OVERLAP: 60                // characters
+  CHUNK_OVERLAP: 60               // characters
 };
 ```
+
+**Python Sidecar Memory**: The Python embedding service manages its own memory independently (~400-600MB stable usage). No manual restart or memory management required from the Electron app.
 
 ### File Type Configuration
 ```json

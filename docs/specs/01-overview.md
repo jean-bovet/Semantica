@@ -30,7 +30,7 @@ Semantica is an Electron-based desktop application that provides offline semanti
 - **Encoding Support**: Auto-detection for UTF-8, UTF-16, ISO-8859-1, Windows-1252, Mac Roman
 - **Folder Selection**: Choose multiple folders to index
 - **File Watching**: Automatic indexing of new/modified files
-- **Exclusion Patterns**: Skip node_modules, .git, *.app, *.photoslibrary, etc.
+- **Exclusion Patterns**: Skip node_modules, .git, *.app, *.key, *.pages, *.numbers, *.photoslibrary, etc.
 
 ### Indexing Features
 - **Incremental Indexing**: Only process new/changed files

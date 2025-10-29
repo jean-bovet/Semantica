@@ -36,3 +36,5 @@ logs/
 playwright-report/
 test-results/
 playwright/.cache/
+/embedding_sidecar/.venv
+/embedding_sidecar/__pycache__

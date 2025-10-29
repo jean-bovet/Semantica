@@ -1,6 +1,16 @@
 # Frontend Build & TypeScript Config Audit
 
+**Date:** ~2025-09 (estimated)
+**Status:** ACTIONABLE - Still relevant technical debt
+
 This report reviews the current Vite, TypeScript, Vitest, ESLint, and related build configurations and suggests safe, incremental improvements. No changes have been applied.
+
+**Progress Check (2025-10-28):**
+- ✅ `.eslintignore` - Removed
+- ❌ `.eslintrc.cjs` - Still exists (should remove in favor of flat config)
+- ❌ Root `index.html` - Still exists (should remove, it's stale)
+- ❓ Vitest alias - Not checked
+- ❓ TS config split - Not implemented
 
 ## Overview
 

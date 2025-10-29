@@ -13,9 +13,9 @@
 
 // All available log categories
 const CATEGORIES = {
-  // Core operations (these are special)
-  'PIPELINE-STATUS': true,  // Always enabled - main progress indicator
-  'ERROR': true,           // Always enabled - all errors
+  // Core operations
+  'PIPELINE-STATUS': false,  // Main progress indicator (enable with LOG_CATEGORIES)
+  'ERROR': true,            // Always enabled - all errors
 
   // File operations
   'INDEXING': false,
@@ -42,6 +42,17 @@ const CATEGORIES = {
   'MODEL-LOADER': false,
   'NODE-MESSENGER': false,
 
+  // Ollama integration (legacy)
+  'OLLAMA-SERVICE': false,
+  'OLLAMA-EMBEDDER': false,
+  'OLLAMA-CLIENT': false,
+
+  // Python Sidecar (embedding service)
+  'SIDECAR-SERVICE': false,
+  'SIDECAR-STDOUT': false,
+  'SIDECAR-STDERR': false,
+  'WORKER-STARTUP': false,
+
   // System monitoring
   'MEMORY': false,
   'PERFORMANCE': false,
@@ -61,7 +72,7 @@ export type LogCategory = keyof typeof CATEGORIES;
 
 class Logger {
   private enabled: Set<string>;
-  private readonly alwaysEnabled = ['PIPELINE-STATUS', 'ERROR'];
+  private readonly alwaysEnabled = ['ERROR'];
 
   constructor() {
     this.enabled = this.parseConfig();
@@ -206,8 +217,10 @@ export { Logger };
 export const LOG_PRESETS = {
   'file-processing': 'WORKER,PROCESS-QUEUE,INDEXING,QUEUE',
   'embedder-debug': 'EMBEDDER-*,MEMORY',
+  'sidecar-debug': 'SIDECAR-*,WORKER-STARTUP',  // Python sidecar debugging
   'performance': 'PERFORMANCE,PROFILING,MEMORY',
   'encoding-issues': 'ENCODING,FILE-STATUS,INDEXING',
+  'progress': 'PIPELINE-STATUS',  // Show progress only
   'full-debug': '*',
-  'quiet': '',  // Only PIPELINE-STATUS and errors
+  'silent': '',  // Only errors (default)
 };

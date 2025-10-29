@@ -15,7 +15,10 @@ import { calculateOptimalConcurrency, getConcurrencyMessage } from './cpuConcurr
 import { setupProfiling, profileHandleFile, recordEvent, profiler } from './profiling-integration';
 import { PipelineStatusFormatter } from '../services/PipelineService';
 import { logger } from '../../shared/utils/logger';
-import { StartupStage, type StageProgress } from '../startup/StartupStages';
+import {
+  type StartupStage,
+  createStageMessage
+} from '../../shared/types/startup';
 import { shouldRestartEmbedder, bytesToMB } from '../utils/embedder-health';
 
 // Load mock setup if in test mode with mocks enabled
@@ -35,13 +38,9 @@ const folderRemovalManager = new FolderRemovalManager();
 
 // Helper to emit startup stage progress
 function emitStageProgress(stage: StartupStage, message?: string, progress?: number) {
-  const stageProgress: StageProgress = {
-    stage,
-    message,
-    progress,
-    timestamp: Date.now()
-  };
-  parentPort?.postMessage({ type: 'startup:stage', payload: stageProgress });
+  // Use type-safe message builder for consistency
+  const stageMessage = createStageMessage(stage, message, progress);
+  parentPort?.postMessage(stageMessage);
   logger.log('STARTUP', `Stage: ${stage}${message ? ` - ${message}` : ''}${progress !== undefined ? ` (${progress}%)` : ''}`);
 }
 
@@ -87,7 +86,15 @@ setInterval(async () => {
       backpressureActive: false
     };
 
-    const embedderStats = embedderPool ? embedderPool.getStats() : [];
+    // Python sidecar embedder stats (simplified - no pool management needed)
+    const embedderStats = sidecarEmbedder ? [{
+      id: 'sidecar-0',
+      filesProcessed: sidecarEmbedder.getStats().filesSinceSpawn,
+      memoryUsage: 0, // Sidecar manages its own memory
+      isHealthy: sidecarEmbedder.getStats().isReady,
+      loadCount: 0, // Not applicable for sidecar
+      restartCount: 0 // Sidecar doesn't restart like old embedders
+    }] : [];
     const processingFiles = fileQueue.getProcessingFiles();
     const fileTrackers = embeddingQueue ? embeddingQueue.getFileTrackers() : new Map();
     const maxConcurrent = fileQueue.getCurrentMaxConcurrent();
@@ -109,24 +116,8 @@ setInterval(async () => {
       payload: pipelineStatus
     });
   }
-  
-  // Check embedder pool health and restart if needed
-  if (embedderPool) {
-    try {
-      const stats = embedderPool.getStats();
-      for (const stat of stats) {
-        // Use the extracted function for consistency with tests
-        if (shouldRestartEmbedder(stat.filesProcessed, stat.memoryUsage)) {
-          const memoryMB = bytesToMB(stat.memoryUsage);
-          logger.log('MEMORY', `Proactively restarting embedder ${stat.id} (files: ${stat.filesProcessed}, memory: ${memoryMB}MB)`);
-          await embedderPool.restartEmbedder(stat.id);
-          recordEvent('embedderRestart'); // Track for profiling
-        }
-      }
-    } catch (error) {
-      logger.error('MEMORY', 'Failed to check embedder health:', error);
-    }
-  }
+
+  // Python sidecar manages its own memory and lifecycle
 }, 2000);
 
 import { getParserForExtension, getEnabledExtensions } from '../parsers/registry';
@@ -139,15 +130,16 @@ try {
 } catch (_e) {
   logger.log('STARTUP', 'PDF parsing not available');
 }
-// Use isolated embedder for better memory management
-import { EmbedderPool } from '../../shared/embeddings/embedder-pool';
+// Use Python sidecar embedder for better reliability
+import { PythonSidecarEmbedder } from './embeddings/PythonSidecarEmbedder';
+import { PythonSidecarService } from './PythonSidecarService';
 import { EmbeddingQueue } from '../core/embedding/EmbeddingQueue';
+import { WorkerStartup } from './WorkerStartup'; // New state machine
 import crypto from 'node:crypto';
 import chokidar from 'chokidar';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ConfigManager } from './config';
-import { downloadModelSequentially, checkModelExists as checkModelExistsNew } from '../services/ModelService';
 import { scanDirectories, type ScanOptions } from '../core/indexing/directoryScanner';
 
 let db: any = null;
@@ -158,8 +150,10 @@ let paused = false;
 let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
 let configManager: ConfigManager | null = null;
-let embedderPool: EmbedderPool | null = null;
+let sidecarEmbedder: PythonSidecarEmbedder | null = null;
+let sidecarService: PythonSidecarService | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
+let workerStartup: WorkerStartup | null = null; // New startup state machine
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
@@ -204,42 +198,108 @@ declare global {
   var filesLoadedSent: boolean | undefined;
 }
 
-// Helper function to check if model exists (use new implementation)
-function checkModelExists(userDataPath: string): boolean {
-  const modelBasePath = path.join(userDataPath, 'models', 'Xenova', 'multilingual-e5-small');
-  return checkModelExistsNew(modelBasePath);
+// Database version management
+// Version 1: 384-dimensional vectors (old Xenova multilingual-e5-small model)
+// Version 2: 1024-dimensional vectors (Ollama bge-m3 model - buggy, deprecated)
+// Version 3: 768-dimensional vectors (Ollama nomic-embed-text - stable)
+// Version 4: 768-dimensional vectors (Python sidecar paraphrase-multilingual-mpnet-base-v2 - production)
+const DB_VERSION = 4;
+const DB_VERSION_FILE = '.db-version';
+
+/**
+ * Check if database version matches current version
+ * @param dir Database directory
+ * @returns true if migration needed, false if version is current
+ */
+export async function checkDatabaseVersion(dir: string): Promise<boolean> {
+  const versionFile = path.join(dir, DB_VERSION_FILE);
+  try {
+    const content = await fs.promises.readFile(versionFile, 'utf-8');
+    const existingVersion = parseInt(content.trim(), 10);
+
+    if (isNaN(existingVersion)) {
+      logger.log('DATABASE', 'Version file contains invalid data');
+      return true; // Corrupted = needs migration
+    }
+
+    return existingVersion !== DB_VERSION;
+  } catch {
+    // File doesn't exist or can't be read
+    return true;
+  }
 }
 
-// Helper function to download model (use new sequential downloader)
-async function downloadModel(userDataPath: string): Promise<void> {
-  try {
-    // Use the new sequential downloader
-    await downloadModelSequentially(userDataPath);
-    
-    // Now that files are downloaded, we still need to initialize transformers.js
-    // with the correct paths so the embedder child process can use them
-    const transformers = await import('@xenova/transformers');
-  
-    // Set the model cache path for transformers.js
-    const modelCachePath = path.join(userDataPath, 'models');
-    transformers.env.localModelPath = modelCachePath;
-    transformers.env.cacheDir = modelCachePath;
-    transformers.env.allowRemoteModels = false; // Disable remote downloads since we already have the files
-  } catch (err) {
-    logger.error('WORKER', 'Model download failed:', err);
-    throw err;
+/**
+ * Migrate database if version doesn't match
+ * @param dir Database directory
+ * @returns true if migration was performed, false if not needed
+ */
+export async function migrateDatabaseIfNeeded(dir: string): Promise<boolean> {
+  const needsMigration = await checkDatabaseVersion(dir);
+
+  if (!needsMigration) {
+    logger.log('DATABASE', `Database version ${DB_VERSION} is current, no migration needed`);
+    return false;
   }
+
+  logger.log('DATABASE', `⚠️  Database version mismatch detected`);
+  logger.log('DATABASE', `🔄 Migrating to database version ${DB_VERSION}...`);
+
+  try {
+    // Ensure directory exists
+    await fs.promises.mkdir(dir, { recursive: true });
+
+    // Delete all .lance directories (chunks.lance, file_status.lance, etc.)
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.endsWith('.lance')) {
+        const fullPath = path.join(dir, entry.name);
+        logger.log('DATABASE', `Deleting old database: ${entry.name}`);
+        await fs.promises.rm(fullPath, { recursive: true, force: true });
+      }
+    }
+
+    // Delete old version file
+    const versionFile = path.join(dir, DB_VERSION_FILE);
+    await fs.promises.rm(versionFile, { force: true });
+
+    // Clear fileHashes to force re-indexing
+    fileHashes.clear();
+
+    logger.log('DATABASE', '✅ Database migration complete. All files will be re-indexed.');
+    return true;
+  } catch (error) {
+    logger.error('DATABASE', 'Failed to migrate database:', error);
+    throw error;
+  }
+}
+
+/**
+ * Write current database version to file
+ * @param dir Database directory
+ */
+export async function writeDatabaseVersion(dir: string): Promise<void> {
+  const versionFile = path.join(dir, DB_VERSION_FILE);
+  await fs.promises.writeFile(versionFile, String(DB_VERSION), 'utf-8');
+  logger.log('DATABASE', `Database version ${DB_VERSION} written`);
 }
 
 async function initDB(dir: string, _userDataPath: string) {
   try {
-    emitStageProgress(StartupStage.DB_INIT, 'Initializing config manager');
+    emitStageProgress('db_init', 'Checking database version');
+    // Check database version and migrate if needed
+    await migrateDatabaseIfNeeded(dir);
+
+    emitStageProgress('db_init', 'Initializing config manager');
     // Initialize config manager
     configManager = new ConfigManager(dir);
 
-    emitStageProgress(StartupStage.DB_INIT, 'Connecting to database');
+    emitStageProgress('db_init', 'Connecting to database');
     db = await lancedb.connect(dir);
-    
+
+    // nomic-embed-text model uses 768-dimensional vectors
+    const EXPECTED_VECTOR_DIMENSION = 768;
+
     tbl = await db.openTable('chunks').catch(async () => {
       // Create table with initial schema
       const initialData = [{
@@ -249,28 +309,31 @@ async function initDB(dir: string, _userDataPath: string) {
         page: 0,
         offset: 0,
         text: '',
-        vector: new Array(384).fill(0),
+        vector: new Array(EXPECTED_VECTOR_DIMENSION).fill(0),
         type: 'init',
         title: ''
       }];
-      
+
       const table = await db.createTable('chunks', initialData, {
         mode: 'create'
       });
-      
+
       // Delete the initialization record
       try {
         await table.delete('id = "init"');
       } catch (e: any) {
         logger.log('DATABASE', 'Could not delete init record (may not exist):', e?.message || e);
       }
-      
+
       return table;
     });
-    
+
     logger.log('DATABASE', 'Database initialized');
 
-    emitStageProgress(StartupStage.DB_INIT, 'Creating file status table');
+    // Write database version marker
+    await writeDatabaseVersion(dir);
+
+    emitStageProgress('db_init', 'Creating file status table');
     // Initialize file status table (optional - won't fail if it doesn't work)
     try {
       fileStatusTable = await initializeFileStatusTable(db);
@@ -278,9 +341,9 @@ async function initDB(dir: string, _userDataPath: string) {
       logger.error('FILE-STATUS', 'Failed to initialize file status table:', e);
       fileStatusTable = null;
     }
-    
+
     // Load existing indexed files to prevent re-indexing
-    emitStageProgress(StartupStage.DB_LOAD, 'Loading existing indexed files');
+    emitStageProgress('db_load', 'Loading existing indexed files');
     try {
       // Get all unique file paths from the index
       const allRows = await tbl.query()
@@ -310,7 +373,7 @@ async function initDB(dir: string, _userDataPath: string) {
         // Report progress every 100 files or at the end
         if (processed % 100 === 0 || processed === total) {
           const progress = Math.round((processed / total) * 100);
-          emitStageProgress(StartupStage.DB_LOAD, `Loaded ${processed}/${total} files`, progress);
+          emitStageProgress('db_load', `Loaded ${processed}/${total} files`, progress);
         }
       }
 
@@ -364,12 +427,12 @@ async function initDB(dir: string, _userDataPath: string) {
     const config = await configManager!.getConfig();
     const savedFolders = config.watchedFolders || [];
     if (savedFolders.length > 0) {
-      emitStageProgress(StartupStage.FOLDER_SCAN, `Scanning ${savedFolders.length} folder(s)`);
+      emitStageProgress('folder_scan', `Scanning ${savedFolders.length} folder(s)`);
       logger.log('WATCHER', 'Auto-starting watch on saved folders:', savedFolders);
       await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
     } else {
       logger.log('WATCHER', 'No saved folders to watch');
-      emitStageProgress(StartupStage.FOLDER_SCAN, 'No folders to scan');
+      emitStageProgress('folder_scan', 'No folders to scan');
     }
     
     // Setup profiling if enabled
@@ -386,158 +449,8 @@ async function initDB(dir: string, _userDataPath: string) {
 let healthCheckInterval: NodeJS.Timeout | null = null;
 
 function startEmbedderHealthCheck() {
-  if (healthCheckInterval) {
-    clearInterval(healthCheckInterval);
-  }
-  
-  const performHealthCheck = async () => {
-    if (!embedderPool) return;
-    
-    try {
-      await embedderPool.checkHealth();
-    } catch (error) {
-      logger.error('WORKER', 'Health check failed:', error);
-    }
-  };
-  
-  // Check health every 5 seconds
-  healthCheckInterval = setInterval(performHealthCheck, 5000);
-  logger.log('WORKER', 'Started embedder health check monitoring');
-}
-
-// Separate function to check and download model after worker is ready
-async function initializeModel(userDataPath: string) {
-  // Check and download model if needed (ONCE at startup)
-  emitStageProgress(StartupStage.MODEL_CHECK, 'Checking for ML model');
-  logger.log('WORKER', 'Checking for ML model...');
-
-  modelReady = checkModelExists(userDataPath);
-  logger.log('WORKER', 'Model check:', modelReady ? 'found' : 'not found');
-  
-  if (!modelReady) {
-    emitStageProgress(StartupStage.MODEL_DOWNLOAD, 'Downloading ML model');
-    logger.log('WORKER', 'Model not found, downloading...');
-    try {
-      await downloadModel(userDataPath);
-      modelReady = true;
-      logger.log('WORKER', '========== MODEL DOWNLOAD COMPLETE ==========');
-      
-      // In test mode with mocks, add a delay before sending complete
-      // This allows the test to see the last file name in the UI
-      if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
-        logger.log('WORKER', 'Test mode: waiting 2 seconds before sending complete');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      
-      // Send download complete notification
-      if (parentPort) {
-        logger.log('WORKER', 'Sending model:download:complete message');
-        parentPort.postMessage({ type: 'model:download:complete' });
-      }
-    } catch (error) {
-      logger.error('WORKER', '========== MODEL DOWNLOAD FAILED ==========');
-      logger.error('WORKER', 'Error:', error);
-      modelReady = false;
-    }
-  } else {
-    logger.log('WORKER', '========== MODEL FOUND, SKIPPING DOWNLOAD ==========');
-  }
-  
-  // Send model ready status
-  if (parentPort) {
-    parentPort.postMessage({
-      type: 'model:ready',
-      payload: { ready: modelReady }
-    });
-  }
-  
-  // Initialize embedder pool (it will handle model download internally if needed)
-  if (!embedderPool) {
-    const settings = configManager?.getSettings();
-    const poolSize = settings?.embedderPoolSize ?? 2;
-    emitStageProgress(StartupStage.EMBEDDER_INIT, `Initializing ${poolSize} embedder processes`);
-    logger.log('WORKER', `Initializing embedder pool with ${poolSize} processes`);
-    
-    embedderPool = new EmbedderPool({
-      poolSize,
-      maxFilesBeforeRestart: 200,  // Restart every 200 files (was too low)
-      maxMemoryMB: 1500,            // Restart when child process hits 1.5GB RSS
-      onEmbedderRestart: (index) => {
-        // Notify the embedding queue that an embedder is restarting
-        if (embeddingQueue) {
-          embeddingQueue.onEmbedderRestart(index);
-        }
-      }
-    });
-    
-    try {
-      logger.log('WORKER', 'About to call embedderPool.initialize()');
-      await embedderPool.initialize();
-      emitStageProgress(StartupStage.EMBEDDER_INIT, 'Embedder pool ready');
-      logger.log('WORKER', 'Embedder pool initialized successfully');
-
-      // Initialize the embedding queue with the pool
-      const batchSize = settings?.embeddingBatchSize ?? 32;
-      logger.log('WORKER', 'Creating EmbeddingQueue with batch size:', batchSize);
-      embeddingQueue = new EmbeddingQueue({
-        maxQueueSize: 2000,
-        batchSize,
-        backpressureThreshold: 1000,
-        onProgress: (filePath: string, processed: number, total: number) => {
-          logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
-        },
-        onFileComplete: (filePath: string) => {
-          logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
-        }
-      });
-      logger.log('WORKER', 'About to call embeddingQueue.initialize()');
-      // Initialize with batch processor that writes to database
-      embeddingQueue.initialize(embedderPool, async (batch: any) => {
-        // Extract file metadata from the first chunk
-        const filePath = batch.chunks[0].metadata.filePath;
-        const fileExt = path.extname(filePath).slice(1).toLowerCase();
-
-        // Get file stats
-        const stat = await fs.promises.stat(filePath);
-        const mtime = stat.mtimeMs;
-
-        // Create database rows
-        const rows = batch.chunks.map((chunk: any, idx: number) => {
-          const id = crypto.createHash('sha1')
-            .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
-            .digest('hex');
-
-          return {
-            id,
-            path: filePath,
-            mtime,
-            page: chunk.metadata.page || 0,
-            offset: chunk.metadata.offset,
-            text: chunk.text,
-            vector: batch.vectors[idx],
-            type: fileExt,
-            title: path.basename(filePath)
-          };
-        });
-
-        // Write to database
-        await mergeRows(rows);
-      });
-      logger.log('WORKER', 'Embedding queue initialized successfully');
-
-      // Start health check monitoring
-      startEmbedderHealthCheck();
-    } catch (error) {
-      logger.error('WORKER', 'Failed to initialize embedder pool:', error);
-      // Critical error - we need the embedder pool to function
-      throw new Error(`Failed to initialize embedder pool: ${error}`);
-    }
-  }
-
-  logger.log('WORKER', 'Model initialization completed successfully');
-
-  // NOW we're truly ready - database, model, and embedders are all initialized
-  emitStageProgress(StartupStage.READY, 'Worker initialization complete');
+  // Ollama manages its own health, so no periodic health checks needed
+  // (Legacy health check code for EmbedderPool removed)
 }
 
 async function mergeRows(rows: any[]) {
@@ -916,8 +829,8 @@ const handleFile = profileHandleFile(handleFileOriginal);
 
 async function search(query: string, k = 10) {
   try {
-    // Use embedder pool for query embedding
-    const vectors = await embedderPool!.embed([query], true);
+    // Use sidecar embedder for query embedding
+    const vectors = await sidecarEmbedder!.embed([query]);
     const qvec = vectors[0];
     const results = await tbl.search(qvec)
       .limit(k)
@@ -1351,7 +1264,7 @@ parentPort!.on('message', async (msg: any) => {
   try {
     switch (msg.type) {
       case 'init':
-        emitStageProgress(StartupStage.WORKER_SPAWN, 'Worker started');
+        emitStageProgress('worker_spawn', 'Worker started');
         // Set user data path for embedder to use for model cache, with fallback for tests
         const userDataPath = msg.userDataPath || path.join(require('os').tmpdir(), 'semantica-test');
         process.env.USER_DATA_PATH = userDataPath;
@@ -1360,17 +1273,88 @@ parentPort!.on('message', async (msg: any) => {
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
 
         await initDB(dbDir, userDataPath);
-        parentPort!.postMessage({ type: 'ready' });
-        
-        // Initialize model in background after worker is ready
-        initializeModel(userDataPath).then(() => {
-          // Start processing queue now that model is ready
-          logger.log('WORKER', 'Model initialization complete - starting queue processing');
-          processQueue();
-        }).catch((error) => {
-          logger.error('WORKER', 'Model initialization error:', error);
-          // Don't start processing if model initialization failed
-        });
+        // Note: 'ready' message is sent by WorkerStartup after full initialization
+        // Don't send legacy 'ready' here - it creates a race condition
+
+        // Auto-start: Initialize embedder using WorkerStartup state machine
+        (async () => {
+          try {
+            workerStartup = new WorkerStartup();
+            const settings = configManager?.getSettings();
+
+            // This handles: Python sidecar start → model load → embedder init
+            sidecarEmbedder = await workerStartup.initialize(settings);
+            sidecarService = workerStartup.getSidecarService();
+
+            if (!sidecarEmbedder) {
+              logger.error('WORKER', 'Startup failed - no embedder created');
+              return;
+            }
+
+            // Create embedding queue with batch processor
+            const batchSize = settings?.embeddingBatchSize ?? 32;
+            embeddingQueue = new EmbeddingQueue({
+              maxQueueSize: 2000,
+              batchSize,
+              maxTokensPerBatch: 7000, // Safe limit with ~1K buffer to prevent EOF errors
+              backpressureThreshold: 1000,
+              onProgress: (filePath: string, processed: number, total: number) => {
+                logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
+              },
+              onFileComplete: (filePath: string) => {
+                logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
+              }
+            });
+
+            // Initialize with batch processor using sidecar embedder
+            embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
+              // Extract file metadata from the first chunk
+              const filePath = batch.chunks[0].metadata.filePath;
+              const fileExt = path.extname(filePath).slice(1).toLowerCase();
+
+              // Get file stats
+              const stat = await fs.promises.stat(filePath);
+              const mtime = stat.mtimeMs;
+
+              // Create database rows
+              const rows = batch.chunks.map((chunk: any, idx: number) => {
+                const id = crypto.createHash('sha1')
+                  .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+                  .digest('hex');
+
+                return {
+                  id,
+                  path: filePath,
+                  mtime,
+                  page: chunk.metadata.page || 0,
+                  offset: chunk.metadata.offset,
+                  text: chunk.text,
+                  vector: batch.vectors[idx],
+                  type: fileExt,
+                  title: path.basename(filePath)
+                };
+              });
+
+              // Write to database
+              await mergeRows(rows);
+            });
+
+            logger.log('WORKER', 'Embedding queue initialized');
+            modelReady = true; // Mark as ready for legacy code
+
+            // Notify that files are loaded (for StartupCoordinator)
+            if (!global.filesLoadedSent && parentPort) {
+              logger.log('WORKER', 'Sending files:loaded event');
+              parentPort.postMessage({ type: 'files:loaded' });
+              global.filesLoadedSent = true;
+            }
+
+            // Start processing any queued files
+            processQueue();
+          } catch (error) {
+            logger.error('WORKER', 'Startup initialization failed:', error);
+          }
+        })();
         break;
         
       case 'checkModel':
@@ -1409,7 +1393,7 @@ parentPort!.on('message', async (msg: any) => {
         // Model download is handled during init, this is now a no-op
         // Just return success if model is ready
         if (msg.id) {
-          parentPort!.postMessage({ 
+          parentPort!.postMessage({
             id: msg.id,
             payload: { success: modelReady }
           });
@@ -1418,7 +1402,77 @@ parentPort!.on('message', async (msg: any) => {
           parentPort!.postMessage({ type: 'model:download:complete' });
         }
         break;
-        
+
+      case 'startup:retry':
+        // Retry initialization after error
+        logger.log('WORKER', 'Retrying startup sequence...');
+        (async () => {
+          try {
+            workerStartup = new WorkerStartup();
+            const settings = configManager?.getSettings();
+            sidecarEmbedder = await workerStartup.initialize(settings);
+            sidecarService = workerStartup.getSidecarService();
+
+            if (!sidecarEmbedder) {
+              logger.error('WORKER', 'Startup retry failed - no embedder created');
+              return;
+            }
+
+            // Recreate embedding queue
+            const batchSize = settings?.embeddingBatchSize ?? 32;
+            embeddingQueue = new EmbeddingQueue({
+              maxQueueSize: 2000,
+              batchSize,
+              maxTokensPerBatch: 7000, // Safe limit with ~1K buffer to prevent EOF errors
+              backpressureThreshold: 1000
+            });
+
+            embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
+              const filePath = batch.chunks[0].metadata.filePath;
+              const fileExt = path.extname(filePath).slice(1).toLowerCase();
+              const stat = await fs.promises.stat(filePath);
+              const mtime = stat.mtimeMs;
+
+              const rows = batch.chunks.map((chunk: any, idx: number) => {
+                const id = crypto.createHash('sha1')
+                  .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+                  .digest('hex');
+                return {
+                  id,
+                  path: filePath,
+                  mtime,
+                  page: chunk.metadata.page || 0,
+                  offset: chunk.metadata.offset,
+                  text: chunk.text,
+                  vector: batch.vectors[idx],
+                  type: fileExt,
+                  title: path.basename(filePath)
+                };
+              });
+              await mergeRows(rows);
+            });
+
+            modelReady = true;
+            logger.log('WORKER', 'Startup retry successful');
+            processQueue();
+          } catch (error) {
+            logger.error('WORKER', 'Startup retry failed:', error);
+          }
+        })();
+        break;
+
+      case 'diagnostics:getLogs':
+        // Return diagnostic logs from ring buffer
+        if (workerStartup && msg.id) {
+          const logs = workerStartup.getLogs();
+          parentPort!.postMessage({
+            channel: 'diagnostics:logs',
+            id: msg.id,
+            logs
+          });
+        }
+        break;
+
       case 'watchStart':
         const { roots, options } = msg.payload;
         
@@ -1500,8 +1554,10 @@ parentPort!.on('message', async (msg: any) => {
         break;
         
       case 'getWatchedFolders':
+        const watchedFolders = configManager?.getWatchedFolders() || [];
+        logger.log('WORKER', `getWatchedFolders called - returning ${watchedFolders.length} folders:`, watchedFolders);
         if (msg.id) {
-          parentPort!.postMessage({ id: msg.id, payload: configManager?.getWatchedFolders() || [] });
+          parentPort!.postMessage({ id: msg.id, payload: watchedFolders });
         }
         break;
         
@@ -1621,10 +1677,6 @@ parentPort!.on('message', async (msg: any) => {
           clearInterval(healthCheckInterval);
           healthCheckInterval = null;
         }
-        // Shutdown embedder pool
-        if (embedderPool) {
-          await embedderPool.dispose();
-        }
         if (db) {
           await db.close();
         }
@@ -1649,13 +1701,14 @@ process.on('uncaughtException', (error) => {
 });
 
 // Cleanup on exit
-process.on('exit', async () => {
+// Note: 'exit' event handlers CANNOT be async - Node.js will exit immediately
+// Async cleanup (sidecar shutdown) is handled in the 'shutdown' message handler
+// and in main process before-quit handler
+process.on('exit', () => {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (embedderPool) {
-    await embedderPool.dispose();
-  }
+  // Cannot await async operations here - they will be ignored
 });
 
 process.on('SIGTERM', async () => {
@@ -1667,12 +1720,15 @@ process.on('SIGTERM', async () => {
       await profiler.saveReport();
     }
   }
-  
+
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
-  if (embedderPool) {
-    await embedderPool.dispose();
+  if (sidecarEmbedder) {
+    await sidecarEmbedder.shutdown();
+  }
+  if (sidecarService) {
+    await sidecarService.stopSidecar();
   }
   process.exit(0);
 });

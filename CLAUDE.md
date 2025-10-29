@@ -9,17 +9,19 @@ Semantica is an Electron-based application that provides offline semantic search
 ## Key Technical Context
 
 ### Architecture
-- **Multi-process design**: Main process, Worker thread, and Embedder child process
-- **Memory isolation**: Embedder process auto-restarts to prevent memory leaks
+- **Multi-process design**: Main process and Worker thread
+- **Python Sidecar**: FastAPI HTTP server for embeddings (process isolation, memory management)
 - **Search-first UI**: Full-screen search with modal settings overlay
 - See [architecture.md](./docs/specs/02-architecture.md) for complete details
 
 ### Technology Stack
 - **Frontend**: React, TypeScript, Tailwind CSS
-- **Backend**: Electron, Node.js Worker Threads
+- **Backend**: Electron 38.4.0, Node.js 22.19.0 (via Electron), Worker Threads
 - **Database**: LanceDB for vector storage
-- **ML Model**: Xenova/multilingual-e5-small for embeddings
+- **ML Model**: Python sidecar with sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768-dim)
+- **Embedding Service**: FastAPI HTTP server running locally on port 8421
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
+- **Build System**: electron-builder 25.1.8 (see Build Notes below)
 
 ## Important Guidelines
 
@@ -55,19 +57,29 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- See [testing strategy](./planning/testing-strategy.md) for details
+- Unit tests: 509 tests (508 passing, 1 known timeout in Python sidecar)
+- E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
-- Embedder process limited to 300MB external
-- Auto-restart after 200-500 files or memory threshold
-- See [memory-solution.md](./docs/specs/memory-solution.md) for implementation
+- Python sidecar manages its own memory externally (no manual restarts needed)
+- Stable memory usage: 400-600MB for embedding service
 
 ### Database Operations
 - LanceDB requires initialization with dummy data
 - File status tracked in separate table
 - Avoid complex WHERE clauses (not yet implemented)
-- See [troubleshooting.md](./docs/specs/troubleshooting.md) for common issues
+
+### Build System Notes
+- **Electron Version**: 38.4.0 (upgraded from 33.x)
+  - Chromium 140, Node.js 22.19.0
+  - macOS 12+ (Monterey or later) required
+  - Native modules rebuilt for Node.js 22
+- **electron-builder**: Must use v25.1.8 (not v26.x)
+  - electron-builder 26.x has a bug with LanceDB's optional dependencies
+  - It scans all platform-specific packages even if not installed
+  - v25.1.8 works perfectly with Electron 38 and handles optional deps correctly
+- **Security**: All modern Electron security practices enabled (context isolation, sandbox, secure IPC)
 
 ## Common Tasks
 
@@ -107,8 +119,11 @@ npm run dev
 The codebase uses a category-based logging system to reduce noise. Configure with `LOG_CATEGORIES`:
 
 ```bash
-# Default (minimal - only progress and errors)
+# Default (silent - only errors)
 npm run dev
+
+# Show progress
+LOG_CATEGORIES=PIPELINE-STATUS npm run dev
 
 # Debug file processing
 LOG_CATEGORIES=WORKER,INDEXING,QUEUE npm run dev
@@ -120,7 +135,7 @@ LOG_CATEGORIES=EMBEDDER-*,MEMORY npm run dev
 LOG_CATEGORIES=* npm run dev
 ```
 
-See [logging-migration.md](./docs/logging-migration.md) for available categories.
+See [logging.md](./docs/guides/logging.md) for available categories.
 
 ### Building for Production
 ```bash
@@ -141,59 +156,18 @@ E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
 ### E2E Testing Notes
 - Tests run sequentially (not in parallel) to avoid race conditions
 - Mock downloads available for testing model download flow
-- See [operations guide](./specs/04-operations.md#e2e-testing-configuration) for details
-
-## Recent Updates
-
-### 2025-09-20 - Selective Logging System
-- **Category-based logging**: Replaced verbose logging with selective category system
-- **Silent by default**: Only shows PIPELINE-STATUS and errors unless configured
-- **Developer control**: Use LOG_CATEGORIES environment variable to enable specific logs
-- **Performance**: Reduced console I/O overhead by ~90%
-- **Debugging presets**: Common scenarios like `EMBEDDER-*` for embedder debugging
-- **Logger utility**: Centralized logging in `/src/shared/utils/logger.ts`
-
-### 2025-08-31 - Performance Optimizations & Profiling
-- **4x Performance Improvement**: Increased embedding batch size from 8 to 32, added parallel processing
-- **Parallel Batch Processing**: Now processes 2 embedding batches concurrently for 2x speedup
-- **Configurable Performance**: Added embeddingBatchSize and parallelBatches settings
-- **Performance Profiling System**: Added comprehensive profiling to identify bottlenecks
-- **ISO-8859-1 Fix**: Enhanced detection and handling of ISO-8859-1 encoded files (common in legacy code)
-- **Better Error Handling**: Added detailed logging and fallback encoding strategies
-- **Parser version 4**: Text/markdown parsers updated with robust legacy encoding support
-- **Identified Bottleneck**: Embeddings take 94.5% of processing time
-
-### 2025-08-30 - Text Encoding Detection
-- **Fixed garbled text issue**: Text files with non-UTF-8 encodings (ISO-8859-1, Windows-1252, etc.) now display correctly
-- **Multi-encoding support**: Added automatic encoding detection using `chardet` library
-- **Encoding conversion**: Proper conversion to UTF-8 using `iconv-lite`
-- **UTF-16 detection**: Special handling for UTF-16LE/BE files with and without BOM
-- **Mac Roman support**: Added detection for Mac Roman encoded files (common in legacy Mac files)
-- **Encoding utility**: Created `src/main/utils/encoding-detector.ts` for reusable encoding detection
-- **Parser versioning**: Centralized parser versions with single source of truth in each parser file
-- **Comprehensive tests**: Added 30+ unit tests for encoding detection and conversion
-
-### 2025-09-03 - E2E Testing Improvements
-- **Sequential Test Execution**: Configured Playwright to run tests sequentially to avoid race conditions
-- **Mock Network Requests**: Implemented Undici MockAgent for intercepting fetch in worker threads
-- **Test Environment Variables**: Added E2E_MOCK_DOWNLOADS and E2E_MOCK_DELAYS for controlled testing
-- **Fixed Model Path Issues**: Updated checkModelExists to accept userDataPath parameter
-- **Improved Test Reliability**: E2E tests now pass consistently without network dependencies
-
-### 2025-08-24
-- Implemented search-first UI with modal settings
-- Added file search feature in status bar
-- Fixed .doc file parsing with word-extractor
-- Created file status tracking in database
-- Normalized documentation file naming
-- Reorganized docs into specs/planning folders
+- See [operations guide](./docs/specs/04-operations.md#e2e-testing-configuration) for details
 
 ## Resources
-- [Architecture](./specs/architecture.md) - System design
-- [Memory Solution](./specs/memory-solution.md) - Memory management
-- [Troubleshooting](./specs/troubleshooting.md) - Common issues
-- [Documentation Standards](./specs/documentation-standards.md) - File naming conventions
-- [Parser Version Tracking](./planning/parser-version-tracking.md) - Future re-indexing system
+
+### Key Documentation
+- [Architecture](./docs/specs/02-architecture.md) - System design and overview
+- [Startup Flow](./docs/specs/08-startup-flow.md) - Complete initialization sequence
+- [Python Sidecar](./docs/specs/python-sidecar.md) - Embedding service specification
+- [Folder Structure](./docs/specs/12-folder-structure.md) - Codebase organization
+- [Logging Guide](./docs/guides/logging.md) - Category-based logging system
+
+### Important Constraints
 - Never run `npm run dev` without asking me first
 - Never commit to git without my permission
 

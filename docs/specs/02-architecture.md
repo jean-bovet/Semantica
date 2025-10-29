@@ -22,8 +22,8 @@ Main Process (Electron)
         ├── File Watching (Chokidar)
         ├── Document Parsing
         ├── LanceDB Operations
-        └── Embedder Child Process (Isolated)
-            └── Transformers.js (Memory-isolated)
+        └── Python Sidecar (HTTP)
+            └── FastAPI + sentence-transformers
 ```
 
 ## Core Components
@@ -56,9 +56,8 @@ The main process follows a strict initialization order to prevent IPC errors:
      - `DB_INIT`: Database connection and config initialization
      - `DB_LOAD`: Loading existing indexed files (with progress %)
      - `FOLDER_SCAN`: Scanning configured folders
-     - `MODEL_CHECK`: Verifying ML model exists
-     - `MODEL_DOWNLOAD`: Downloading model if needed
-     - `EMBEDDER_INIT`: Initializing embedder process pool
+     - `SIDECAR_START`: Starting Python embedding sidecar
+     - `SIDECAR_READY`: Sidecar health check passed
      - `READY`: All systems operational
    - **CRITICAL**: `app:ready` event sent only after ALL stages complete
    - UI shows loading spinner until `app:ready` received
@@ -96,16 +95,29 @@ Organized by domain:
   - `FolderRemovalManager.ts`: Handles folder removal from index
 
 #### Application Services (`src/main/services/`)
-- `ModelService.ts`: Handles model downloads sequentially
 - `PipelineService.ts`: Formats pipeline status for monitoring
 - `ReindexService.ts`: High-level re-indexing operations
 
-### 3. Embedder Child Process (`src/main/worker/embedder.child.ts`)
-- **Isolated process for memory safety**
-- Loads and runs the transformer model
-- Processes text embeddings
-- Automatically restarts when memory thresholds exceeded
-- Build output: `dist/embedder.child.cjs`
+### 3. Python Embedding Sidecar (`embedding_sidecar/embed_server.py`)
+- **Isolated Python process for reliability**
+- FastAPI HTTP server on port 8421
+- sentence-transformers model (paraphrase-multilingual-mpnet-base-v2)
+- Automatic startup and lifecycle management
+- 100% reliability (no EOF errors or segfaults)
+
+**Prerequisites:**
+- Python 3.9 or later required
+- Dependencies: `fastapi`, `uvicorn`, `pydantic`, `sentence-transformers`, `torch`, `pypdf`
+- Virtual environment auto-detection (`.venv` in `embedding_sidecar/`)
+- Falls back to system `python3` if no venv found
+- Pre-flight dependency check runs before startup (~3.5s)
+- Context-aware error messages (development vs production)
+
+**Lifecycle Management:**
+- Auto-restart on crash (max 3 attempts)
+- Health check polling during startup
+- Graceful shutdown with SIGTERM/SIGKILL fallback
+- Progress events for model downloading and loading
 
 ### 4. Startup System (`src/main/startup/`)
 - `StartupCoordinator.ts`: Manages staged initialization
@@ -155,33 +167,30 @@ Organized by domain:
 
 ## Memory Management Strategy
 
-### EmbedderPool Architecture
-The application uses a pool of embedder processes for parallel embedding generation:
+### Python Sidecar Architecture
+The application uses a Python-based embedding service for reliability and simplicity:
 
-```typescript
-class EmbedderPool {
-  // Pool configuration
-  poolSize: 2;              // Number of parallel processes
-  maxMemoryMB: 300;         // Per-process memory limit
-  maxFilesBeforeRestart: 5000; // Files processed before restart
-  
-  // Round-robin distribution
-  currentIndex = (currentIndex + 1) % poolSize;
-  
-  // Automatic recovery
-  async checkHealth() {
-    // Restart unhealthy processes
-    // Mutex-protected to prevent races
-  }
-}
+```
+PythonSidecarService
+  └── Python Process (FastAPI)
+      ├── sentence-transformers model
+      ├── Auto-managed memory (400-600MB stable)
+      ├── HTTP API on port 8421
+      └── Auto-restart on crash (optional)
 ```
 
+**Key Benefits:**
+- **Simple lifecycle**: Single Python process, no pooling needed
+- **External memory management**: Python handles its own memory
+- **No manual restarts**: Stable memory usage (<800MB)
+- **Clear errors**: Python stack traces vs C++ crashes
+
 ### Memory Monitoring
-Real-time memory tracking with automatic recovery:
-- RSS (Resident Set Size) monitoring
+Real-time memory tracking for the worker process:
+- RSS (Resident Set Size) monitoring (1500MB limit)
 - Heap usage tracking
-- External memory (native buffers) monitoring
-- Automatic child process restart when thresholds exceeded
+- Memory-based throttling at 800MB
+- Automatic concurrency adjustment
 
 ## Data Flow
 
@@ -205,21 +214,21 @@ Files are processed with **controlled parallelism** for optimal performance:
    - **Content Extraction**: Parse PDF/TXT/MD/DOCX/RTF files
    - **Text Chunking**: Split into 500-char chunks with 60-char overlap
    - **Embedding Generation** (Batched):
-     - Process chunks in batches of 8
-     - Each batch sent to isolated child process
-     - Wait for embeddings before next batch
+     - Process chunks in batches of 32
+     - Sent to Python sidecar via HTTP POST /embed
+     - sentence-transformers generates 768-dim vectors
    - **Vector Storage**: Store each batch in LanceDB with metadata
 4. **Memory Monitoring**: Continuous checks with automatic throttling
 5. **Status Updates**: Real-time progress (queued/processing/done)
 
 #### Memory Management
 - **Worker Process**: Limited to 1500MB RSS
-- **Embedder Pool**: Each process limited to 300MB RSS
-  - Auto-restart at 95% memory threshold
-  - Restart after 5000 files processed
-  - Memory checks every 10 files after initial 50
+- **Python Sidecar**: Manages its own memory (~400-600MB stable)
+  - No manual memory checks needed
+  - Auto-restart on crash (optional)
+  - External process isolation prevents worker memory impact
 - **CPU-Aware Throttling**: Reduces concurrency at 800MB worker RSS
-- Restarts are transparent - processing continues uninterrupted
+- Processing continues uninterrupted during any restarts
 
 ### Search Pipeline
 1. **Query Input**: User types in search box

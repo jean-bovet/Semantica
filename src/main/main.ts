@@ -1,12 +1,17 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, crashReporter } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, crashReporter, Notification } from 'electron';
 import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
-import { StartupCoordinator } from './startup/StartupCoordinator';
 import { logger } from '../shared/utils/logger';
-import type { StageProgress } from './startup/StartupStages';
+import {
+  isStartupStageMessage,
+  isStartupErrorMessage,
+  type StartupStageMessage,
+  type StartupErrorMessage,
+  type DownloadProgressMessage
+} from '../shared/types/startup';
 
 // Enable crash reporter to capture native crashes
 crashReporter.start({
@@ -57,7 +62,10 @@ let win: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
 let workerReady = false;
 const pendingCallbacks = new Map<string, (data: any) => void>();
-const stageProgressCallbacks = new Set<(progress: StageProgress) => void>();
+let startupTimeout: NodeJS.Timeout | null = null;
+let startupRetries = 0;
+const MAX_STARTUP_RETRIES = 3;
+const STARTUP_TIMEOUT_MS = 60000; // 60 seconds
 
 function spawnWorker() {
   worker?.terminate().catch(() => {});
@@ -66,39 +74,55 @@ function spawnWorker() {
   worker = new Worker(path.join(__dirname, 'worker.cjs'));
 
   worker.on('message', (msg: any) => {
-    if (msg.type === 'ready') {
-      workerReady = true;
-      logger.log('WORKER', 'Worker ready');
-      // Send initial progress with initialized flag
-      sendToWorker('progress').then((progress: any) => {
-        win?.webContents.send('indexer:progress', { ...progress, initialized: true });
-      });
-    } else if (msg.type === 'startup:stage') {
-      // Forward startup stage progress
-      stageProgressCallbacks.forEach(callback => callback(msg.payload));
-    } else if (msg.type === 'model:ready') {
-      // Model is ready (either found or downloaded)
-      logger.log('WORKER', 'Model ready:', msg.payload);
-      win?.webContents.send('model:check:result', { exists: msg.payload.ready });
-      if (msg.payload.ready) {
-        win?.webContents.send('model:download:complete');
+    // Handle typed startup protocol messages with validation
+    if (isStartupStageMessage(msg)) {
+      logger.log('STARTUP', `Stage: ${msg.stage} - ${msg.message || ''}`);
+
+      // Forward to renderer
+      win?.webContents.send('startup:stage', msg);
+
+      // Clear timeout if we reach 'ready' stage
+      if (msg.stage === 'ready') {
+        workerReady = true; // Set worker ready flag
+        if (startupTimeout) {
+          clearTimeout(startupTimeout);
+          startupTimeout = null;
+        }
+        startupRetries = 0; // Reset retry counter on success
       }
+    } else if (isStartupErrorMessage(msg)) {
+      logger.error('STARTUP', `Error: ${msg.code} - ${msg.message}`);
+
+      // Forward to renderer
+      win?.webContents.send('startup:error', msg);
+
+      // Clear timeout
+      if (startupTimeout) {
+        clearTimeout(startupTimeout);
+        startupTimeout = null;
+      }
+    } else if (msg.channel === 'model:download:progress') {
+      const progressMsg = msg as DownloadProgressMessage;
+      // Forward to renderer for UI
+      win?.webContents.send('model:download:progress', {
+        file: progressMsg.file,
+        progress: progressMsg.progress,
+        loaded: progressMsg.loaded,
+        total: progressMsg.total
+      });
+    } else if (msg.type === 'ready') {
+      workerReady = true;
+      logger.log('WORKER', 'Worker ready - starting initialization');
+      // Worker will auto-start initialization
     } else if (msg.type === 'files:loaded') {
       // Existing files have been loaded from database
       win?.webContents.send('files:loaded');
     } else if (msg.type === 'progress') {
       win?.webContents.send('indexer:progress', { ...msg.payload, initialized: true });
-    } else if (msg.type === 'model:check:result') {
-      win?.webContents.send('model:check:result', msg.payload);
-    } else if (msg.type === 'model:download:progress') {
-      win?.webContents.send('model:download:progress', msg.payload);
-    } else if (msg.type === 'model:download:complete') {
-      win?.webContents.send('model:download:complete');
     } else if (msg.type === 'pipeline:status') {
       // Log pipeline status to main process console AND send to renderer console
       logger.log('PIPELINE-STATUS', msg.payload);
       // Also send to renderer process console (which shows in browser dev tools)
-      // Send to Electron dev console (leave as-is for browser console)
       win?.webContents.executeJavaScript(`console.log(${JSON.stringify(msg.payload)})`);
     } else if (msg.id && pendingCallbacks.has(msg.id)) {
       const callback = pendingCallbacks.get(msg.id)!;
@@ -115,36 +139,55 @@ function spawnWorker() {
     if (code !== 0 && code !== null) {
       // Only respawn on actual errors, not on intentional termination
       logger.error('WORKER', `Worker stopped with exit code ${code}`);
-      setTimeout(spawnWorker, 1000);
+
+      // Handle retry logic with limit
+      if (startupRetries < MAX_STARTUP_RETRIES) {
+        startupRetries++;
+        logger.log('WORKER', `Retrying worker spawn (attempt ${startupRetries}/${MAX_STARTUP_RETRIES})...`);
+        setTimeout(spawnWorker, 1000);
+      } else {
+        logger.error('WORKER', 'Max retries exceeded, not respawning');
+        win?.webContents.send('startup:error', {
+          channel: 'startup:error',
+          code: 'STARTUP_TIMEOUT',
+          message: 'Worker failed to start after multiple attempts'
+        });
+      }
     }
   });
-  
+
+  // Setup startup timeout supervision
+  startupTimeout = setTimeout(() => {
+    logger.error('STARTUP', 'Startup timeout exceeded');
+    if (startupRetries < MAX_STARTUP_RETRIES) {
+      startupRetries++;
+      logger.log('STARTUP', `Retrying startup (attempt ${startupRetries}/${MAX_STARTUP_RETRIES})...`);
+      worker?.postMessage({ type: 'startup:retry' });
+    } else {
+      win?.webContents.send('startup:error', {
+        channel: 'startup:error',
+        code: 'STARTUP_TIMEOUT',
+        message: 'Startup exceeded timeout limit'
+      });
+    }
+  }, STARTUP_TIMEOUT_MS);
+
   // Get userData path with fallback for test environments
   const userDataPath = app.getPath('userData') || path.join(require('os').tmpdir(), 'semantica-test')
-  
+
   const dbDir = path.join(userDataPath, 'data');
   fs.mkdirSync(dbDir, { recursive: true });
-  
+
   // Create models directory for ML models
   const modelsDir = path.join(userDataPath, 'models');
   fs.mkdirSync(modelsDir, { recursive: true });
-  
+
   // Pass both paths to worker
-  worker.postMessage({ 
-    type: 'init', 
+  worker.postMessage({
+    type: 'init',
     dbDir,
     userDataPath
   });
-}
-
-async function waitForWorker(timeout = 10000): Promise<void> {
-  const startTime = Date.now();
-  while (!workerReady) {
-    if (Date.now() - startTime > timeout) {
-      throw new Error('Worker initialization timeout');
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
 }
 
 function sendToWorker(type: string, payload: any = {}): Promise<any> {
@@ -182,7 +225,7 @@ if (gotTheLock) {
       website: 'https://github.com/jean-bovet/Semantica',
       iconPath: path.join(__dirname, '../../build/icon.png')
     });
-    
+
     win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -196,16 +239,23 @@ if (gotTheLock) {
     titleBarStyle: 'hiddenInset',
     vibrancy: 'sidebar'
   });
-  
+
   mainWindow = win;
-  
+
   const isDev = process.env.NODE_ENV !== 'production';
-  
+
+  // Load UI immediately
+  if (isDev) {
+    win?.loadURL('http://localhost:5173');
+  } else {
+    win?.loadFile(path.join(__dirname, 'index.html'));
+  }
+
   // Configure auto-updater logging
   autoUpdater.logger = log;
   (autoUpdater.logger as any).transports.file.level = 'info';
   log.info('App starting...');
-  
+
   // Force update checking in dev mode if UPDATE_URL is set
   const updateUrl = process.env.UPDATE_URL || process.env.ELECTRON_UPDATER_URL;
   if (updateUrl) {
@@ -216,8 +266,8 @@ if (gotTheLock) {
       url: updateUrl
     });
   }
-  
-  
+
+
   // Handle update downloaded event - prompt for restart
   autoUpdater.on('update-downloaded', (info) => {
     log.info('Update downloaded:', info);
@@ -233,72 +283,28 @@ if (gotTheLock) {
       }
     });
   });
-  
+
   autoUpdater.on('error', (error) => {
     log.error('Update error:', error);
   });
-  
-  // Spawn worker asynchronously (don't block on it)
-  spawnWorker();
-  
-  // Use StartupCoordinator to manage the startup sequence
-  const coordinator = new StartupCoordinator(
-    {
-      waitForWorker: () => waitForWorker(),
-      waitForModel: () => sendToWorker('checkModel'),
-      waitForFiles: () => new Promise<void>(resolve => {
-        const handler = () => {
-          win?.webContents.off('ipc-message', checkFilesLoaded);
-          resolve();
-        };
-        const checkFilesLoaded = (_: any, channel: string) => {
-          if (channel === 'files:loaded') handler();
-        };
-        win?.webContents.on('ipc-message', checkFilesLoaded);
-        // Also check if files:loaded was already sent
-        if (worker && workerReady) {
-          sendToWorker('progress').then((progress: any) => {
-            if (progress.initialized) handler();
-          });
-        }
-      }),
-      waitForStats: () => sendToWorker('stats'),
-      onStageProgress: (callback) => {
-        stageProgressCallbacks.add(callback);
-      },
-      offStageProgress: (callback) => {
-        stageProgressCallbacks.delete(callback);
-      }
-    },
-    {
-      showWindow: () => {
-        if (isDev) {
-          win?.loadURL('http://localhost:5173');
-        } else {
-          win?.loadFile(path.join(__dirname, 'index.html'));
-        }
-      },
-      notifyFilesLoaded: () => win?.webContents.send('files:loaded'),
-      notifyReady: () => win?.webContents.send('app:ready'),
-      notifyError: (err) => win?.webContents.send('startup:error', err),
-      notifyStageProgress: (progress) => win?.webContents.send('startup:progress', progress)
-    }
-  );
-  
-  // Start the coordinated startup
-  coordinator.coordinate().catch(err => {
-    logger.error('STARTUP', 'Startup coordination failed:', err);
+
+  // Wait for renderer to load before spawning worker
+  // This ensures React component is mounted and listening for startup events
+  win.webContents.once('did-finish-load', () => {
+    logger.log('STARTUP', 'Renderer loaded, spawning worker...');
+    spawnWorker();
   });
-  
+
   // Register all IPC handlers
-  ipcMain.handle('model:check', async () => {
-    return sendToWorker('checkModel');
+
+  // Startup retry handler
+  ipcMain.handle('startup:retry', async () => {
+    logger.log('STARTUP', 'Retry requested from renderer');
+    startupRetries = 0; // Reset retry counter
+    worker?.postMessage({ type: 'startup:retry' });
+    return { success: true };
   });
-  
-  ipcMain.handle('model:download', async () => {
-    return sendToWorker('downloadModel');
-  });
-  
+
   ipcMain.handle('updater:check', async () => {
     log.info('Manual update check triggered from settings');
     try {
@@ -354,7 +360,11 @@ if (gotTheLock) {
     const progress = await sendToWorker('progress');
     return { ...progress, initialized: workerReady };
   });
-  
+
+  ipcMain.handle('worker:isReady', async () => {
+    return workerReady;
+  });
+
   ipcMain.handle('search:query', async (_, { q, k }) => {
     return sendToWorker('search', { q, k });
   });
@@ -438,15 +448,26 @@ app.on('activate', () => {
   }
 });
 
+// Guard flag to prevent before-quit infinite loop
+let isQuitting = false;
+
 app.on('before-quit', async (event) => {
+  // Prevent re-entry if already quitting
+  if (isQuitting) {
+    return;
+  }
+
+  // Prevent default quit to do cleanup first
   event.preventDefault();
-  
+  isQuitting = true;
+
   // Send shutdown signal to worker and wait
   if (worker) {
     worker.postMessage({ type: 'shutdown' });
     await new Promise(resolve => setTimeout(resolve, 500));
     worker.terminate();
   }
-  
-  app.exit(0);
+
+  // Use app.quit() instead of app.exit(0) for clean shutdown
+  app.quit();
 });

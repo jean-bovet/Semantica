@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { detectEncoding, decodeBuffer } from '../utils/encoding-detector';
+import { logger } from '../../shared/utils/logger';
 
 // Parser version - single source of truth (imported by parserVersions.ts)
 export const PARSER_VERSION = 4; // Version 4: Enhanced ISO-8859-1 and legacy encoding support with better error handling
@@ -14,7 +15,7 @@ export async function parseText(filePath: string): Promise<string> {
     
     // Detect encoding and convert to UTF-8
     const encoding = detectEncoding(buffer, path.basename(filePath));
-    console.log(`[TEXT PARSER] File: ${path.basename(filePath)}, Detected encoding: ${encoding}`);
+    logger.log('INDEXING', `Text parser - ${path.basename(filePath)}: encoding=${encoding}`);
     
     const content = decodeBuffer(buffer, encoding);
     
