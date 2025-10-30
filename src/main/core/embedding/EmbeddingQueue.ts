@@ -159,7 +159,7 @@ export class EmbeddingQueue {
 
   /**
    * Calculate dynamic batch size based on token limits
-   * Prevents EOF errors by ensuring batches don't exceed Ollama's token limit
+   * Prevents EOF errors by ensuring batches don't exceed the embedding service's token limit
    */
   private calculateBatchSize(): number {
     let batchSize = 0;
@@ -248,7 +248,7 @@ export class EmbeddingQueue {
       // Pull a batch from the queue
       const batch = this.queue.splice(0, batchSize);
 
-      // Process this batch sequentially (await to prevent overlapping requests to Ollama)
+      // Process this batch sequentially (await to prevent overlapping requests to embedding service)
       await this.processOneBatch(batch);
     }
   }
@@ -354,9 +354,6 @@ export class EmbeddingQueue {
 
     } catch (error) {
       logger.error('EMBEDDING-QUEUE', 'Batch processing failed:', error);
-
-      // Note: Batch capture now happens in OllamaClient.ts on first error occurrence
-      // This ensures we capture the batch data even if retries succeed
 
       // Remove from active tracking since it failed
       this.activeBatches.delete(batchId);

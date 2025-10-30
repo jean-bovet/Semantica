@@ -26,8 +26,6 @@ const { glob } = require('glob');
 // Configuration
 const SIDECAR_HOST = process.env.EMBED_HOST || '127.0.0.1';
 const SIDECAR_PORT = Number(process.env.EMBED_PORT || 8421);
-const OLLAMA_BASE_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'nomic-embed-text';
 const TIMEOUT_MS = 30000; // 30 seconds
 
 // Colors for terminal output
@@ -123,52 +121,6 @@ async function embedWithSidecar(texts, batchSize = 16, normalize = true) {
 }
 
 /**
- * Embed texts using Ollama (for comparison)
- */
-async function embedWithOllama(texts, model = OLLAMA_MODEL) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        input: texts,
-        keep_alive: '2m'
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeout);
-
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      return {
-        success: false,
-        status: response.status,
-        error: responseText
-      };
-    }
-
-    const data = JSON.parse(responseText);
-    return {
-      success: true,
-      embeddings: data.embeddings,
-      count: data.embeddings.length
-    };
-  } catch (error) {
-    clearTimeout(timeout);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}
-
-/**
  * Check sidecar health
  */
 async function checkSidecarHealth() {
@@ -216,12 +168,12 @@ async function checkSidecarHealth() {
 /**
  * Test the full batch
  */
-async function testFullBatch(batch, compareWithOllama = false) {
+async function testFullBatch(batch) {
   logSection(`Test 1: Full Batch (${batch.chunkCount} texts)`);
 
   console.log(`Chars: ${batch.totalChars}`);
   console.log(`Est. Tokens: ${batch.estimatedTokens}`);
-  console.log(`Original Error (Ollama): ${batch.error}`);
+  console.log(`Original Error: ${batch.error}`);
   console.log('\n🐍 Sending request to Python sidecar...');
 
   const startTime = Date.now();
@@ -233,22 +185,6 @@ async function testFullBatch(batch, compareWithOllama = false) {
     console.log(`Generated ${result.count} embeddings`);
     console.log(`Vector dim: ${result.vectors[0].length}`);
     console.log(`Throughput: ${(batch.chunkCount / (duration / 1000)).toFixed(2)} texts/sec`);
-
-    // Compare with Ollama if requested
-    if (compareWithOllama) {
-      console.log('\n🦙 Comparing with Ollama...');
-      const ollamaStart = Date.now();
-      const ollamaResult = await embedWithOllama(batch.texts);
-      const ollamaDuration = Date.now() - ollamaStart;
-
-      if (ollamaResult.success) {
-        log(`✅ Ollama also succeeded in ${ollamaDuration}ms`, 'green');
-        console.log(`   Speedup: ${(ollamaDuration / duration).toFixed(2)}x ${duration < ollamaDuration ? 'faster' : 'slower'}`);
-      } else {
-        log(`❌ Ollama failed: ${ollamaResult.error}`, 'red');
-        log('   → Python sidecar handles this batch better!', 'green');
-      }
-    }
 
     return { success: true, duration, failedTexts: [] };
   } else {
@@ -759,7 +695,7 @@ async function runPerformanceBenchmark(options = {}) {
 /**
  * Test a single batch file
  */
-async function testBatchFile(batchFile, compareWithOllama) {
+async function testBatchFile(batchFile) {
   logSection(`Testing: ${path.basename(batchFile)}`);
   log(`File: ${batchFile}`, 'cyan');
 
@@ -774,7 +710,7 @@ async function testBatchFile(batchFile, compareWithOllama) {
 
   analyzeBatch(batch);
 
-  const fullResult = await testFullBatch(batch, compareWithOllama);
+  const fullResult = await testFullBatch(batch);
 
   if (!fullResult.success) {
     // If full batch failed, test individual texts
@@ -812,7 +748,6 @@ Usage: node scripts/test-python-sidecar.js [options] <batch-file(s)>
 Options:
   --help              Show this help message
   --all               Test all failed-batch-*.json files on Desktop
-  --compare-ollama    Compare results with Ollama
 
   --perf              Run performance benchmarks
   --quick             Quick performance test (fewer iterations)
@@ -827,9 +762,6 @@ Examples:
 
   # Test all batches on Desktop
   node scripts/test-python-sidecar.js --all
-
-  # Test with Ollama comparison
-  node scripts/test-python-sidecar.js --compare-ollama ~/Desktop/failed-batch-*.json
 
   # Run full performance benchmark
   node scripts/test-python-sidecar.js --perf
@@ -846,14 +778,11 @@ Examples:
 Environment variables:
   EMBED_HOST       - Sidecar host (default: 127.0.0.1)
   EMBED_PORT       - Sidecar port (default: 8421)
-  OLLAMA_URL       - Ollama URL (default: http://127.0.0.1:11434)
-  OLLAMA_MODEL     - Ollama model (default: nomic-embed-text)
     `);
     process.exit(0);
   }
 
   let batchFiles = [];
-  let compareWithOllama = false;
   let perfMode = false;
   let perfOptions = {
     quick: false,
@@ -874,8 +803,6 @@ Environment variables:
         process.exit(1);
       }
       log(`Found ${batchFiles.length} failed batch files`, 'cyan');
-    } else if (arg === '--compare-ollama') {
-      compareWithOllama = true;
     } else if (arg === '--perf' || arg === '--benchmark') {
       perfMode = true;
     } else if (arg === '--quick') {
@@ -934,7 +861,7 @@ Environment variables:
     log(`BATCH ${i + 1}/${batchFiles.length}`, 'magenta');
     log(`${'#'.repeat(70)}`, 'magenta');
 
-    const result = await testBatchFile(batchFile, compareWithOllama);
+    const result = await testBatchFile(batchFile);
     results.push(result);
 
     // Add small delay between batches

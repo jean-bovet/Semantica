@@ -56,8 +56,6 @@ export type StartupErrorCode =
   | 'PYTHON_VERSION_INCOMPATIBLE' // Python version incompatible (requires 3.9+)
   | 'SIDECAR_START_FAILED'   // Failed to start Python sidecar
   | 'SIDECAR_NOT_HEALTHY'    // Python sidecar not healthy
-  | 'OLLAMA_NOT_FOUND'       // Ollama not installed (legacy)
-  | 'OLLAMA_START_FAILED'    // Failed to start Ollama server (legacy)
   | 'MODEL_DOWNLOAD_FAILED'  // Failed to download model
   | 'EMBEDDER_INIT_FAILED'   // Failed to initialize embedder
   | 'STARTUP_TIMEOUT';       // Startup exceeded timeout
@@ -118,7 +116,7 @@ export type MainToWorkerMessage =
  * Type-safe helper to create startup stage message
  *
  * @example
- * const msg = createStageMessage('checking', 'Checking Ollama...', 0);
+ * const msg = createStageMessage('sidecar_start', 'Starting Python sidecar...', 0);
  * parentPort.postMessage(msg);
  */
 export function createStageMessage(
@@ -138,7 +136,7 @@ export function createStageMessage(
  * Type-safe helper to create error message
  *
  * @example
- * const msg = createErrorMessage('OLLAMA_NOT_FOUND', 'Ollama is not installed');
+ * const msg = createErrorMessage('PYTHON_NOT_FOUND', 'Python is not installed');
  * parentPort.postMessage(msg);
  */
 export function createErrorMessage(
