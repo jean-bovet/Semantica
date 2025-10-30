@@ -116,7 +116,13 @@ Organized by domain:
 **Lifecycle Management:**
 - Auto-restart on crash (max 3 attempts)
 - Health check polling during startup
-- Graceful shutdown with SIGTERM/SIGKILL fallback
+- Graceful shutdown sequence:
+  1. Main process `before-quit` event prevents default quit
+  2. Sends `{type: 'shutdown'}` message to worker
+  3. Waits for worker 'exit' event (3s timeout with fallback)
+  4. Worker shuts down Python sidecar (SIGTERM with 1-5s grace period)
+  5. Worker closes database and exits cleanly
+  6. Main process calls `app.quit()` to complete shutdown
 - Progress events for model downloading and loading
 
 ### 4. Startup System (`src/main/startup/`)

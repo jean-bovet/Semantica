@@ -14,10 +14,6 @@ interface StartupProgressProps {
 const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   const [stage, setStage] = useState<StartupStage>('worker_spawn');
   const [stageMessage, setStageMessage] = useState('Initializing...');
-  const [progress, setProgress] = useState(0);
-  const [currentFile, setCurrentFile] = useState('');
-  const [bytesLoaded, setBytesLoaded] = useState(0);
-  const [bytesTotal, setBytesTotal] = useState(0);
   const [error, setError] = useState<StartupErrorMessage | null>(null);
 
   useEffect(() => {
@@ -39,9 +35,6 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
 
       setStage(data.stage);
       setStageMessage(data.message || '');
-      if (data.progress !== undefined) {
-        setProgress(data.progress);
-      }
 
       // Delay completion to let user see "ready" stage
       if (data.stage === 'ready') {
@@ -60,39 +53,15 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
       setError(data);
     };
 
-    // Listen for download progress (for file details)
-    const handleProgress = (_: any, data: any) => {
-      if (!mounted) return;
-      setProgress(data.progress || 0);
-      setCurrentFile(data.file || '');
-      setBytesLoaded(data.loaded || 0);
-      setBytesTotal(data.total || 0);
-    };
-
     window.api.on('startup:stage', handleStage);
     window.api.on('startup:error', handleError);
-    window.api.on('model:download:progress', handleProgress);
 
     return () => {
       mounted = false;
       window.api.off('startup:stage', handleStage);
       window.api.off('startup:error', handleError);
-      window.api.off('model:download:progress', handleProgress);
     };
   }, [onComplete]);
-
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileName = (path: string): string => {
-    const parts = path.split('/');
-    return parts[parts.length - 1] || path;
-  };
 
   const handleRetry = async () => {
     setError(null);
@@ -108,6 +77,9 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   // Error state
   if (error) {
     const isSidecarError = error.code === 'SIDECAR_START_FAILED' || error.code === 'SIDECAR_NOT_HEALTHY';
+    const helpUrl = error.details && typeof error.details === 'object' && 'helpUrl' in error.details
+      ? (error.details as any).helpUrl
+      : null;
 
     return (
       <div className="startup-error-overlay">
@@ -123,12 +95,35 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
             </h2>
           </div>
           <p className="startup-error-message">{error.message}</p>
-          <button
-            onClick={handleRetry}
-            className="startup-error-button primary"
-          >
-            Retry
-          </button>
+          {helpUrl && (
+            <p className="startup-error-help">
+              See installation instructions:{' '}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.api.system.openExternal(helpUrl);
+                }}
+                className="startup-error-link"
+              >
+                README.md
+              </a>
+            </p>
+          )}
+          <div className="startup-error-buttons">
+            <button
+              onClick={handleRetry}
+              className="startup-error-button primary"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => window.api.app.quit()}
+              className="startup-error-button secondary"
+            >
+              Quit
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -1662,7 +1662,7 @@ parentPort!.on('message', async (msg: any) => {
       case 'shutdown':
         // Clean shutdown requested
         logger.log('WORKER', 'Worker shutting down...');
-        
+
         // Generate profiling report if enabled
         if (process.env.PROFILE === 'true') {
           const { profiler } = require('./profiling-integration');
@@ -1671,15 +1671,31 @@ parentPort!.on('message', async (msg: any) => {
             await profiler.saveReport();
           }
         }
-        
+
         // Stop health check
         if (healthCheckInterval) {
           clearInterval(healthCheckInterval);
           healthCheckInterval = null;
         }
+
+        // Shutdown Python sidecar embedder
+        if (sidecarEmbedder) {
+          logger.log('WORKER', 'Shutting down sidecar embedder...');
+          await sidecarEmbedder.shutdown();
+        }
+
+        // Stop Python sidecar service
+        if (sidecarService) {
+          logger.log('WORKER', 'Stopping Python sidecar service...');
+          await sidecarService.stopSidecar();
+        }
+
+        // Close database
         if (db) {
           await db.close();
         }
+
+        logger.log('WORKER', 'Worker shutdown complete');
         process.exit(0);
     }
   } catch (error: any) {

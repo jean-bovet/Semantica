@@ -11,67 +11,62 @@ Semantica requires:
 
 ## Quick Setup (Recommended)
 
-The recommended approach uses a virtual environment to keep dependencies isolated:
+Install Python dependencies globally using your system Python:
 
 ```bash
-cd embedding_sidecar
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m pip install -r embedding_sidecar/requirements.txt
 ```
 
-**That's it!** The app will automatically detect and use the virtual environment.
+**That's it!** The app uses your system Python installation.
 
 ## Installation Methods
 
-### Option A: Virtual Environment (Recommended)
+### Option A: System-wide Installation (Recommended)
+
+**Pros:**
+- Simple one-command setup
+- Works out of the box with the app
+- No virtual environment management needed
+
+**Steps:**
+
+1. **Install dependencies:**
+   ```bash
+   python3 -m pip install -r embedding_sidecar/requirements.txt
+   ```
+
+2. **Verify installation:**
+   ```bash
+   python3 embedding_sidecar/check_deps.py
+   ```
+   Should output: `{"all_present": true, ...}`
+
+### Option B: Virtual Environment (Alternative)
+
+**Note:** The app currently uses system Python and does not detect virtual environments. This option is only for standalone testing of the embedding server.
 
 **Pros:**
 - Isolated environment (no conflicts with other Python projects)
 - Easy to uninstall (just delete `.venv` folder)
-- No system-wide changes
-- Automatically detected by the app
 
 **Steps:**
 
-1. **Navigate to the embedding_sidecar directory:**
+1. **Create and activate virtual environment:**
    ```bash
    cd embedding_sidecar
-   ```
-
-2. **Create virtual environment:**
-   ```bash
    python3 -m venv .venv
-   ```
-
-3. **Activate virtual environment:**
-   ```bash
    source .venv/bin/activate
    ```
 
-4. **Install dependencies:**
+2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-5. **Verify installation:**
+3. **Test standalone:**
    ```bash
-   python check_deps.py
+   python embed_server.py
    ```
-   Should output: `{"all_present": true, ...}`
-
-**To deactivate the virtual environment later:**
-```bash
-deactivate
-```
-
-### Option B: System-wide Installation (Not Recommended)
-
-**Warning:** This installs packages globally and may conflict with other Python projects.
-
-```bash
-pip3 install -r embedding_sidecar/requirements.txt
-```
 
 ## What Gets Installed
 
@@ -129,19 +124,6 @@ brew install python@3.11  # macOS
 
 **Solution:** Follow the Quick Setup steps above to install dependencies.
 
-### Virtual Environment Not Detected
-
-If you created a virtual environment but the app isn't using it:
-
-1. Verify the virtual environment exists:
-   ```bash
-   ls embedding_sidecar/.venv/bin/python
-   ```
-
-2. Restart the app to re-detect the environment
-
-3. Check logs for "Using virtual environment" message
-
 ### Installation Fails
 
 **Common issues:**
@@ -155,8 +137,8 @@ If you created a virtual environment but the app isn't using it:
    - Use: `pip install --no-cache-dir -r requirements.txt`
 
 3. **Permission denied:**
-   - Don't use `sudo` with virtual environments
-   - For system-wide install: `sudo pip3 install -r requirements.txt` (not recommended)
+   - Try: `python3 -m pip install --user -r embedding_sidecar/requirements.txt`
+   - Or with sudo (if needed): `sudo pip3 install -r embedding_sidecar/requirements.txt`
 
 ### Model Download Fails
 
@@ -172,30 +154,21 @@ If you created a virtual environment but the app isn't using it:
 
 ## Uninstalling
 
-### Virtual Environment (Clean)
-
-Simply delete the virtual environment folder:
-```bash
-rm -rf embedding_sidecar/.venv
-```
-
-### System-wide Installation
+To remove Python dependencies:
 
 ```bash
-pip3 uninstall fastapi uvicorn sentence-transformers torch pypdf pydantic
+python3 -m pip uninstall -y fastapi uvicorn pydantic sentence-transformers torch pypdf
 ```
 
 ## Development Notes
 
 ### Using a Different Python Version
 
-To use a specific Python version with venv:
+To use a specific Python version:
 
 ```bash
 # Use Python 3.10 specifically
-python3.10 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3.10 -m pip install -r embedding_sidecar/requirements.txt
 ```
 
 ### Updating Dependencies
@@ -203,8 +176,7 @@ pip install -r requirements.txt
 To update all dependencies to the latest versions:
 
 ```bash
-source .venv/bin/activate
-pip install --upgrade -r requirements.txt
+python3 -m pip install --upgrade -r embedding_sidecar/requirements.txt
 ```
 
 ### Custom Model Cache Location
@@ -243,9 +215,7 @@ After installation, verify everything works:
 
 2. **Test the embedding server:**
    ```bash
-   cd embedding_sidecar
-   source .venv/bin/activate
-   python embed_server.py
+   python3 embedding_sidecar/embed_server.py
    ```
    Should start server on `http://127.0.0.1:8421`
 

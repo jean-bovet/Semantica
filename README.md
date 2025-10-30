@@ -31,18 +31,14 @@ cd Semantica
 # Install Node dependencies
 npm install
 
-# Set up Python environment (required for embeddings)
-cd embedding_sidecar
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cd ..
+# Install Python dependencies (required for embeddings)
+python3 -m pip install -r embedding_sidecar/requirements.txt
 
 # Start development server
 npm run dev
 ```
 
-**Note:** The app automatically detects and uses the Python virtual environment. For detailed Python setup instructions, troubleshooting, and alternative installation methods, see [docs/guides/python-setup.md](docs/guides/python-setup.md).
+**Note:** The app uses your system Python installation. For detailed Python setup instructions and troubleshooting, see [docs/guides/python-setup.md](docs/guides/python-setup.md).
 
 This will:
 - Start Vite dev server for the UI (with HMR)
@@ -159,10 +155,7 @@ Settings are stored in `~/Library/Application Support/Semantica/data/config.json
 - **Solution:** Follow the Python setup steps in [docs/guides/python-setup.md](docs/guides/python-setup.md)
 - Quick fix:
   ```bash
-  cd embedding_sidecar
-  python3 -m venv .venv
-  source .venv/bin/activate
-  pip install -r requirements.txt
+  python3 -m pip install -r embedding_sidecar/requirements.txt
   ```
 
 ### High Memory Usage

@@ -71,7 +71,8 @@ export class WorkerStartup {
           {
             missing: depsCheck.missing,
             python_version: depsCheck.python_version,
-            help: 'Please install Python dependencies. See installation instructions: https://github.com/jean-bovet/Semantica/blob/main/README.md'
+            help: 'Please install Python dependencies. See installation instructions in the README.',
+            helpUrl: 'https://github.com/jean-bovet/Semantica/blob/main/README.md'
           }
         );
         log(`Missing Python dependencies: ${missingPackages}`);

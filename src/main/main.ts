@@ -305,6 +305,11 @@ if (gotTheLock) {
     return { success: true };
   });
 
+  ipcMain.handle('app:quit', () => {
+    logger.log('APP', 'Quit requested from renderer');
+    app.quit();
+  });
+
   ipcMain.handle('updater:check', async () => {
     log.info('Manual update check triggered from settings');
     try {
@@ -449,25 +454,42 @@ app.on('activate', () => {
 });
 
 // Guard flag to prevent before-quit infinite loop
-let isQuitting = false;
+let workerCleanedUp = false;
 
-app.on('before-quit', async (event) => {
-  // Prevent re-entry if already quitting
-  if (isQuitting) {
+app.on('before-quit', (event) => {
+  // Prevent re-entry if already cleaned up
+  if (workerCleanedUp) {
     return;
   }
 
   // Prevent default quit to do cleanup first
   event.preventDefault();
-  isQuitting = true;
 
-  // Send shutdown signal to worker and wait
+  // Send shutdown signal to worker and wait for it to exit
   if (worker) {
+    log.info('Sending shutdown signal to worker...');
     worker.postMessage({ type: 'shutdown' });
-    await new Promise(resolve => setTimeout(resolve, 500));
-    worker.terminate();
-  }
 
-  // Use app.quit() instead of app.exit(0) for clean shutdown
-  app.quit();
+    // Set timeout to force termination if worker doesn't exit in time
+    const shutdownTimeout = setTimeout(() => {
+      log.warn('Worker shutdown timeout, forcing termination');
+      if (worker) {
+        worker.terminate();
+      }
+      workerCleanedUp = true;
+      app.quit();
+    }, 3000); // 3 second grace period for Python sidecar cleanup
+
+    // Wait for worker to exit cleanly
+    worker.once('exit', (exitCode) => {
+      clearTimeout(shutdownTimeout);
+      log.info(`Worker exited cleanly with code ${exitCode}`);
+      workerCleanedUp = true;
+      app.quit();
+    });
+  } else {
+    // No worker to clean up, proceed with quit
+    workerCleanedUp = true;
+    app.quit();
+  }
 });

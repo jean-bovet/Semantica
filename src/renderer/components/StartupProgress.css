@@ -138,8 +138,32 @@
 
 .startup-error-message {
   color: #d1d5db;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
   line-height: 1.5;
+}
+
+.startup-error-help {
+  color: #9ca3af;
+  font-size: 14px;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.startup-error-link {
+  color: #3b82f6;
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.startup-error-link:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.startup-error-buttons {
+  display: flex;
+  gap: 12px;
 }
 
 .startup-error-actions {

@@ -95,6 +95,10 @@ const api = {
     retry: () => ipcRenderer.invoke('startup:retry')
   },
 
+  app: {
+    quit: () => ipcRenderer.invoke('app:quit')
+  },
+
   worker: {
     isReady: (): Promise<boolean> => ipcRenderer.invoke('worker:isReady')
   },
