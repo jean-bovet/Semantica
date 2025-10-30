@@ -52,13 +52,13 @@ describe('StepperLogic - Pure Functions', () => {
   describe('getStageIndex', () => {
     it('should return correct index for each stage', () => {
       expect(getStageIndex('worker_spawn')).toBe(0);
-      expect(getStageIndex('db_init')).toBe(1);
-      expect(getStageIndex('db_load')).toBe(2);
-      expect(getStageIndex('folder_scan')).toBe(3);
-      expect(getStageIndex('sidecar_start')).toBe(4);
-      expect(getStageIndex('downloading')).toBe(5);
-      expect(getStageIndex('sidecar_ready')).toBe(6);
-      expect(getStageIndex('embedder_init')).toBe(7);
+      expect(getStageIndex('sidecar_start')).toBe(1);
+      expect(getStageIndex('downloading')).toBe(2);
+      expect(getStageIndex('sidecar_ready')).toBe(3);
+      expect(getStageIndex('embedder_init')).toBe(4);
+      expect(getStageIndex('db_init')).toBe(5);
+      expect(getStageIndex('db_load')).toBe(6);
+      expect(getStageIndex('folder_scan')).toBe(7);
       expect(getStageIndex('ready')).toBe(8);
     });
 
@@ -78,10 +78,10 @@ describe('StepperLogic - Pure Functions', () => {
 
       it('should mark previous steps as completed when sidecar_start', () => {
         expect(getStepStatus('sidecar_start', 0, false)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 1, false)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 2, false)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 3, false)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 4, false)).toBe('active');
+        expect(getStepStatus('sidecar_start', 1, false)).toBe('active');
+        expect(getStepStatus('sidecar_start', 2, false)).toBe('pending');
+        expect(getStepStatus('sidecar_start', 3, false)).toBe('pending');
+        expect(getStepStatus('sidecar_start', 4, false)).toBe('pending');
         expect(getStepStatus('sidecar_start', 5, false)).toBe('pending');
         expect(getStepStatus('sidecar_start', 6, false)).toBe('pending');
         expect(getStepStatus('sidecar_start', 7, false)).toBe('pending');
@@ -91,10 +91,10 @@ describe('StepperLogic - Pure Functions', () => {
       it('should mark previous steps as completed when downloading', () => {
         expect(getStepStatus('downloading', 0, false)).toBe('completed');
         expect(getStepStatus('downloading', 1, false)).toBe('completed');
-        expect(getStepStatus('downloading', 2, false)).toBe('completed');
-        expect(getStepStatus('downloading', 3, false)).toBe('completed');
-        expect(getStepStatus('downloading', 4, false)).toBe('completed');
-        expect(getStepStatus('downloading', 5, false)).toBe('active');
+        expect(getStepStatus('downloading', 2, false)).toBe('active');
+        expect(getStepStatus('downloading', 3, false)).toBe('pending');
+        expect(getStepStatus('downloading', 4, false)).toBe('pending');
+        expect(getStepStatus('downloading', 5, false)).toBe('pending');
         expect(getStepStatus('downloading', 6, false)).toBe('pending');
         expect(getStepStatus('downloading', 7, false)).toBe('pending');
         expect(getStepStatus('downloading', 8, false)).toBe('pending');
@@ -105,10 +105,10 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('embedder_init', 1, false)).toBe('completed');
         expect(getStepStatus('embedder_init', 2, false)).toBe('completed');
         expect(getStepStatus('embedder_init', 3, false)).toBe('completed');
-        expect(getStepStatus('embedder_init', 4, false)).toBe('completed');
-        expect(getStepStatus('embedder_init', 5, false)).toBe('completed');
-        expect(getStepStatus('embedder_init', 6, false)).toBe('completed');
-        expect(getStepStatus('embedder_init', 7, false)).toBe('active');
+        expect(getStepStatus('embedder_init', 4, false)).toBe('active');
+        expect(getStepStatus('embedder_init', 5, false)).toBe('pending');
+        expect(getStepStatus('embedder_init', 6, false)).toBe('pending');
+        expect(getStepStatus('embedder_init', 7, false)).toBe('pending');
         expect(getStepStatus('embedder_init', 8, false)).toBe('pending');
       });
 
@@ -127,12 +127,12 @@ describe('StepperLogic - Pure Functions', () => {
 
     describe('Error states', () => {
       it('should mark current step as error when hasError=true', () => {
-        // Error during sidecar_start (step 4)
+        // Error during sidecar_start (step 1)
         expect(getStepStatus('sidecar_start', 0, true)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 1, true)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 2, true)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 3, true)).toBe('completed');
-        expect(getStepStatus('sidecar_start', 4, true)).toBe('error');
+        expect(getStepStatus('sidecar_start', 1, true)).toBe('error');
+        expect(getStepStatus('sidecar_start', 2, true)).toBe('pending');
+        expect(getStepStatus('sidecar_start', 3, true)).toBe('pending');
+        expect(getStepStatus('sidecar_start', 4, true)).toBe('pending');
         expect(getStepStatus('sidecar_start', 5, true)).toBe('pending');
         expect(getStepStatus('sidecar_start', 6, true)).toBe('pending');
         expect(getStepStatus('sidecar_start', 7, true)).toBe('pending');
@@ -140,13 +140,13 @@ describe('StepperLogic - Pure Functions', () => {
       });
 
       it('should mark previous steps as completed when error occurs', () => {
-        // Error during downloading (step 5) - previous steps should be completed
+        // Error during downloading (step 2) - previous steps should be completed
         expect(getStepStatus('downloading', 0, true)).toBe('completed');
         expect(getStepStatus('downloading', 1, true)).toBe('completed');
-        expect(getStepStatus('downloading', 2, true)).toBe('completed');
-        expect(getStepStatus('downloading', 3, true)).toBe('completed');
-        expect(getStepStatus('downloading', 4, true)).toBe('completed');
-        expect(getStepStatus('downloading', 5, true)).toBe('error');
+        expect(getStepStatus('downloading', 2, true)).toBe('error');
+        expect(getStepStatus('downloading', 3, true)).toBe('pending');
+        expect(getStepStatus('downloading', 4, true)).toBe('pending');
+        expect(getStepStatus('downloading', 5, true)).toBe('pending');
         expect(getStepStatus('downloading', 6, true)).toBe('pending');
         expect(getStepStatus('downloading', 7, true)).toBe('pending');
         expect(getStepStatus('downloading', 8, true)).toBe('pending');
@@ -157,10 +157,10 @@ describe('StepperLogic - Pure Functions', () => {
         expect(getStepStatus('embedder_init', 1, true)).toBe('completed');
         expect(getStepStatus('embedder_init', 2, true)).toBe('completed');
         expect(getStepStatus('embedder_init', 3, true)).toBe('completed');
-        expect(getStepStatus('embedder_init', 4, true)).toBe('completed');
-        expect(getStepStatus('embedder_init', 5, true)).toBe('completed');
-        expect(getStepStatus('embedder_init', 6, true)).toBe('completed');
-        expect(getStepStatus('embedder_init', 7, true)).toBe('error');
+        expect(getStepStatus('embedder_init', 4, true)).toBe('error');
+        expect(getStepStatus('embedder_init', 5, true)).toBe('pending');
+        expect(getStepStatus('embedder_init', 6, true)).toBe('pending');
+        expect(getStepStatus('embedder_init', 7, true)).toBe('pending');
         expect(getStepStatus('embedder_init', 8, true)).toBe('pending');
       });
 
@@ -181,8 +181,8 @@ describe('StepperLogic - Pure Functions', () => {
 
       it('should treat hasError as false by default', () => {
         // Test default parameter
-        expect(getStepStatus('sidecar_start', 4)).toBe('active');
-        expect(getStepStatus('downloading', 5)).toBe('active');
+        expect(getStepStatus('sidecar_start', 1)).toBe('active');
+        expect(getStepStatus('downloading', 2)).toBe('active');
         expect(getStepStatus('downloading', 0)).toBe('completed');
       });
     });
@@ -285,15 +285,15 @@ describe('StepperLogic - Pure Functions', () => {
     });
 
     it('should simulate sidecar start error', () => {
-      // Error occurs at sidecar_start stage (step 4)
+      // Error occurs at sidecar_start stage (step 1)
       const stage: StartupStage = 'sidecar_start';
       const hasError = true;
 
       expect(getStepStatus(stage, 0, hasError)).toBe('completed');
-      expect(getStepStatus(stage, 1, hasError)).toBe('completed');
-      expect(getStepStatus(stage, 2, hasError)).toBe('completed');
-      expect(getStepStatus(stage, 3, hasError)).toBe('completed');
-      expect(getStepStatus(stage, 4, hasError)).toBe('error');
+      expect(getStepStatus(stage, 1, hasError)).toBe('error');
+      expect(getStepStatus(stage, 2, hasError)).toBe('pending');
+      expect(getStepStatus(stage, 3, hasError)).toBe('pending');
+      expect(getStepStatus(stage, 4, hasError)).toBe('pending');
       expect(getStepStatus(stage, 5, hasError)).toBe('pending');
       expect(getStepStatus(stage, 6, hasError)).toBe('pending');
       expect(getStepStatus(stage, 7, hasError)).toBe('pending');
@@ -308,13 +308,13 @@ describe('StepperLogic - Pure Functions', () => {
       const stage: StartupStage = 'embedder_init';
 
       expect(getStepStatus(stage, 0, false)).toBe('completed'); // worker_spawn ✓
-      expect(getStepStatus(stage, 1, false)).toBe('completed'); // db_init ✓
-      expect(getStepStatus(stage, 2, false)).toBe('completed'); // db_load ✓
-      expect(getStepStatus(stage, 3, false)).toBe('completed'); // folder_scan ✓
-      expect(getStepStatus(stage, 4, false)).toBe('completed'); // sidecar_start ✓
-      expect(getStepStatus(stage, 5, false)).toBe('completed'); // downloading ✓
-      expect(getStepStatus(stage, 6, false)).toBe('completed'); // sidecar_ready ✓
-      expect(getStepStatus(stage, 7, false)).toBe('active');    // embedder_init ⟳
+      expect(getStepStatus(stage, 1, false)).toBe('completed'); // sidecar_start ✓
+      expect(getStepStatus(stage, 2, false)).toBe('completed'); // downloading ✓
+      expect(getStepStatus(stage, 3, false)).toBe('completed'); // sidecar_ready ✓
+      expect(getStepStatus(stage, 4, false)).toBe('active');    // embedder_init ⟳
+      expect(getStepStatus(stage, 5, false)).toBe('pending');   // db_init ○
+      expect(getStepStatus(stage, 6, false)).toBe('pending');   // db_load ○
+      expect(getStepStatus(stage, 7, false)).toBe('pending');   // folder_scan ○
       expect(getStepStatus(stage, 8, false)).toBe('pending');   // ready ○
 
       expect(hasAnyCompletedSteps(stage, false)).toBe(true);

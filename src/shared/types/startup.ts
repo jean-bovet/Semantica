@@ -10,13 +10,13 @@
  *
  * These stages represent the complete application initialization sequence:
  * 1. worker_spawn - Worker thread starts
- * 2. db_init - Database initialization
- * 3. db_load - Load existing indexed files
- * 4. folder_scan - Scan watched folders for changes
- * 5. sidecar_start - Start Python sidecar server
- * 6. downloading - Download embedding model (first run only)
- * 7. sidecar_ready - Wait for sidecar to load model
- * 8. embedder_init - Initialize embedder
+ * 2. sidecar_start - Start Python sidecar server (checks deps first)
+ * 3. downloading - Download embedding model (first run only)
+ * 4. sidecar_ready - Wait for sidecar to load model
+ * 5. embedder_init - Initialize embedder
+ * 6. db_init - Database initialization
+ * 7. db_load - Load existing indexed files
+ * 8. folder_scan - Scan watched folders for changes
  * 9. ready - Application ready to use
  */
 export type StartupStage =
@@ -37,13 +37,13 @@ export type StartupStage =
  */
 export const STARTUP_STAGE_ORDER: readonly StartupStage[] = [
   'worker_spawn',
-  'db_init',
-  'db_load',
-  'folder_scan',
   'sidecar_start',
   'downloading',
   'sidecar_ready',
   'embedder_init',
+  'db_init',
+  'db_load',
+  'folder_scan',
   'ready',
 ] as const;
 

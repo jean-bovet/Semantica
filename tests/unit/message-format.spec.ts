@@ -146,13 +146,13 @@ describe('Startup Message Format', () => {
   describe('getStageIndex', () => {
     it('should return correct indices for all stages', () => {
       expect(getStageIndex('worker_spawn')).toBe(0);
-      expect(getStageIndex('db_init')).toBe(1);
-      expect(getStageIndex('db_load')).toBe(2);
-      expect(getStageIndex('folder_scan')).toBe(3);
-      expect(getStageIndex('sidecar_start')).toBe(4);
-      expect(getStageIndex('downloading')).toBe(5);
-      expect(getStageIndex('sidecar_ready')).toBe(6);
-      expect(getStageIndex('embedder_init')).toBe(7);
+      expect(getStageIndex('sidecar_start')).toBe(1);
+      expect(getStageIndex('downloading')).toBe(2);
+      expect(getStageIndex('sidecar_ready')).toBe(3);
+      expect(getStageIndex('embedder_init')).toBe(4);
+      expect(getStageIndex('db_init')).toBe(5);
+      expect(getStageIndex('db_load')).toBe(6);
+      expect(getStageIndex('folder_scan')).toBe(7);
       expect(getStageIndex('ready')).toBe(8);
     });
 
@@ -317,19 +317,19 @@ describe('Startup Message Format', () => {
 
   describe('STARTUP_STAGE_ORDER', () => {
     it('should have correct number of stages', () => {
-      // 9 stages: worker_spawn, db_init, db_load, folder_scan, sidecar_start, downloading, sidecar_ready, embedder_init, ready
+      // 9 stages: worker_spawn, sidecar_start, downloading, sidecar_ready, embedder_init, db_init, db_load, folder_scan, ready
       expect(STARTUP_STAGE_ORDER).toHaveLength(9);
     });
 
     it('should be in correct order', () => {
       expect(STARTUP_STAGE_ORDER[0]).toBe('worker_spawn');
-      expect(STARTUP_STAGE_ORDER[1]).toBe('db_init');
-      expect(STARTUP_STAGE_ORDER[2]).toBe('db_load');
-      expect(STARTUP_STAGE_ORDER[3]).toBe('folder_scan');
-      expect(STARTUP_STAGE_ORDER[4]).toBe('sidecar_start');
-      expect(STARTUP_STAGE_ORDER[5]).toBe('downloading');
-      expect(STARTUP_STAGE_ORDER[6]).toBe('sidecar_ready');
-      expect(STARTUP_STAGE_ORDER[7]).toBe('embedder_init');
+      expect(STARTUP_STAGE_ORDER[1]).toBe('sidecar_start');
+      expect(STARTUP_STAGE_ORDER[2]).toBe('downloading');
+      expect(STARTUP_STAGE_ORDER[3]).toBe('sidecar_ready');
+      expect(STARTUP_STAGE_ORDER[4]).toBe('embedder_init');
+      expect(STARTUP_STAGE_ORDER[5]).toBe('db_init');
+      expect(STARTUP_STAGE_ORDER[6]).toBe('db_load');
+      expect(STARTUP_STAGE_ORDER[7]).toBe('folder_scan');
       expect(STARTUP_STAGE_ORDER[8]).toBe('ready');
     });
 

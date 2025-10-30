@@ -18,39 +18,40 @@ graph TD
     SpawnWorker --> Stage1[Stage 1: worker_spawn]
     Stage1 --> InitWorker[Worker: Initialize Startup]
 
-    InitWorker --> Stage2[Stage 2: db_init]
-    Stage2 --> InitDB[Initialize LanceDB]
+    InitWorker --> Stage2[Stage 2: sidecar_start]
+    Stage2 --> StartSidecar[PythonSidecarService.startSidecar]
 
-    InitDB --> Stage3[Stage 3: db_load]
-    Stage3 --> LoadFiles[Load File Status]
-
-    LoadFiles --> Stage4[Stage 4: folder_scan]
-    Stage4 --> ScanFolders[Scan Watched Folders]
-
-    ScanFolders --> Stage5[Stage 5: sidecar_start]
-    Stage5 --> StartSidecar[PythonSidecarService.startSidecar]
-
-    StartSidecar --> SpawnPython[Spawn Python Process]
+    StartSidecar --> CheckDeps[Check Python Dependencies]
+    CheckDeps --> SpawnPython[Spawn Python Process]
     SpawnPython --> CheckCache{Model in Cache?}
 
-    CheckCache -->|Yes| Stage6b[SKIP Stage 6]
-    CheckCache -->|No| Stage6[Stage 6: downloading]
+    CheckCache -->|Yes| Stage3b[SKIP Stage 3]
+    CheckCache -->|No| Stage3[Stage 3: downloading]
 
-    Stage6 --> DownloadModel[Python: Download Model<br/>from HuggingFace]
+    Stage3 --> DownloadModel[Python: Download Model<br/>from HuggingFace]
     DownloadModel --> EmitProgress[Emit PROGRESS events]
     EmitProgress --> UIUpdate[Update Progress Bar]
 
-    Stage6b --> Stage7[Stage 7: sidecar_ready]
-    DownloadModel --> Stage7
+    Stage3b --> Stage4[Stage 4: sidecar_ready]
+    DownloadModel --> Stage4
 
-    Stage7 --> LoadModel[Python: Load Model<br/>into Memory]
+    Stage4 --> LoadModel[Python: Load Model<br/>into Memory]
     LoadModel --> HealthCheck[Health Check Pass]
 
-    HealthCheck --> Stage8[Stage 8: embedder_init]
-    Stage8 --> InitEmbedder[Create PythonSidecarEmbedder]
+    HealthCheck --> Stage5[Stage 5: embedder_init]
+    Stage5 --> InitEmbedder[Create PythonSidecarEmbedder]
     InitEmbedder --> EmbedderReady[Embedder Ready]
 
-    EmbedderReady --> Stage9[Stage 9: ready]
+    EmbedderReady --> Stage6[Stage 6: db_init]
+    Stage6 --> InitDB[Initialize LanceDB]
+
+    InitDB --> Stage7[Stage 7: db_load]
+    Stage7 --> LoadFiles[Load File Status]
+
+    LoadFiles --> Stage8[Stage 8: folder_scan]
+    Stage8 --> ScanFolders[Scan Watched Folders]
+
+    ScanFolders --> Stage9[Stage 9: ready]
     Stage9 --> HideOverlay[Hide Progress Overlay]
     HideOverlay --> ShowMainUI[Show Search UI]
 
@@ -85,16 +86,18 @@ The app progresses through 9 sequential stages, with progress bar updating at ea
 | Stage | ID | Description | Progress |
 |-------|------|-------------|----------|
 | 1 | `worker_spawn` | Worker thread starts | 11% |
-| 2 | `db_init` | Initialize LanceDB | 22% |
-| 3 | `db_load` | Load file status | 33% |
-| 4 | `folder_scan` | Scan watched folders | 44% |
-| 5 | `sidecar_start` | Start Python sidecar | 55% |
-| 6 | `downloading` | Download model (first run only) | 66% |
-| 7 | `sidecar_ready` | Load model into memory | 77% |
-| 8 | `embedder_init` | Initialize embedder | 88% |
+| 2 | `sidecar_start` | Check Python deps + start sidecar | 22% |
+| 3 | `downloading` | Download model (first run only) | 33% |
+| 4 | `sidecar_ready` | Load model into memory | 44% |
+| 5 | `embedder_init` | Initialize embedder | 55% |
+| 6 | `db_init` | Initialize LanceDB | 66% |
+| 7 | `db_load` | Load file status | 77% |
+| 8 | `folder_scan` | Scan watched folders | 88% |
 | 9 | `ready` | Application ready | 100% |
 
-**Note:** Stage 6 (`downloading`) is **automatically skipped** if model is already cached.
+**Note:** Stage 3 (`downloading`) is **automatically skipped** if model is already cached.
+
+**Benefit:** Python dependency check happens early (stage 2), so users discover Python issues in ~500ms instead of waiting 3-5 seconds through DB initialization first.
 
 ## Key Components
 

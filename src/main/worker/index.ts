@@ -1272,24 +1272,27 @@ parentPort!.on('message', async (msg: any) => {
         // Also provide fallback for dbDir
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
 
-        await initDB(dbDir, userDataPath);
-        // Note: 'ready' message is sent by WorkerStartup after full initialization
-        // Don't send legacy 'ready' here - it creates a race condition
-
-        // Auto-start: Initialize embedder using WorkerStartup state machine
+        // Initialize Python sidecar FIRST for early fail-fast on Python issues
+        // This handles: Python deps check → sidecar start → model load → embedder init
         (async () => {
           try {
             workerStartup = new WorkerStartup();
-            const settings = configManager?.getSettings();
 
-            // This handles: Python sidecar start → model load → embedder init
-            sidecarEmbedder = await workerStartup.initialize(settings);
+            // Initialize sidecar without settings (will use defaults)
+            // Settings are only used for batch size which has a reasonable default
+            sidecarEmbedder = await workerStartup.initialize(undefined);
             sidecarService = workerStartup.getSidecarService();
 
             if (!sidecarEmbedder) {
               logger.error('WORKER', 'Startup failed - no embedder created');
               return;
             }
+
+            // Now initialize database (after Python sidecar is ready)
+            await initDB(dbDir, userDataPath);
+
+            // Get settings from config manager (now available after initDB)
+            const settings = configManager?.getSettings();
 
             // Create embedding queue with batch processor
             const batchSize = settings?.embeddingBatchSize ?? 32;
