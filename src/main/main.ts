@@ -453,43 +453,47 @@ app.on('activate', () => {
   }
 });
 
-// Guard flag to prevent before-quit infinite loop
-let workerCleanedUp = false;
+// Proper shutdown coordination to prevent SIGABRT crash
+// Guard flag to prevent infinite loop when app.quit() triggers before-quit again
+let isShuttingDown = false;
 
-app.on('before-quit', (event) => {
-  // Prevent re-entry if already cleaned up
-  if (workerCleanedUp) {
-    return;
+app.on('before-quit', async (event) => {
+  // Allow quit to proceed if already cleaned up
+  if (isShuttingDown) {
+    return; // Don't prevent, let it quit naturally
   }
 
-  // Prevent default quit to do cleanup first
+  // Prevent quit until cleanup is complete
   event.preventDefault();
+  isShuttingDown = true;
 
-  // Send shutdown signal to worker and wait for it to exit
+  log.info('App shutting down...');
+
+  // Send shutdown message to worker and wait for completion
   if (worker) {
-    log.info('Sending shutdown signal to worker...');
-    worker.postMessage({ type: 'shutdown' });
+    try {
+      await new Promise<void>((resolve) => {
+        // Set timeout to ensure we don't hang forever
+        const timeout = setTimeout(() => {
+          log.warn('Worker shutdown timeout, forcing quit');
+          resolve();
+        }, 5000); // 5 second timeout
 
-    // Set timeout to force termination if worker doesn't exit in time
-    const shutdownTimeout = setTimeout(() => {
-      log.warn('Worker shutdown timeout, forcing termination');
-      if (worker) {
-        worker.terminate();
-      }
-      workerCleanedUp = true;
-      app.quit();
-    }, 3000); // 3 second grace period for Python sidecar cleanup
+        // Send shutdown message
+        worker.postMessage({ type: 'shutdown' });
 
-    // Wait for worker to exit cleanly
-    worker.once('exit', (exitCode) => {
-      clearTimeout(shutdownTimeout);
-      log.info(`Worker exited cleanly with code ${exitCode}`);
-      workerCleanedUp = true;
-      app.quit();
-    });
-  } else {
-    // No worker to clean up, proceed with quit
-    workerCleanedUp = true;
-    app.quit();
+        // Wait for worker to exit
+        worker.once('exit', () => {
+          clearTimeout(timeout);
+          log.info('Worker exited cleanly');
+          resolve();
+        });
+      });
+    } catch (error) {
+      log.error('Error during worker shutdown:', error);
+    }
   }
+
+  // Now allow the app to quit
+  app.quit();
 });

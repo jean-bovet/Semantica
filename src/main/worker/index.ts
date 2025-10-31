@@ -56,7 +56,8 @@ let lastMemoryLog = {
 };
 
 // Memory monitoring and governor
-setInterval(async () => {
+let memoryMonitorInterval: NodeJS.Timeout | null = null;
+memoryMonitorInterval = setInterval(async () => {
   const usage = process.memoryUsage();
   const rssMB = Math.round(usage.rss / 1024 / 1024);
   const heapMB = Math.round(usage.heapUsed / 1024 / 1024);
@@ -1663,8 +1664,56 @@ parentPort!.on('message', async (msg: any) => {
         break;
       
       case 'shutdown':
-        // Clean shutdown requested
-        logger.log('WORKER', 'Worker shutting down...');
+        // Clean shutdown requested - wait for all operations to complete
+        logger.log('WORKER', 'Worker shutting down - initiating graceful shutdown...');
+
+        // STEP 1: Stop accepting new work
+        if (watcher) {
+          await watcher.close();
+          watcher = null;
+          logger.log('WORKER', 'File watcher closed - no new files will be added');
+        }
+
+        // STEP 2: Wait for file queue to finish processing
+        logger.log('WORKER', 'Waiting for file queue to complete...');
+        let fileWaitCount = 0;
+        while (isProcessingActive || fileQueue.getStats().processing > 0) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          fileWaitCount++;
+          if (fileWaitCount % 10 === 0) { // Log every second
+            logger.log('WORKER', `Still waiting for ${fileQueue.getStats().processing} files to complete...`);
+          }
+        }
+        logger.log('WORKER', 'File queue completed');
+
+        // STEP 3: Wait for embedding queue to drain
+        if (embeddingQueue) {
+          logger.log('WORKER', 'Waiting for embedding queue to drain...');
+          const maxWait = 30000; // 30 seconds timeout
+          const startWait = Date.now();
+          while (embeddingQueue.getStats().queueDepth > 0 ||
+                 embeddingQueue.getStats().processingBatches > 0) {
+            if (Date.now() - startWait > maxWait) {
+              logger.warn('WORKER', 'Embedding queue drain timeout - forcing shutdown');
+              break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          logger.log('WORKER', 'Embedding queue drained');
+        }
+
+        // STEP 4: Wait for database write queue to drain
+        logger.log('WORKER', 'Waiting for database writes to complete...');
+        const maxWriteWait = 10000; // 10 seconds
+        const startWriteWait = Date.now();
+        while (writeQueue.length > 0 || isWriting) {
+          if (Date.now() - startWriteWait > maxWriteWait) {
+            logger.warn('WORKER', `Write queue drain timeout - ${writeQueue.length} operations pending`);
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        logger.log('WORKER', 'Database writes completed');
 
         // Generate profiling report if enabled
         if (process.env.PROFILE === 'true') {
@@ -1675,27 +1724,34 @@ parentPort!.on('message', async (msg: any) => {
           }
         }
 
-        // Stop health check
+        // STEP 5: Stop monitoring
         if (healthCheckInterval) {
           clearInterval(healthCheckInterval);
           healthCheckInterval = null;
         }
 
-        // Shutdown Python sidecar embedder
+        if (memoryMonitorInterval) {
+          clearInterval(memoryMonitorInterval);
+          memoryMonitorInterval = null;
+          logger.log('WORKER', 'Memory monitoring stopped');
+        }
+
+        // STEP 6: Shutdown Python sidecar
         if (sidecarEmbedder) {
           logger.log('WORKER', 'Shutting down sidecar embedder...');
           await sidecarEmbedder.shutdown();
         }
 
-        // Stop Python sidecar service
         if (sidecarService) {
           logger.log('WORKER', 'Stopping Python sidecar service...');
           await sidecarService.stopSidecar();
         }
 
-        // Close database
+        // STEP 7: Now safe to close database - all operations complete
+        logger.log('WORKER', 'Closing database...');
         if (db) {
           await db.close();
+          logger.log('WORKER', 'Database closed successfully');
         }
 
         logger.log('WORKER', 'Worker shutdown complete');
