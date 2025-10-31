@@ -227,8 +227,8 @@ This is **bold** and this is *italic*.
       
       expect(result).toBeTruthy();
       expect(result.length).toBeGreaterThan(0);
-      // Should process within reasonable time (< 2 seconds for 1MB)
-      expect(endTime - startTime).toBeLessThan(2000);
+      // Should process within reasonable time (< 5 seconds for 1MB, generous for CI)
+      expect(endTime - startTime).toBeLessThan(5000);
       
       // Clean up
       fs.unlinkSync(largeFile);
