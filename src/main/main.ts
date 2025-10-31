@@ -472,23 +472,22 @@ app.on('before-quit', async (event) => {
   // Send shutdown message to worker and wait for completion
   if (worker) {
     try {
-      await new Promise<void>((resolve) => {
-        // Set timeout to ensure we don't hang forever
-        const timeout = setTimeout(() => {
-          log.warn('Worker shutdown timeout, forcing quit');
-          resolve();
-        }, 5000); // 5 second timeout
-
-        // Send shutdown message
-        worker.postMessage({ type: 'shutdown' });
-
-        // Wait for worker to exit
-        worker.once('exit', () => {
-          clearTimeout(timeout);
+      const exitPromise = new Promise<void>((resolve) => {
+        worker!.once('exit', () => {
           log.info('Worker exited cleanly');
           resolve();
         });
       });
+
+      const timeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          log.warn('Worker shutdown timeout, forcing quit');
+          resolve();
+        }, 5000);
+      });
+
+      worker.postMessage({ type: 'shutdown' });
+      await Promise.race([exitPromise, timeoutPromise]);
     } catch (error) {
       log.error('Error during worker shutdown:', error);
     }
