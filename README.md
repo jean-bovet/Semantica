@@ -1,3 +1,5 @@
+[![CI](https://github.com/jean-bovet/Semantica/actions/workflows/ci.yml/badge.svg)](https://github.com/jean-bovet/Semantica/actions/workflows/ci.yml)
+
 # Semantica
 
 A privacy-first, offline semantic search application for macOS that indexes your documents locally and provides fast, intelligent search capabilities—all without sending any data off your device.
