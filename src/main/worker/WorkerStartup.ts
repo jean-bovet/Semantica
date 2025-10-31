@@ -2,11 +2,10 @@
  * WorkerStartup - State machine for worker initialization
  *
  * Owns the full startup sequence:
- * 1. Check Python dependencies (pre-flight check)
- * 2. Start Python sidecar server
- * 3. Wait for sidecar to be ready (model loading)
- * 4. Initialize embedder
- * 5. Ready
+ * 1. Start Python sidecar server (checks dependencies, then starts sidecar)
+ * 2. Wait for sidecar to be ready (model loading)
+ * 3. Initialize embedder
+ * 4. Ready
  *
  * Emits stage events via parentPort for main to relay to renderer.
  */
@@ -41,6 +40,7 @@ export class WorkerStartup {
   private ringBuffer: RingBufferEntry[] = [];
   private readonly RING_BUFFER_SIZE = 100;
   private readonly MODEL_NAME = 'paraphrase-multilingual-mpnet-base-v2';
+  private currentStage: StartupStage | null = null;
 
   constructor() {
     this.sidecarClient = new PythonSidecarClient();
@@ -58,7 +58,11 @@ export class WorkerStartup {
     try {
       this.logToBuffer('WORKER-STARTUP', 'Starting initialization sequence');
 
-      // Stage 1: Pre-flight check for Python dependencies (silent, no stage emission)
+      // Stage 1: Start Python sidecar (includes dependency check)
+      this.emitStage('sidecar_start', 'Starting Python sidecar server...');
+
+      // Check Python dependencies
+      this.emitProgress('Checking Python dependencies...');
       const depsCheck = await this.sidecarService.checkDependencies();
 
       if (depsCheck && !depsCheck.all_present) {
@@ -79,8 +83,8 @@ export class WorkerStartup {
         return null;
       }
 
-      // Stage 2: Start Python sidecar
-      this.emitStage('sidecar_start', 'Starting Python sidecar server...');
+      // Dependencies OK, start the sidecar
+      this.emitProgress('Starting sidecar process...');
       const started = await this.sidecarService.startSidecar();
       if (!started) {
         this.emitError('SIDECAR_START_FAILED', 'Failed to start Python sidecar server');
@@ -89,7 +93,7 @@ export class WorkerStartup {
 
       log('Python sidecar started successfully');
 
-      // Stage 3: Wait for sidecar to be ready (model loading)
+      // Stage 2: Wait for sidecar to be ready (model loading)
       this.emitStage('sidecar_ready', 'Loading embedding model...');
       const status = await this.sidecarService.getStatus();
       if (!status.healthy) {
@@ -99,7 +103,7 @@ export class WorkerStartup {
 
       log('Python sidecar is healthy and ready');
 
-      // Stage 4: Initialize embedder
+      // Stage 3: Initialize embedder
       this.emitStage('embedder_init', 'Initializing embedder...');
       this.embedder = new PythonSidecarEmbedder({
         modelName: this.MODEL_NAME,
@@ -116,7 +120,7 @@ export class WorkerStartup {
 
       log('Embedder initialized successfully');
 
-      // Stage 5: Ready
+      // Stage 4: Ready
       this.emitStage('ready', 'Worker ready');
       this.logToBuffer('WORKER-STARTUP', 'Initialization complete');
 
@@ -165,9 +169,21 @@ export class WorkerStartup {
   private emitStage(stage: StartupStage, message: string, progress?: number) {
     if (!parentPort) return;
 
+    this.currentStage = stage;
     const stageMessage = createStageMessage(stage, message, progress);
     parentPort.postMessage(stageMessage);
     this.logToBuffer('STARTUP-STAGE', `${stage}: ${message}`);
+  }
+
+  /**
+   * Emit progress update within the current stage
+   */
+  private emitProgress(message: string, progress?: number) {
+    if (!parentPort || !this.currentStage) return;
+
+    const stageMessage = createStageMessage(this.currentStage, message, progress);
+    parentPort.postMessage(stageMessage);
+    this.logToBuffer('STARTUP-PROGRESS', `${this.currentStage}: ${message}`);
   }
 
   /**

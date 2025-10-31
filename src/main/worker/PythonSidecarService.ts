@@ -342,7 +342,7 @@ export class PythonSidecarService {
    */
   private async waitForReady(): Promise<boolean> {
     const startTime = Date.now();
-    const checkInterval = 500; // Check every 500ms
+    const checkInterval = 200; // Check every 200ms (reduced from 500ms for faster detection)
 
     while (Date.now() - startTime < this.maxStartupTime) {
       // Check if process is still alive
@@ -352,6 +352,7 @@ export class PythonSidecarService {
       }
 
       // Try health check
+      const checkStart = Date.now();
       try {
         const isHealthy = await this.client.checkHealth();
         if (isHealthy) {
@@ -363,8 +364,10 @@ export class PythonSidecarService {
         // Health check failed, keep waiting
       }
 
-      // Wait before next check
-      await this.sleep(checkInterval);
+      // Wait for remaining interval time (don't wait full interval if check took time)
+      const checkDuration = Date.now() - checkStart;
+      const remainingWait = Math.max(0, checkInterval - checkDuration);
+      await this.sleep(remainingWait);
     }
 
     log(`Sidecar startup timeout after ${this.maxStartupTime}ms`);

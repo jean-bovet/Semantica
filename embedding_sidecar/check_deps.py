@@ -24,6 +24,7 @@ Output:
 
 import sys
 import json
+import importlib.util
 
 # Required dependencies
 REQUIRED_DEPS = [
@@ -42,9 +43,13 @@ def check_dependencies():
 
     for dep in REQUIRED_DEPS:
         try:
-            __import__(dep)
-            deps_status[dep] = True
-        except ImportError:
+            spec = importlib.util.find_spec(dep)
+            if spec is not None:
+                deps_status[dep] = True
+            else:
+                deps_status[dep] = False
+                missing.append(dep)
+        except (ImportError, ModuleNotFoundError, ValueError):
             deps_status[dep] = False
             missing.append(dep)
 

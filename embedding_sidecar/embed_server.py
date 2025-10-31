@@ -80,13 +80,34 @@ def load_model_with_progress():
 
     return model
 
-print(f"📦 Loading model...")
-model = load_model_with_progress()
-print(f"✅ Model loaded successfully!")
-print(f"   Dimensions: {model.get_sentence_embedding_dimension()}")
+# Initialize model as None - will be loaded asynchronously after server starts
+model = None
+model_loading = False
 
 # -------- App --------
 app = FastAPI(title="Local Embedding Sidecar", version="1.0.0")
+
+# Load model after FastAPI server starts (async background task)
+@app.on_event("startup")
+async def load_model_background():
+    """Load model in background after server starts"""
+    global model, model_loading
+
+    if model is not None:
+        return  # Already loaded
+
+    model_loading = True
+    print(f"📦 Loading model in background...")
+
+    try:
+        model = load_model_with_progress()
+        print(f"✅ Model loaded successfully!")
+        print(f"   Dimensions: {model.get_sentence_embedding_dimension()}")
+    except Exception as e:
+        print(f"❌ Model loading failed: {str(e)}")
+        raise
+    finally:
+        model_loading = False
 
 class EmbedRequest(BaseModel):
     texts: List[str] = Field(min_length=1)
@@ -112,15 +133,34 @@ class FileEmbedResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    """Health check endpoint - returns model loading status"""
+    return {
+        "status": "ok",
+        "model_loaded": model is not None,
+        "model_loading": model_loading
+    }
 
 @app.get("/info")
 def info():
+    # Check if model is loaded
+    if model is None:
+        if model_loading:
+            raise HTTPException(status_code=503, detail="Model is still loading, please retry shortly")
+        else:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+
     dim = model.get_sentence_embedding_dimension()
     return {"model_id": DEFAULT_MODEL, "dim": dim, "device": DEVICE}
 
 @app.post("/embed", response_model=EmbedResponse)
 def embed(req: EmbedRequest):
+    # Check if model is loaded
+    if model is None:
+        if model_loading:
+            raise HTTPException(status_code=503, detail="Model is still loading, please retry shortly")
+        else:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+
     try:
         print(f"📥 Embed request: {len(req.texts)} texts, batch_size={req.batch_size}, normalize={req.normalize}")
 
@@ -140,6 +180,13 @@ def embed(req: EmbedRequest):
 
 @app.post("/embed-file", response_model=FileEmbedResponse)
 def embed_file(req: FileEmbedRequest):
+    # Check if model is loaded
+    if model is None:
+        if model_loading:
+            raise HTTPException(status_code=503, detail="Model is still loading, please retry shortly")
+        else:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+
     path = req.path
     if not os.path.exists(path):
         raise HTTPException(404, f"File not found: {path}")
