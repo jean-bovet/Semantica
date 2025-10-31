@@ -147,7 +147,8 @@
             "**/sharp/build/**",
             "node_modules/@lancedb/lancedb/dist/**",
             "node_modules/@lancedb/lancedb-*/dist/**",
-            "node_modules/apache-arrow/**"
+            "node_modules/apache-arrow/**",
+            "embedding_sidecar/**"
         ],
         "compression": "normal"
     }

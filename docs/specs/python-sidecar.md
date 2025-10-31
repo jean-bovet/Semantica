@@ -296,6 +296,29 @@ If any check fails, the app shows a context-aware error message with installatio
 
 See [Python Setup Guide](../guides/python-setup.md) for detailed installation instructions and troubleshooting.
 
+### Production Deployment
+
+**ASAR Packaging:**
+Python files must be extracted from the ASAR archive for execution. Configuration in `package.json`:
+
+```json
+"asarUnpack": [
+  "embedding_sidecar/**"
+]
+```
+
+**Path Resolution:**
+`PythonSidecarService.getProjectRoot()` detects packaged apps and returns `app.asar.unpacked` path instead of `app.asar`, ensuring Python can access scripts.
+
+**Python Environment:**
+`PythonSidecarService.getPythonEnv()` provides comprehensive PATH for packaged apps launched from Finder:
+- Homebrew: `/usr/local/bin`, `/opt/homebrew/bin`
+- MacPorts: `/opt/local/bin`
+- Python.org: `/Library/Frameworks/Python.framework/Versions/Current/bin`
+- User packages: `~/Library/Python/*/bin`, `~/.local/bin`
+
+This ensures the packaged app finds Python and dependencies in standard installation locations.
+
 ### Running Standalone
 
 ```bash

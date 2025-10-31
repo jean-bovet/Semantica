@@ -326,6 +326,17 @@ xcrun altool --notarize-app \
   --file dist/Semantica-1.0.0.dmg
 ```
 
+### Python Sidecar Packaging
+The Python embedding sidecar requires special handling in packaged apps:
+
+1. **ASAR Extraction**: Python scripts are unpacked from ASAR archive via `asarUnpack` config in `package.json`
+2. **Path Resolution**: App automatically detects packaged environment and uses `app.asar.unpacked/` paths
+3. **Python Environment**: Enhanced PATH includes Homebrew and standard Python installation locations
+
+**Troubleshooting**: If packaged app reports "Python dependencies not found," ensure dependencies are installed system-wide: `python3 -m pip install -r embedding_sidecar/requirements.txt`
+
+See [Python Sidecar Specification](python-sidecar.md#production-deployment) for technical details.
+
 ### Installation Instructions
 For end users:
 1. Download Semantica.dmg

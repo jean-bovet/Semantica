@@ -96,7 +96,8 @@ export class PythonSidecarService {
       }
 
       const proc = spawn(this.pythonPath, [checkScript], {
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: this.getPythonEnv()
       });
 
       let output = '';
@@ -155,10 +156,7 @@ export class PythonSidecarService {
         '--port', this.port.toString()
       ], {
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PYTHONUNBUFFERED: '1' // Force unbuffered output
-        }
+        env: this.getPythonEnv()
       });
 
       // Handle stdout - parse progress events and regular output
@@ -380,15 +378,16 @@ export class PythonSidecarService {
    * Handles different scenarios:
    * - Running from source (src/main/worker/)
    * - Running from compiled dist (dist/)
-   * - Running from packaged app (app.asar/dist/)
+   * - Running from packaged app (app.asar.unpacked/)
    */
   private getProjectRoot(): string {
     // Detect if running from bundled asar archive
     if (__dirname.includes('app.asar')) {
       // In packaged app: __dirname is like /app.asar/dist
-      // Extract asar root path
-      const asarRoot = __dirname.substring(0, __dirname.indexOf('app.asar') + 8);
-      return asarRoot;
+      // Python files are in app.asar.unpacked/ (not app.asar)
+      const asarIndex = __dirname.indexOf('app.asar');
+      const asarDir = __dirname.substring(0, asarIndex);
+      return path.join(asarDir, 'app.asar.unpacked');
     }
 
     // Check if running from compiled dist/ or source src/
@@ -409,6 +408,34 @@ export class PythonSidecarService {
    */
   private getDefaultPythonPath(): string {
     return 'python3';
+  }
+
+  /**
+   * Build environment with comprehensive PATH for Python execution
+   *
+   * Packaged Electron apps launched from Finder have a minimal PATH
+   * that may not include Homebrew, user bin dirs, or other Python locations.
+   * This ensures we find the same Python and packages as in development.
+   */
+  private getPythonEnv(): NodeJS.ProcessEnv {
+    // Common Python installation paths (Intel Mac, Apple Silicon, system)
+    const pythonPaths = [
+      '/usr/local/bin',        // Homebrew on Intel Mac
+      '/opt/homebrew/bin',     // Homebrew on Apple Silicon
+      '/opt/local/bin',        // MacPorts
+      '/Library/Frameworks/Python.framework/Versions/Current/bin', // Python.org installer
+      process.env.HOME + '/Library/Python/*/bin',  // User pip packages
+      process.env.HOME + '/.local/bin',            // User local packages
+    ];
+
+    // Prepend Python paths to existing PATH
+    const enhancedPath = [...pythonPaths, process.env.PATH || ''].join(':');
+
+    return {
+      ...process.env,
+      PATH: enhancedPath,
+      PYTHONUNBUFFERED: '1'  // Force unbuffered output
+    };
   }
 
   /**
