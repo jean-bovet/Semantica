@@ -57,7 +57,8 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- Unit tests: 509 tests (508 passing, 1 known timeout in Python sidecar)
+- Unit tests: 505 tests (all passing, in `tests/unit/`)
+- Integration tests: 8 tests (in `tests/integration/`, includes Python sidecar integration)
 - E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
 
 ### Memory Management
@@ -145,9 +146,11 @@ npm run package
 
 ### Running Tests
 ```bash
-npm test              # All tests
-npm run test:unit     # Unit tests only
-npm run test:e2e      # E2E tests only
+npm test                 # Unit tests only (default)
+npm run test:unit        # Unit tests only
+npm run test:integration # Integration tests only (requires Python sidecar)
+npm run test:all         # All unit + integration tests
+npm run test:e2e         # E2E tests only
 
 # E2E tests with mocked downloads (for testing without network)
 E2E_MOCK_DOWNLOADS=true E2E_MOCK_DELAYS=true npm run test:e2e
