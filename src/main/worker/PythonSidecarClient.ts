@@ -24,9 +24,11 @@ export interface SidecarEmbedResponse {
 
 export interface SidecarHealthResponse {
   status: string;
-  model: string;
-  dim: number;
-  device: string;
+  model_loaded?: boolean;
+  model_loading?: boolean;
+  model?: string;
+  dim?: number;
+  device?: string;
 }
 
 export interface SidecarInfoResponse {
@@ -165,10 +167,26 @@ export class PythonSidecarClient {
       const response = await this.fetch<SidecarHealthResponse>('/health', {
         method: 'GET',
       });
+      logger.log('SIDECAR-CLIENT', `⏱️  [TIMING] Health check response:`, JSON.stringify(response));
       return response.status === 'ok';
     } catch (error) {
       logger.log('SIDECAR-CLIENT', `Health check failed: ${error}`);
       return false;
+    }
+  }
+
+  /**
+   * Get detailed health status including model loading state
+   */
+  async getHealthStatus(): Promise<SidecarHealthResponse | null> {
+    try {
+      const response = await this.fetch<SidecarHealthResponse>('/health', {
+        method: 'GET',
+      });
+      return response;
+    } catch (error) {
+      logger.log('SIDECAR-CLIENT', `Health check failed: ${error}`);
+      return null;
     }
   }
 

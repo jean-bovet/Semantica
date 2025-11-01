@@ -84,6 +84,9 @@ export class PythonSidecarService {
     missing?: string[];
     error?: string;
   } | null> {
+    const startTime = Date.now();
+    log('⏱️  [TIMING] Dependency check started');
+
     return new Promise((resolve) => {
       const projectRoot = this.getProjectRoot();
       const checkScript = path.join(projectRoot, 'embedding_sidecar/check_deps.py');
@@ -112,16 +115,17 @@ export class PythonSidecarService {
       });
 
       proc.on('exit', (code) => {
+        const duration = Date.now() - startTime;
         try {
           const result = JSON.parse(output.trim());
           if (code === 0) {
-            log('✅ All Python dependencies are installed');
+            log(`⏱️  [TIMING] Dependency check completed in ${duration}ms - all dependencies present`);
           } else {
-            log('❌ Missing Python dependencies:', result.missing || []);
+            log(`⏱️  [TIMING] Dependency check completed in ${duration}ms - missing:`, result.missing || []);
           }
           resolve(result);
         } catch (err) {
-          log('Failed to parse dependency check output:', err);
+          log(`⏱️  [TIMING] Dependency check failed after ${duration}ms:`, err);
           if (errorOutput) {
             log('Dependency check stderr:', errorOutput);
           }
@@ -130,7 +134,8 @@ export class PythonSidecarService {
       });
 
       proc.on('error', (error) => {
-        log(`Dependency check failed: ${error.message}`);
+        const duration = Date.now() - startTime;
+        log(`⏱️  [TIMING] Dependency check error after ${duration}ms: ${error.message}`);
         resolve(null);
       });
     });
@@ -145,12 +150,14 @@ export class PythonSidecarService {
       return true;
     }
 
-    log(`Starting Python sidecar on port ${this.port}...`);
+    const startupStartTime = Date.now();
+    log(`⏱️  [TIMING] Starting Python sidecar on port ${this.port}...`);
     log(`Python path: ${this.pythonPath}`);
     log(`Script path: ${this.scriptPath}`);
 
     try {
       // Spawn Python process
+      const spawnStartTime = Date.now();
       this.process = spawn(this.pythonPath, [
         this.scriptPath,
         '--port', this.port.toString()
@@ -158,6 +165,8 @@ export class PythonSidecarService {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: this.getPythonEnv()
       });
+      const spawnDuration = Date.now() - spawnStartTime;
+      log(`⏱️  [TIMING] Python process spawned in ${spawnDuration}ms (PID: ${this.process.pid})`);
 
       // Handle stdout - parse progress events and regular output
       this.process.stdout?.on('data', (data) => {
@@ -227,22 +236,30 @@ export class PythonSidecarService {
         this.process = null;
       });
 
-      log(`Sidecar process spawned (PID: ${this.process.pid})`);
-
       // Wait for sidecar to be ready (health check loop)
+      log(`⏱️  [TIMING] Starting health check polling...`);
+      const healthCheckStartTime = Date.now();
       const isReady = await this.waitForReady();
+      const healthCheckDuration = Date.now() - healthCheckStartTime;
 
       if (isReady) {
+        const totalDuration = Date.now() - startupStartTime;
+        log(`⏱️  [TIMING] Health check passed in ${healthCheckDuration}ms`);
+        log(`⏱️  [TIMING] Total sidecar startup: ${totalDuration}ms`);
         log('✅ Python sidecar started successfully');
         this.restartCount = 0; // Reset counter on successful start
         return true;
       } else {
+        const totalDuration = Date.now() - startupStartTime;
+        log(`⏱️  [TIMING] Health check timeout after ${healthCheckDuration}ms`);
+        log(`⏱️  [TIMING] Total time before failure: ${totalDuration}ms`);
         log('❌ Python sidecar failed to start (health check timeout)');
         await this.stopSidecar();
         return false;
       }
     } catch (error) {
-      log(`Failed to start Python sidecar: ${error}`);
+      const totalDuration = Date.now() - startupStartTime;
+      log(`⏱️  [TIMING] Failed to start after ${totalDuration}ms: ${error}`);
       this.process = null;
       return false;
     }
@@ -341,6 +358,9 @@ export class PythonSidecarService {
   private async waitForReady(): Promise<boolean> {
     const startTime = Date.now();
     const checkInterval = 200; // Check every 200ms (reduced from 500ms for faster detection)
+    let attemptCount = 0;
+
+    log(`⏱️  [TIMING] Health check loop starting (max ${this.maxStartupTime}ms)`);
 
     while (Date.now() - startTime < this.maxStartupTime) {
       // Check if process is still alive
@@ -350,16 +370,32 @@ export class PythonSidecarService {
       }
 
       // Try health check
+      attemptCount++;
       const checkStart = Date.now();
+      const elapsed = Date.now() - startTime;
+
       try {
-        const isHealthy = await this.client.checkHealth();
-        if (isHealthy) {
-          const elapsed = Date.now() - startTime;
-          log(`Sidecar ready after ${elapsed}ms`);
-          return true;
+        log(`⏱️  [TIMING] Health check attempt #${attemptCount} at ${elapsed}ms`);
+
+        // Get detailed health status
+        const healthStatus = await this.client.getHealthStatus();
+        const checkDuration = Date.now() - checkStart;
+
+        if (healthStatus) {
+          log(`⏱️  [TIMING] Health check #${attemptCount} response (${checkDuration}ms): status=${healthStatus.status}, model_loaded=${healthStatus.model_loaded}, model_loading=${healthStatus.model_loading}`);
+
+          if (healthStatus.status === 'ok') {
+            const totalElapsed = Date.now() - startTime;
+            log(`⏱️  [TIMING] Health check PASSED after ${totalElapsed}ms (${attemptCount} attempts)`);
+            log(`⏱️  [TIMING] Model state: loaded=${healthStatus.model_loaded}, loading=${healthStatus.model_loading}`);
+            return true;
+          }
+        } else {
+          log(`⏱️  [TIMING] Health check #${attemptCount} failed (${checkDuration}ms): no response`);
         }
       } catch (error) {
-        // Health check failed, keep waiting
+        const checkDuration = Date.now() - checkStart;
+        log(`⏱️  [TIMING] Health check #${attemptCount} error (${checkDuration}ms): ${error}`);
       }
 
       // Wait for remaining interval time (don't wait full interval if check took time)
@@ -368,7 +404,8 @@ export class PythonSidecarService {
       await this.sleep(remainingWait);
     }
 
-    log(`Sidecar startup timeout after ${this.maxStartupTime}ms`);
+    const totalElapsed = Date.now() - startTime;
+    log(`⏱️  [TIMING] Sidecar startup TIMEOUT after ${totalElapsed}ms (${attemptCount} attempts)`);
     return false;
   }
 

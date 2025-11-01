@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+import semver from 'semver';
 import { logger } from '../shared/utils/logger';
 import {
   isStartupStageMessage,
@@ -313,10 +314,30 @@ if (gotTheLock) {
   ipcMain.handle('updater:check', async () => {
     log.info('Manual update check triggered from settings');
     try {
+      const currentVersion = app.getVersion();
       const result = await autoUpdater.checkForUpdates();
+
       if (result) {
-        return { available: true, version: result.updateInfo.version };
+        const remoteVersion = result.updateInfo.version;
+        log.info(`Version comparison: current=${currentVersion}, remote=${remoteVersion}`);
+
+        // Validate versions are valid semver
+        if (!semver.valid(currentVersion) || !semver.valid(remoteVersion)) {
+          log.warn(`Invalid version format detected - current: ${currentVersion}, remote: ${remoteVersion}`);
+          return { available: false };
+        }
+
+        // Only return available: true if remote version is actually newer
+        if (semver.gt(remoteVersion, currentVersion)) {
+          log.info(`Update available: ${remoteVersion} > ${currentVersion}`);
+          return { available: true, version: remoteVersion };
+        } else {
+          log.info(`No update needed: ${remoteVersion} <= ${currentVersion}`);
+          return { available: false };
+        }
       }
+
+      log.info('No update information returned from server');
       return { available: false };
     } catch (error) {
       log.error('Update check failed:', error);

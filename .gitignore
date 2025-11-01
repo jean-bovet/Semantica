@@ -38,3 +38,6 @@ test-results/
 playwright/.cache/
 /embedding_sidecar/.venv
 /embedding_sidecar/__pycache__
+
+# Local update testing configuration
+dev-app-update.yml

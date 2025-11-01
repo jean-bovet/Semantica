@@ -14,17 +14,45 @@ API:
 """
 
 from __future__ import annotations
-import os
-import sys
-import json
-import signal
-from typing import List, Optional, Literal
-from pathlib import Path
 
+# Start timing as early as possible
+import time
+_script_start = time.time()
+
+def _log_timing(msg: str):
+    """Log timing message with elapsed time since script start"""
+    elapsed = (time.time() - _script_start) * 1000
+    print(f"⏱️  [PYTHON-TIMING] {elapsed:7.0f}ms | {msg}", flush=True)
+
+_log_timing("Script execution started")
+import os
+_log_timing("Imported: os")
+import sys
+_log_timing("Imported: sys")
+import json
+_log_timing("Imported: json")
+import signal
+_log_timing("Imported: signal")
+from typing import List, Optional, Literal
+_log_timing("Imported: typing")
+from pathlib import Path
+_log_timing("Imported: pathlib")
+
+_log_timing("Starting FastAPI import...")
 from fastapi import FastAPI, HTTPException
+_log_timing("Imported: FastAPI")
+
+_log_timing("Starting Pydantic import...")
 from pydantic import BaseModel, Field
+_log_timing("Imported: Pydantic")
+
+_log_timing("Starting SentenceTransformer import...")
 from sentence_transformers import SentenceTransformer
+_log_timing("Imported: SentenceTransformer")
+
+_log_timing("Starting PyTorch import...")
 import torch
+_log_timing("Imported: PyTorch")
 
 # -------- Progress Reporting --------
 def emit_progress(event_type: str, data: dict):
@@ -33,6 +61,7 @@ def emit_progress(event_type: str, data: dict):
     print(f"PROGRESS:{json.dumps(event)}", flush=True)
 
 # -------- Config --------
+_log_timing("Setting up configuration...")
 DEFAULT_MODEL = os.getenv(
     "EMBED_MODEL",
     "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
@@ -40,8 +69,10 @@ DEFAULT_MODEL = os.getenv(
 BIND_HOST = os.getenv("EMBED_HOST", "127.0.0.1")
 BIND_PORT = int(os.getenv("EMBED_PORT", "8421"))
 CACHE_DIR = os.getenv("HF_HOME")  # optional pre-bundled cache path
+_log_timing("Configuration complete")
 
 # Detect device (prefer Apple MPS, then CUDA, else CPU)
+_log_timing("Detecting device...")
 def pick_device() -> str:
     if torch.backends.mps.is_available():
         return "mps"
@@ -50,6 +81,7 @@ def pick_device() -> str:
     return "cpu"
 
 DEVICE = pick_device()
+_log_timing(f"Device detected: {DEVICE}")
 
 print(f"🚀 Starting embedding sidecar...")
 print(f"   Model: {DEFAULT_MODEL}")
@@ -59,23 +91,34 @@ print(f"   Bind: {BIND_HOST}:{BIND_PORT}")
 # -------- Model Load with Progress --------
 def load_model_with_progress():
     """Load model with download progress reporting"""
+    start_time = time.time()
+
     cache_dir = CACHE_DIR or Path.home() / ".cache" / "huggingface"
     model_repo = DEFAULT_MODEL.replace("/", "--")
     model_path = Path(cache_dir) / f"hub" / f"models--{model_repo}"
 
-    if model_path.exists():
-        print("📦 Loading cached model...")
+    is_cached = model_path.exists()
+    if is_cached:
+        print(f"⏱️  [TIMING] Loading cached model from {model_path}")
         emit_progress("model_cached", {"model": DEFAULT_MODEL})
     else:
-        print("📦 Downloading model (first run - this may take a few minutes)...")
+        print(f"⏱️  [TIMING] Downloading model (first run - this may take a few minutes)...")
         emit_progress("download_started", {"model": DEFAULT_MODEL})
 
     # Load model (sentence-transformers handles download automatically)
+    load_start = time.time()
     model = SentenceTransformer(DEFAULT_MODEL, device=DEVICE, cache_folder=str(cache_dir) if CACHE_DIR else None)
+    load_duration = (time.time() - load_start) * 1000  # Convert to ms
+
+    total_duration = (time.time() - start_time) * 1000  # Convert to ms
+    print(f"⏱️  [TIMING] Model loaded in {load_duration:.0f}ms (total: {total_duration:.0f}ms, cached: {is_cached})")
 
     emit_progress("model_loaded", {
         "model": DEFAULT_MODEL,
-        "dimensions": model.get_sentence_embedding_dimension()
+        "dimensions": model.get_sentence_embedding_dimension(),
+        "load_time_ms": load_duration,
+        "total_time_ms": total_duration,
+        "from_cache": is_cached
     })
 
     return model
@@ -85,7 +128,9 @@ model = None
 model_loading = False
 
 # -------- App --------
+_log_timing("Creating FastAPI app...")
 app = FastAPI(title="Local Embedding Sidecar", version="1.0.0")
+_log_timing("FastAPI app created")
 
 # Load model after FastAPI server starts (async background task)
 @app.on_event("startup")
@@ -96,11 +141,14 @@ async def load_model_background():
     if model is not None:
         return  # Already loaded
 
+    background_start = time.time()
     model_loading = True
-    print(f"📦 Loading model in background...")
+    print(f"⏱️  [TIMING] Background model loading started")
 
     try:
         model = load_model_with_progress()
+        background_duration = (time.time() - background_start) * 1000
+        print(f"⏱️  [TIMING] Background model loading completed in {background_duration:.0f}ms")
         print(f"✅ Model loaded successfully!")
         print(f"   Dimensions: {model.get_sentence_embedding_dimension()}")
     except Exception as e:
@@ -108,6 +156,8 @@ async def load_model_background():
         raise
     finally:
         model_loading = False
+
+_log_timing("Defining Pydantic models...")
 
 class EmbedRequest(BaseModel):
     texts: List[str] = Field(min_length=1)
@@ -130,6 +180,9 @@ class FileEmbedRequest(BaseModel):
 class FileEmbedResponse(BaseModel):
     chunks: List[str]
     vectors: List[List[float]]
+
+_log_timing("Pydantic models defined")
+_log_timing("Registering routes...")
 
 @app.get("/health")
 def health():
@@ -243,8 +296,15 @@ def shutdown():
     os.kill(os.getpid(), signal.SIGTERM)
     return {"ok": True}
 
+_log_timing("All routes registered")
+_log_timing("Script initialization complete, starting uvicorn...")
+
 if __name__ == "__main__":
+    _log_timing("Importing uvicorn...")
     import uvicorn
+    _log_timing("Uvicorn imported")
+
+    _log_timing("Starting uvicorn server...")
     uvicorn.run(
         app,  # Pass app object directly to avoid double import
         host=BIND_HOST,
