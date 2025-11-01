@@ -41,6 +41,7 @@
         "@types/node": "^20.14.0",
         "@types/react": "^18.3.0",
         "@types/react-dom": "^18.3.0",
+        "@types/semver": "^7.7.1",
         "@typescript-eslint/eslint-plugin": "^8.0.0",
         "@typescript-eslint/parser": "^8.0.0",
         "@vitejs/plugin-react": "^4.3.0",
@@ -84,7 +85,6 @@
     "build": {
         "appId": "ch.arizona-software.semantica",
         "productName": "Semantica",
-        "afterSign": "scripts/notarize.js",
         "generateUpdatesFilesForAllChannels": false,
         "directories": {
             "output": "dist-app",
