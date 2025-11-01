@@ -311,6 +311,34 @@ end
      node_modules/@lancedb/lancedb/build/Release/lancedb.node
    ```
 
+6. **hdiutil detach fails during DMG creation**
+   - **Symptom**: Build completes successfully but shows retry errors:
+     ```
+     ⨯ unable to execute hdiutil  args=["detach","-quiet","/dev/diskX"]
+     code=undefined error=Exit code: 16
+     Command failed: hdiutil detach -quiet /dev/diskX
+     • Above command failed, retrying 5 more times
+     ```
+   - **Impact**: None - the build ultimately succeeds as electron-builder automatically retries
+   - **Root Cause**: Exit code 16 = "Resource busy". macOS processes (Spotlight indexing, disk arbitration, etc.) prevent immediate disk image detachment. This is a well-known electron-builder/macOS interaction issue with no definitive fix.
+   - **Why it happens**:
+     - Spotlight may be indexing the mounted DMG contents
+     - macOS hasn't fully released all file handles before detach attempt
+     - Timing issue between electron-builder and macOS disk management
+   - **Solution**: No action needed - this is informational only
+     - electron-builder's built-in retry mechanism handles this automatically
+     - The retries typically succeed within 1-5 attempts
+     - Final DMG and ZIP files are created successfully
+   - **Alternative workarounds** (if build fails completely):
+     - Temporarily disable Spotlight: `sudo mdutil -a -i off`
+     - Add build/release directory to macOS Privacy settings
+     - Retry the build - it often succeeds on subsequent attempts
+   - **References**:
+     - https://github.com/electron-userland/electron-builder/issues/7137
+     - https://github.com/electron-userland/electron-builder/issues/4606
+     - https://github.com/electron-userland/electron-builder/issues/5431
+   - **Note**: Particularly common on macOS Sequoia (15.0+) due to Spotlight bugs
+
 ## Security Best Practices
 
 1. **Never commit credentials**
