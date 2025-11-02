@@ -1,8 +1,25 @@
 # Multilingual Search Strategy (French + English)
 
-## ✅ IMPLEMENTED - August 2025
+## ⚠️ HISTORICAL DOCUMENT - NOT FULLY IMPLEMENTED
 
-The application now uses `Xenova/multilingual-e5-small` with E5 instruction prefixes for optimal multilingual search performance.
+**Note**: This document describes a proposed implementation using `Xenova/multilingual-e5-small`. However, the actual production implementation uses `paraphrase-multilingual-mpnet-base-v2` instead, which also provides multilingual support but with a different architecture.
+
+This document is preserved for historical reference and as analysis of the E5 model approach. For the actual implementation details, see:
+- `docs/specs/python-sidecar.md` - Current embedding service specification
+- `embedding_sidecar/embed_server.py` - Actual model implementation
+
+The actual production model (`paraphrase-multilingual-mpnet-base-v2`):
+- 768-dimensional embeddings
+- Multilingual support for 50+ languages
+- Python-based FastAPI sidecar (not TransformersJS)
+- No instruction prefixes required
+- Different chunking strategy
+
+---
+
+## Original Proposal (E5 Model - Not Implemented)
+
+The sections below describe the E5 model implementation that was analyzed but not deployed.
 
 ## Recommended Solutions
 

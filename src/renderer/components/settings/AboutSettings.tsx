@@ -29,7 +29,7 @@ function AboutSettings({ appVersion }: AboutSettingsProps) {
         <ul className="tech-list">
           <li><strong>Search:</strong> Semantic vector search using multilingual embeddings</li>
           <li><strong>Database:</strong> LanceDB for efficient vector storage</li>
-          <li><strong>ML Model:</strong> Xenova/multilingual-e5-small for text understanding</li>
+          <li><strong>ML Model:</strong> paraphrase-multilingual-mpnet-base-v2 for text understanding</li>
           <li><strong>Platform:</strong> Built with Electron, React, and TypeScript</li>
         </ul>
       </div>

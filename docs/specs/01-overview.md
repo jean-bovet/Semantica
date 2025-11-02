@@ -21,7 +21,7 @@ Semantica is an Electron-based desktop application that provides offline semanti
 ### Search Capabilities
 - **Semantic Search**: Natural language queries find conceptually related content
 - **File Search**: Direct filename/path search with status indicators
-- **Multi-lingual Support**: Xenova/multilingual-e5-small model
+- **Multi-lingual Support**: paraphrase-multilingual-mpnet-base-v2 model
 - **Real-time Results**: Instant search with 300ms debouncing
 - **Search-First UI**: Full-screen search interface for maximum visibility
 
