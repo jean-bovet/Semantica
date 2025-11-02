@@ -46,7 +46,7 @@ Semantica is an Electron-based desktop application that provides offline semanti
 - **File Actions**: Open in Finder, Open in Preview
 - **Keyboard Shortcuts**: CMD+K for search, ESC to close
 - **Modern Search Results**: Flat list design with condensed information
-- **Detail Panel**: Resizable slide-in panel (20-80% width) showing all matches
+- **Detail Panel**: Resizable slide-in panel (20-80% width) showing all matches with semantic-aware highlighting, match type badges (keyword/semantic), smart sentence-boundary truncation, and expandable full text
 - **Interactive Results**: Results remain scrollable and clickable with panel open
 - **Smart Selection**: Click same row to close panel, different row to update
 
@@ -64,6 +64,7 @@ Semantica is an Electron-based desktop application that provides offline semanti
 - File watching and incremental indexing
 - Native macOS scrollbar styling
 - Resizable detail panel with drag handle
+- Semantic-aware highlighting with match type indicators
 - Optimized result display without cards
 - Smart memory logging (only on significant changes)
 

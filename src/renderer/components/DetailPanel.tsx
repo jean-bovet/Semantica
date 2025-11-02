@@ -72,28 +72,87 @@ function DetailPanel({
   const fileName = selectedFile.split('/').pop() || selectedFile;
   const fileTitle = fileResults[0]?.title || fileName;
 
-  const highlightText = (text: string, query: string) => {
-    if (!query.trim()) return text;
-    
+  const highlightText = (text: string, query: string): { html: string; matchType: 'keyword' | 'semantic' } => {
+    if (!query.trim()) return { html: text, matchType: 'semantic' };
+
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     let highlightedText = text;
-    
+    let foundMatches = false;
+
     words.forEach(word => {
-      const regex = new RegExp(`(${word})`, 'gi');
+      // Escape special regex characters
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${escapedWord})`, 'gi');
+      const beforeReplace = highlightedText;
       highlightedText = highlightedText.replace(regex, '<mark>$1</mark>');
+      if (highlightedText !== beforeReplace) {
+        foundMatches = true;
+      }
     });
-    
-    return highlightedText;
+
+    // If no keyword matches found, this is a pure semantic match
+    const matchType = foundMatches ? 'keyword' : 'semantic';
+    return { html: highlightedText, matchType };
   };
 
-  const truncateContext = (text: string, maxLength: number = 200) => {
-    if (text.length <= maxLength) return text;
-    
-    const halfLength = Math.floor(maxLength / 2);
-    const start = text.substring(0, halfLength);
-    const end = text.substring(text.length - halfLength);
-    
-    return `${start}...${end}`;
+  const truncateContext = (text: string, maxChars: number = 400) => {
+    // If text is short enough, return as-is
+    if (text.length <= maxChars) return text;
+
+    // Find sentence boundaries (periods, exclamation marks, question marks followed by space or end)
+    const sentenceRegex = /[.!?](?:\s|$)/g;
+    const sentences: Array<{ text: string; start: number; end: number }> = [];
+    let match;
+    let lastIndex = 0;
+
+    while ((match = sentenceRegex.exec(text)) !== null) {
+      const sentenceText = text.substring(lastIndex, match.index + 1).trim();
+      if (sentenceText) {
+        sentences.push({
+          text: sentenceText,
+          start: lastIndex,
+          end: match.index + 1
+        });
+      }
+      lastIndex = match.index + 1;
+    }
+
+    // Add remaining text as last sentence if any
+    if (lastIndex < text.length) {
+      const remaining = text.substring(lastIndex).trim();
+      if (remaining) {
+        sentences.push({
+          text: remaining,
+          start: lastIndex,
+          end: text.length
+        });
+      }
+    }
+
+    // If no sentences found, fall back to character truncation
+    if (sentences.length === 0) {
+      return text.substring(0, maxChars) + '...';
+    }
+
+    // Try to show 2-3 complete sentences around the middle
+    const targetSentences = Math.min(3, sentences.length);
+    const middleIndex = Math.floor(sentences.length / 2);
+    const startIndex = Math.max(0, middleIndex - Math.floor(targetSentences / 2));
+    const endIndex = Math.min(sentences.length, startIndex + targetSentences);
+
+    const selectedSentences = sentences.slice(startIndex, endIndex);
+    const result = selectedSentences.map(s => s.text).join(' ');
+
+    // If still too long, just take first N characters and add ellipsis
+    if (result.length > maxChars) {
+      return text.substring(0, maxChars) + '...';
+    }
+
+    // Add ellipsis indicators if we're not showing everything
+    const prefix = startIndex > 0 ? '... ' : '';
+    const suffix = endIndex < sentences.length ? ' ...' : '';
+
+    return prefix + result + suffix;
   };
 
   return (
@@ -123,21 +182,58 @@ function DetailPanel({
         </div>
 
         <div className="detail-matches">
-          {fileResults.map((result, index) => (
-            <div key={`${result.id}-${index}`} className="match-item">
-              <div className="match-header">
-                <span className="match-number">Match {index + 1}</span>
-                {result.page && <span className="match-page">Page {result.page}</span>}
-                <span className="match-score">{(result.score * 100).toFixed(0)}%</span>
+          {fileResults.map((result, index) => {
+            const truncatedText = truncateContext(result.text);
+            const highlighted = highlightText(truncatedText, query);
+            const isTruncated = truncatedText !== result.text;
+
+            return (
+              <div key={`${result.id}-${index}`} className="match-item">
+                <div className="match-header">
+                  <span className="match-number">Match {index + 1}</span>
+                  {result.page && <span className="match-page">Page {result.page}</span>}
+                  <span className="match-score">{(result.score * 100).toFixed(0)}%</span>
+                  <span className={`match-type-badge ${highlighted.matchType}`}>
+                    {highlighted.matchType === 'keyword' ? (
+                      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style={{ marginRight: '4px' }}>
+                        <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" />
+                      </svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" style={{ marginRight: '4px' }}>
+                        <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z" />
+                      </svg>
+                    )}
+                    {highlighted.matchType}
+                  </span>
+                </div>
+                <div
+                  className="match-text"
+                  dangerouslySetInnerHTML={{ __html: highlighted.html }}
+                />
+                {isTruncated && (
+                  <button
+                    className="show-full-text-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const textDiv = e.currentTarget.previousElementSibling as HTMLDivElement;
+                      const fullHighlighted = highlightText(result.text, query);
+                      if (textDiv.classList.contains('expanded')) {
+                        textDiv.innerHTML = highlighted.html;
+                        textDiv.classList.remove('expanded');
+                        e.currentTarget.textContent = 'Show full text';
+                      } else {
+                        textDiv.innerHTML = fullHighlighted.html;
+                        textDiv.classList.add('expanded');
+                        e.currentTarget.textContent = 'Show less';
+                      }
+                    }}
+                  >
+                    Show full text
+                  </button>
+                )}
               </div>
-              <div 
-                className="match-text"
-                dangerouslySetInnerHTML={{ 
-                  __html: highlightText(truncateContext(result.text), query) 
-                }}
-              />
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="detail-actions">
