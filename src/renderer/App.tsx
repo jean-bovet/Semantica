@@ -4,7 +4,7 @@ import SettingsView from './components/SettingsView';
 import StatusBar from './components/StatusBar';
 import Modal from './components/Modal';
 import FileSearchModal from './components/FileSearchModal';
-import StartupProgress from './components/StartupProgress';
+import StartupProgressInline from './components/StartupProgressInline';
 import { SearchProvider } from './contexts/SearchContext';
 import { normalizeProgress } from './utils/statusHelpers';
 import './App.css';
@@ -15,9 +15,8 @@ declare global {
   }
 }
 
-function App() {
-  const [appReady, setAppReady] = useState(false);
-  const [isCheckingWorkerStatus, setIsCheckingWorkerStatus] = useState(true);
+// Main interface component - only renders when app is ready
+function MainInterface() {
   const [_filesLoaded, setFilesLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileSearch, setShowFileSearch] = useState(false);
@@ -29,23 +28,6 @@ function App() {
     paused: false,
     initialized: false
   });
-
-  // Memoized callback to prevent re-creating on every render
-  const handleStartupComplete = useCallback(() => {
-    setAppReady(true);
-  }, []);
-
-  // Check if worker is already ready on mount (e.g., after reload/wake from sleep)
-  useEffect(() => {
-    const checkWorkerReady = async () => {
-      const isReady = await window.api.worker.isReady();
-      if (isReady) {
-        setAppReady(true);
-      }
-      setIsCheckingWorkerStatus(false);
-    };
-    checkWorkerReady();
-  }, []);
 
   // Listen for files loaded event
   useEffect(() => {
@@ -59,18 +41,18 @@ function App() {
       window.api.off('files:loaded', handleFilesLoaded);
     };
   }, []);
-  
-  
+
+  // Poll for indexer progress
   useEffect(() => {
     const unsubscribe = window.api.indexer.onProgress((progress) => {
       setIndexProgress(normalizeProgress(progress));
     });
-    
+
     const interval = setInterval(async () => {
       const progress = await window.api.indexer.progress();
       setIndexProgress(normalizeProgress(progress));
     }, 2000);
-    
+
     return () => {
       unsubscribe();
       clearInterval(interval);
@@ -78,36 +60,50 @@ function App() {
   }, []);
 
   return (
-    <SearchProvider>
-      <div className="app" data-testid="app-ready">
-        <div className="main-content">
-          <SearchView />
-        </div>
-
-        <StatusBar
-          progress={indexProgress}
-          onSettingsClick={() => setShowSettings(true)}
-          onFileSearchClick={() => setShowFileSearch(true)}
-        />
-
-        <Modal
-          isOpen={showSettings}
-          onClose={() => setShowSettings(false)}
-          title="Settings"
-        >
-          <SettingsView />
-        </Modal>
-
-        <FileSearchModal
-          isOpen={showFileSearch}
-          onClose={() => setShowFileSearch(false)}
-        />
+    <>
+      <div className="main-content">
+        <SearchView />
       </div>
 
-      {/* Startup progress overlay - rendered outside .app to avoid flex container issues */}
-      {!isCheckingWorkerStatus && !appReady && (
-        <StartupProgress onComplete={handleStartupComplete} />
-      )}
+      <StatusBar
+        progress={indexProgress}
+        onSettingsClick={() => setShowSettings(true)}
+        onFileSearchClick={() => setShowFileSearch(true)}
+      />
+
+      <Modal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        title="Settings"
+      >
+        <SettingsView />
+      </Modal>
+
+      <FileSearchModal
+        isOpen={showFileSearch}
+        onClose={() => setShowFileSearch(false)}
+      />
+    </>
+  );
+}
+
+function App() {
+  const [appReady, setAppReady] = useState(false);
+
+  // Memoized callback to prevent re-creating on every render
+  const handleStartupComplete = useCallback(() => {
+    setAppReady(true);
+  }, []);
+
+  return (
+    <SearchProvider>
+      <div className="app" data-testid="app-ready">
+        {appReady ? (
+          <MainInterface />
+        ) : (
+          <StartupProgressInline onComplete={handleStartupComplete} />
+        )}
+      </div>
     </SearchProvider>
   );
 }

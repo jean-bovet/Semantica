@@ -5,13 +5,13 @@ import {
 } from '../utils/StepperLogic';
 import { getStageIndex, STARTUP_STAGE_ORDER } from '../../shared/types/startup';
 import type { StartupStageMessage, StartupErrorMessage } from '../../shared/types/startup';
-import './StartupProgress.css';
+import './StartupProgressInline.css';
 
-interface StartupProgressProps {
+interface StartupProgressInlineProps {
   onComplete: () => void;
 }
 
-const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
+const StartupProgressInline: React.FC<StartupProgressInlineProps> = ({ onComplete }) => {
   const [stage, setStage] = useState<StartupStage>('worker_spawn');
   const [stageMessage, setStageMessage] = useState('Initializing...');
   const [error, setError] = useState<StartupErrorMessage | null>(null);
@@ -82,7 +82,7 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
       : null;
 
     return (
-      <div className="startup-error-overlay">
+      <div className="startup-loading">
         <div className="startup-error-card">
           <div className="startup-error-header">
             <div className="startup-error-icon">
@@ -142,7 +142,7 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
     const progressPercentage = calculateProgress();
 
     return (
-      <div className="startup-overlay">
+      <div className="startup-loading">
         <div className="startup-card">
           <div className="startup-header">
             <h2 className="startup-title">Initializing Semantica</h2>
@@ -163,4 +163,4 @@ const StartupProgress: React.FC<StartupProgressProps> = ({ onComplete }) => {
   return null;
 };
 
-export default StartupProgress;
+export default StartupProgressInline;
