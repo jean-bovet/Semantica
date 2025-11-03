@@ -259,6 +259,23 @@ See `src/main/core/embedding/EmbeddingQueue.ts` for implementation details.
 
 ## Database Implementation
 
+### Database Version Management
+Database schema is versioned to handle migrations and model changes:
+
+```typescript
+// src/main/worker/database/migration.ts
+const DB_VERSION = 5; // Current version
+
+// Version history:
+// Version 1: 384-dimensional vectors (Xenova multilingual-e5-small)
+// Version 2: 1024-dimensional vectors (Ollama bge-m3 - deprecated)
+// Version 3: 768-dimensional vectors (Ollama nomic-embed-text)
+// Version 4: 768-dimensional vectors (Python sidecar - production)
+// Version 5: Fixed cross-file contamination bug in batch processing
+```
+
+Version is tracked in `.db-version` file in the database directory. When a version mismatch is detected, `migrateDatabaseIfNeeded()` deletes all `.lance` tables and forces re-indexing.
+
 ### LanceDB Configuration
 Vector database for semantic search:
 
@@ -273,7 +290,7 @@ const chunksTable = await db.createTable('chunks', [
     file_path: '/path/to/file',
     chunk_index: 0,
     text: 'chunk content',
-    embedding: [0.1, 0.2, ...], // 384-dimensional vector
+    embedding: [0.1, 0.2, ...], // 768-dimensional vector (current)
     metadata: {
       file_type: 'pdf',
       modified_at: '2025-08-24T00:00:00Z'
@@ -283,7 +300,7 @@ const chunksTable = await db.createTable('chunks', [
 ```
 
 ### File Status Tracking
-Separate table for file indexing status:
+Separate table for file indexing status (managed by `worker/fileStatus.ts`):
 
 ```typescript
 interface FileStatus {
@@ -299,8 +316,10 @@ interface FileStatus {
 }
 ```
 
+File status operations are centralized in `src/main/worker/fileStatus.ts` with the `updateFileStatus()` function.
+
 ### Search Implementation
-Vector similarity search with result aggregation:
+Vector similarity search with result aggregation (implemented in `worker/search.ts`):
 
 ```typescript
 async function search(query: string, limit = 100): Promise<SearchResult[]> {

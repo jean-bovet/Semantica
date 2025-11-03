@@ -21,6 +21,27 @@ import {
 } from '../../shared/types/startup';
 import { shouldRestartEmbedder, bytesToMB } from '../utils/embedder-health';
 
+// Extracted modules
+import { getFileHash, isInsideBundle } from './utils/fileUtils';
+import {
+  checkDatabaseVersion,
+  migrateDatabaseIfNeeded,
+  writeDatabaseVersion,
+  DB_VERSION,
+  DB_VERSION_FILE
+} from './database/migration';
+import {
+  mergeRows,
+  processWriteQueue,
+  deleteByPath,
+  maybeCreateIndex,
+  createWriteQueueState,
+  type WriteQueueState
+} from './database/operations';
+import { updateFileStatus } from './fileStatus';
+import { processBatchToRows, createBatchProcessor } from './batch/processor';
+import { search, getStats, type FolderStats } from './search';
+
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
 if (process.env.E2E_MOCK_DOWNLOADS === 'true') {
@@ -186,12 +207,7 @@ const fileQueue = new ConcurrentQueue({
   }
 });
 const fileHashes = new Map<string, string>();
-let isWriting = false;
-const writeQueue: Array<() => Promise<void>> = [];
-interface FolderStats {
-  total: number;
-  indexed: number;
-}
+const writeQueueState = createWriteQueueState();
 const folderStats = new Map<string, FolderStats>();
 
 // Track if we've sent the files:loaded message
@@ -199,98 +215,17 @@ declare global {
   var filesLoadedSent: boolean | undefined;
 }
 
-// Database version management
-// Version 1: 384-dimensional vectors (old Xenova multilingual-e5-small model)
-// Version 2: 1024-dimensional vectors (Ollama bge-m3 model - buggy, deprecated)
-// Version 3: 768-dimensional vectors (Ollama nomic-embed-text - stable)
-// Version 4: 768-dimensional vectors (Python sidecar paraphrase-multilingual-mpnet-base-v2 - production)
-// Version 5: Fix cross-file contamination bug in batch processor (chunks from different files were stored with wrong file path)
-const DB_VERSION = 5;
-const DB_VERSION_FILE = '.db-version';
-
-/**
- * Check if database version matches current version
- * @param dir Database directory
- * @returns true if migration needed, false if version is current
- */
-export async function checkDatabaseVersion(dir: string): Promise<boolean> {
-  const versionFile = path.join(dir, DB_VERSION_FILE);
-  try {
-    const content = await fs.promises.readFile(versionFile, 'utf-8');
-    const existingVersion = parseInt(content.trim(), 10);
-
-    if (isNaN(existingVersion)) {
-      logger.log('DATABASE', 'Version file contains invalid data');
-      return true; // Corrupted = needs migration
-    }
-
-    return existingVersion !== DB_VERSION;
-  } catch {
-    // File doesn't exist or can't be read
-    return true;
-  }
-}
-
-/**
- * Migrate database if version doesn't match
- * @param dir Database directory
- * @returns true if migration was performed, false if not needed
- */
-export async function migrateDatabaseIfNeeded(dir: string): Promise<boolean> {
-  const needsMigration = await checkDatabaseVersion(dir);
-
-  if (!needsMigration) {
-    logger.log('DATABASE', `Database version ${DB_VERSION} is current, no migration needed`);
-    return false;
-  }
-
-  logger.log('DATABASE', `⚠️  Database version mismatch detected`);
-  logger.log('DATABASE', `🔄 Migrating to database version ${DB_VERSION}...`);
-
-  try {
-    // Ensure directory exists
-    await fs.promises.mkdir(dir, { recursive: true });
-
-    // Delete all .lance directories (chunks.lance, file_status.lance, etc.)
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.endsWith('.lance')) {
-        const fullPath = path.join(dir, entry.name);
-        logger.log('DATABASE', `Deleting old database: ${entry.name}`);
-        await fs.promises.rm(fullPath, { recursive: true, force: true });
-      }
-    }
-
-    // Delete old version file
-    const versionFile = path.join(dir, DB_VERSION_FILE);
-    await fs.promises.rm(versionFile, { force: true });
-
-    // Clear fileHashes to force re-indexing
-    fileHashes.clear();
-
-    logger.log('DATABASE', '✅ Database migration complete. All files will be re-indexed.');
-    return true;
-  } catch (error) {
-    logger.error('DATABASE', 'Failed to migrate database:', error);
-    throw error;
-  }
-}
-
-/**
- * Write current database version to file
- * @param dir Database directory
- */
-export async function writeDatabaseVersion(dir: string): Promise<void> {
-  const versionFile = path.join(dir, DB_VERSION_FILE);
-  await fs.promises.writeFile(versionFile, String(DB_VERSION), 'utf-8');
-  logger.log('DATABASE', `Database version ${DB_VERSION} written`);
-}
+// Database version is now imported from ./database/migration
 
 async function initDB(dir: string, _userDataPath: string) {
   try {
     emitStageProgress('db_init', 'Checking database version');
     // Check database version and migrate if needed
-    await migrateDatabaseIfNeeded(dir);
+    const migrated = await migrateDatabaseIfNeeded(dir);
+    if (migrated) {
+      // Clear fileHashes to force re-indexing after migration
+      fileHashes.clear();
+    }
 
     emitStageProgress('db_init', 'Initializing config manager');
     // Initialize config manager
@@ -455,214 +390,6 @@ function startEmbedderHealthCheck() {
   // (Legacy health check code for EmbedderPool removed)
 }
 
-async function mergeRows(rows: any[]) {
-  if (rows.length === 0) return;
-  
-  // Queue the write operation to avoid concurrent writes
-  return new Promise<void>((resolve, reject) => {
-    const writeOp = async () => {
-      try {
-        await tbl.mergeInsert('id')
-          .whenMatchedUpdateAll()
-          .whenNotMatchedInsertAll()
-          .execute(rows);
-        resolve();
-      } catch (error) {
-        logger.error('DATABASE', 'Failed to merge rows:', error);
-        // Retry once on conflict
-        if ((error as any)?.message?.includes('Commit conflict')) {
-          try {
-            await new Promise(r => setTimeout(r, 100));
-            await tbl.mergeInsert('id')
-              .whenMatchedUpdateAll()
-              .whenNotMatchedInsertAll()
-              .execute(rows);
-            resolve();
-          } catch (retryError) {
-            logger.error('DATABASE', 'Retry failed:', retryError);
-            reject(retryError);
-          }
-        } else {
-          reject(error);
-        }
-      }
-    };
-    
-    writeQueue.push(writeOp);
-    processWriteQueue();
-  });
-}
-
-async function processWriteQueue() {
-  if (isWriting || writeQueue.length === 0) return;
-  
-  isWriting = true;
-  while (writeQueue.length > 0) {
-    const writeOp = writeQueue.shift()!;
-    await writeOp();
-  }
-  isWriting = false;
-}
-
-async function deleteByPath(filePath: string) {
-  try {
-    if (!filePath || !tbl) {
-      return;
-    }
-
-    const escaped = filePath.replace(/"/g, '\\"');
-    const query = `path = "${escaped}"`;
-    await tbl.delete(query);
-  } catch (error) {
-    logger.error('DATABASE', 'Failed to delete by path:', filePath, error);
-  }
-}
-
-/**
- * Pure function that processes a batch of embedded chunks into database rows.
- *
- * IMPORTANT: Each chunk in a batch can be from a DIFFERENT file, so we must use
- * each chunk's OWN metadata.filePath, not assume all chunks are from the same file.
- *
- * This is a pure function for testability - it doesn't have side effects.
- *
- * @param batch - Batch containing chunks and their corresponding vectors
- * @param fileStatsProvider - Function to get file stats (mtime) for a given path
- * @returns Array of database rows ready to be inserted
- */
-export async function processBatchToRows(
-  batch: { chunks: any[], vectors: number[][] },
-  fileStatsProvider: (filePath: string) => Promise<{ mtime: number }>
-): Promise<any[]> {
-  // Cache file stats to avoid redundant stat calls for chunks from the same file
-  const fileStatsCache = new Map<string, { mtime: number }>();
-
-  // Create database rows - each chunk uses its OWN file path
-  const rows = await Promise.all(batch.chunks.map(async (chunk: any, idx: number) => {
-    // Use THIS chunk's file path, not the first chunk's path
-    const chunkFilePath = chunk.metadata.filePath;
-    const fileExt = path.extname(chunkFilePath).slice(1).toLowerCase();
-
-    // Get or cache file stats for this file
-    let fileStats = fileStatsCache.get(chunkFilePath);
-    if (!fileStats) {
-      fileStats = await fileStatsProvider(chunkFilePath);
-      fileStatsCache.set(chunkFilePath, fileStats);
-    }
-
-    // Generate unique ID using THIS chunk's file path
-    const id = crypto.createHash('sha1')
-      .update(`${chunkFilePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
-      .digest('hex');
-
-    return {
-      id,
-      path: chunkFilePath, // Each chunk gets its OWN file path
-      mtime: fileStats.mtime,
-      page: chunk.metadata.page || 0,
-      offset: chunk.metadata.offset,
-      text: chunk.text,
-      vector: batch.vectors[idx],
-      type: fileExt,
-      title: path.basename(chunkFilePath)
-    };
-  }));
-
-  return rows;
-}
-
-/**
- * Creates the batch processor callback for the embedding queue.
- * This wraps the pure processBatchToRows function with database write logic.
- *
- * @returns Batch processor function
- */
-export function createBatchProcessor() {
-  return async (batch: any) => {
-    // File stats provider that reads from filesystem
-    const fileStatsProvider = async (filePath: string) => {
-      const stat = await fs.promises.stat(filePath);
-      return { mtime: stat.mtimeMs };
-    };
-
-    // Process batch to rows using pure function
-    const rows = await processBatchToRows(batch, fileStatsProvider);
-
-    // Write to database
-    await mergeRows(rows);
-  };
-}
-
-async function getFileHash(filePath: string): Promise<string> {
-  const stat = await fs.promises.stat(filePath);
-  return `${stat.size}-${stat.mtimeMs}`;
-}
-
-function isInsideBundle(filePath: string): boolean {
-  // Check if file is inside a macOS bundle based on config patterns
-  if (!configManager?.getSettings().excludeBundles) {
-    return false;
-  }
-  
-  const bundlePatterns = configManager.getSettings().bundlePatterns || [];
-  
-  // Extract bundle extensions from patterns (e.g., "**/*.app/**" -> ".app")
-  const bundleExtensions = bundlePatterns
-    .map(pattern => {
-      const match = pattern.match(/\*\.([^/]+)/);
-      return match ? `.${match[1]}` : null;
-    })
-    .filter(Boolean) as string[];
-  
-  const pathComponents = filePath.split(path.sep);
-  for (const component of pathComponents) {
-    for (const ext of bundleExtensions) {
-      if (component.endsWith(ext)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-async function updateFileStatus(filePath: string, status: string, error?: string, chunkCount?: number, parserVersion?: number) {
-  if (!fileStatusTable) return; // Skip if table not available
-  
-  try {
-    let stats: any = { mtime: new Date() };
-    try {
-      stats = await fs.promises.stat(filePath);
-    } catch (_e) {
-      // File might not exist (e.g., deleted status)
-    }
-    
-    const record = {
-      path: filePath,
-      status: status,
-      error_message: error || '',
-      chunk_count: chunkCount || 0,
-      last_modified: stats.mtime.toISOString(),
-      indexed_at: new Date().toISOString(),
-      file_hash: fileHashes.get(filePath) || '',
-      parser_version: parserVersion || 0,
-      last_retry: status === 'failed' || status === 'error' ? new Date().toISOString() : null
-    };
-    
-    // Try to delete existing record (ignore errors)
-    try {
-      await fileStatusTable.delete(`path = "${filePath}"`);
-    } catch (_e) {
-      // Ignore delete errors
-    }
-    
-    // Insert new record
-    await fileStatusTable.add([record]);
-  } catch (e: any) {
-    // Log error but don't disable the table - it might be a temporary issue
-    console.debug('Error updating file status (non-critical):', e?.message || e);
-  }
-}
-
 // Original handleFile function (renamed for profiling wrapper)
 async function handleFileOriginal(filePath: string) {
   try {
@@ -673,14 +400,14 @@ async function handleFileOriginal(filePath: string) {
       await fs.promises.access(filePath);
     } catch (_e) {
       // File doesn't exist
-      await deleteByPath(filePath);
+      await deleteByPath(tbl, filePath);
       fileHashes.delete(filePath);
-      await updateFileStatus(filePath, 'deleted');
+      await updateFileStatus(fileStatusTable, filePath, 'deleted', fileHashes);
       return;
     }
-    
+
     // Check if file is inside a bundle and bundle exclusion is enabled
-    if (isInsideBundle(filePath)) {
+    if (isInsideBundle(filePath, configManager)) {
       // Log only once per unique bundle path
       const bundlePatterns = configManager?.getSettings().bundlePatterns || [];
       const extensions = bundlePatterns
@@ -777,7 +504,7 @@ async function handleFileOriginal(filePath: string) {
         }
       } catch (pdfError: any) {
         const errorMsg = pdfError.message || 'Unknown PDF parsing error';
-        await updateFileStatus(filePath, 'failed', `PDF: ${errorMsg}`, 0, parserVersion);
+        await updateFileStatus(fileStatusTable, filePath, 'failed', fileHashes, `PDF: ${errorMsg}`, 0, parserVersion);
         logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - PDF: ${errorMsg}`);
         return;
       }
@@ -809,7 +536,7 @@ async function handleFileOriginal(filePath: string) {
         }
       } catch (parseError: any) {
         const errorMsg = parseError.message || `Unknown ${parserDef.label} parsing error`;
-        await updateFileStatus(filePath, 'failed', errorMsg, 0, parserVersion);
+        await updateFileStatus(fileStatusTable, filePath, 'failed', fileHashes, errorMsg, 0, parserVersion);
         logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - ${errorMsg}`);
         return;
       }
@@ -817,7 +544,7 @@ async function handleFileOriginal(filePath: string) {
     
     if (chunks.length === 0) {
       // Mark file as failed if no chunks were extracted
-      await updateFileStatus(filePath, 'failed', 'No text content extracted', 0, parserVersion);
+      await updateFileStatus(fileStatusTable, filePath, 'failed', fileHashes, 'No text content extracted', 0, parserVersion);
       logger.warn('INDEXING', `Failed: ${path.basename(filePath)} - No text content extracted`);
       return;
     }
@@ -858,10 +585,10 @@ async function handleFileOriginal(filePath: string) {
     }
     
     fileHashes.set(filePath, currentHash);
-    
+
     // Update file status as successfully indexed
     const totalChunks = chunks.length;
-    await updateFileStatus(filePath, 'indexed', undefined, totalChunks, parserVersion);
+    await updateFileStatus(fileStatusTable, filePath, 'indexed', fileHashes, undefined, totalChunks, parserVersion);
     logger.log('INDEXING', `✅ Success: ${path.basename(filePath)} - ${totalChunks} chunks created`);
     
     // Clear references to help garbage collection
@@ -882,8 +609,8 @@ async function handleFileOriginal(filePath: string) {
       }
     }
     
-    await maybeCreateIndex();
-    
+    await maybeCreateIndex(tbl);
+
     // Force garbage collection if available
     if (global.gc) {
       global.gc();
@@ -891,7 +618,7 @@ async function handleFileOriginal(filePath: string) {
   } catch (error: any) {
     logger.error('INDEXING', `❌ Error: ${path.basename(filePath)} -`, error.message || error);
     // Track the error in the database
-    await updateFileStatus(filePath, 'error', error.message || String(error));
+    await updateFileStatus(fileStatusTable, filePath, 'error', fileHashes, error.message || String(error));
   } finally {
     // Clean up the file tracker now that all processing is complete
     // This ensures the file doesn't show as PARSING after embedding is done
@@ -903,34 +630,6 @@ async function handleFileOriginal(filePath: string) {
 
 // Wrap handleFile with profiling
 const handleFile = profileHandleFile(handleFileOriginal);
-
-async function search(query: string, k = 10) {
-  try {
-    // Use sidecar embedder for query embedding
-    const vectors = await sidecarEmbedder!.embed([query]);
-    const qvec = vectors[0];
-    const results = await tbl.search(qvec)
-      .limit(k)
-      .toArray();
-    
-    const mappedResults = results.map((r: any) => {
-      return {
-        id: r.id,
-        path: r.path,
-        page: r.page || 0,
-        offset: r.offset || 0,
-        text: r.text || '',
-        score: r._distance !== undefined ? Math.max(0, 1 - (r._distance / 2)) : 1,
-        title: r.title || ''
-      };
-    });
-    
-    return mappedResults;
-  } catch (error) {
-    logger.error('DATABASE', 'Search failed:', error);
-    return [];
-  }
-}
 
 async function reindexAll() {
   logger.log('REINDEX', 'Starting full re-index with multilingual E5 model...');
@@ -978,42 +677,10 @@ async function reindexAll() {
     await startWatching(watchedFolders, configManager?.getEffectiveExcludePatterns(), true);
     
     logger.log('REINDEX', 'Re-indexing started - files will be processed through normal queue');
-    
+
   } catch (error) {
     logger.error('REINDEX', 'Re-index failed:', error);
     throw error;
-  }
-}
-
-async function maybeCreateIndex() {
-  try {
-    const count = await tbl.countRows();
-    if (count > 50000) {
-      await tbl.createIndex('vector').catch(() => {});
-    }
-  } catch (error) {
-    logger.error('DATABASE', 'Failed to create index:', error);
-  }
-}
-
-async function getStats() {
-  try {
-    const count = await tbl.countRows();
-    return {
-      totalChunks: count,
-      indexedFiles: fileHashes.size,
-      folderStats: Array.from(folderStats.entries()).map(([folder, stats]) => ({
-        folder,
-        totalFiles: stats.total,
-        indexedFiles: stats.indexed
-      }))
-    };
-  } catch (_error) {
-    return {
-      totalChunks: 0,
-      indexedFiles: 0,
-      folderStats: []
-    };
   }
 }
 
@@ -1035,7 +702,7 @@ async function cleanupRemovedFolders(removedFolders: string[]) {
     
     // Delete from vector database
     for (const path of pathsToDelete) {
-      await deleteByPath(path);
+      await deleteByPath(tbl, path);
     }
     
     // Delete from file status table
@@ -1285,10 +952,10 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
         break;
       }
     }
-    
-    await deleteByPath(p);
+
+    await deleteByPath(tbl, p);
     fileHashes.delete(p);
-    
+
     fileQueue.remove(p);
   });
 }
@@ -1387,7 +1054,7 @@ parentPort!.on('message', async (msg: any) => {
             });
 
             // Initialize with batch processor using sidecar embedder
-            embeddingQueue.initialize(sidecarEmbedder, createBatchProcessor());
+            embeddingQueue.initialize(sidecarEmbedder, createBatchProcessor(tbl, writeQueueState));
 
             logger.log('WORKER', 'Embedding queue initialized');
             modelReady = true; // Mark as ready for legacy code
@@ -1477,30 +1144,7 @@ parentPort!.on('message', async (msg: any) => {
               backpressureThreshold: 1000
             });
 
-            embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
-              const filePath = batch.chunks[0].metadata.filePath;
-              const fileExt = path.extname(filePath).slice(1).toLowerCase();
-              const stat = await fs.promises.stat(filePath);
-              const mtime = stat.mtimeMs;
-
-              const rows = batch.chunks.map((chunk: any, idx: number) => {
-                const id = crypto.createHash('sha1')
-                  .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
-                  .digest('hex');
-                return {
-                  id,
-                  path: filePath,
-                  mtime,
-                  page: chunk.metadata.page || 0,
-                  offset: chunk.metadata.offset,
-                  text: chunk.text,
-                  vector: batch.vectors[idx],
-                  type: fileExt,
-                  title: path.basename(filePath)
-                };
-              });
-              await mergeRows(rows);
-            });
+            embeddingQueue.initialize(sidecarEmbedder, createBatchProcessor(tbl, writeQueueState));
 
             modelReady = true;
             logger.log('WORKER', 'Startup retry successful');
@@ -1589,15 +1233,15 @@ parentPort!.on('message', async (msg: any) => {
         break;
         
       case 'search':
-        const results = await search(msg.payload.q, msg.payload.k);
-        
+        const results = await search(tbl, sidecarEmbedder!, msg.payload.q, msg.payload.k);
+
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: results });
         }
         break;
-        
+
       case 'stats':
-        const stats = await getStats();
+        const stats = await getStats(tbl, fileHashes, folderStats);
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: stats });
         }

@@ -1,51 +1,85 @@
 # Worker Refactoring Plan
 
-> **Status:** NEEDS UPDATE (Current: 1735 lines)
+> **Status:** ✅ PARTIALLY COMPLETED (Current: 1,498 lines, down from 1,855)
 >
-> **Update 2025-10-28:**
-> - Worker file has grown from 1543 to **1735 lines** (+192 lines since plan written)
-> - **EmbeddingQueue** is already extracted (✅ completed)
+> **Update 2025-11-03:** Phase 1 Completed
+> - **Completed extractions:**
+>   - ✅ `utils/fileUtils.ts` - File utilities (getFileHash, isInsideBundle)
+>   - ✅ `database/migration.ts` - Database version management (DB v5)
+>   - ✅ `database/operations.ts` - Database CRUD operations
+>   - ✅ `batch/processor.ts` - Batch processing (fixed cross-file bug)
+>   - ✅ `fileStatus.ts` - File status management
+>   - ✅ `search.ts` - Search & statistics operations
+> - **Results:**
+>   - Worker reduced from 1,855 → 1,498 lines (357 lines, 19% reduction)
+>   - All 515 unit tests passing
+>   - Integration tests passing
+>   - Cross-file contamination bug fixed (DB v5)
+>
+> **Previous Update 2025-10-28:**
+> - Worker file had grown from 1543 to **1735 lines** (+192 lines since plan written)
+> - **EmbeddingQueue** already extracted (✅ completed earlier)
 > - Python sidecar architecture changes "EmbedderPool" and "ModelManager" concepts
-> - Core refactoring goals remain valid and increasingly important
 >
-> **Next Steps:** Update plan to reflect current architecture and completed work.
+> **Next Steps:** Continue with remaining phases (see below)
 
 ## Overview
-The `src/main/worker/index.ts` file has grown to **1735 lines** (was 1543 at time of writing) and handles multiple responsibilities. This plan outlines a refactoring strategy to break it down into smaller, testable, and maintainable components.
+The `src/main/worker/index.ts` file has grown to **1,855 lines** at peak and handles multiple responsibilities. This plan outlines a refactoring strategy to break it down into smaller, testable, and maintainable components.
 
-## Current Issues
-- **File too large**: 1735 lines in a single file (and growing!)
-- **Mixed responsibilities**: Database, file processing, queue management, watching, etc.
-- **Hard to test**: Tightly coupled components make unit testing difficult
-- **Difficult to maintain**: Finding specific functionality requires scrolling through large file
+**Phase 1 (Completed):** Core database and processing functions extracted, reducing file to 1,498 lines.
 
-## Proposed Module Structure
+## Current Issues (Improved but not fully resolved)
+- **File still large**: 1,498 lines (improved from 1,855, but still room for improvement)
+- **Mixed responsibilities**: File processing, queue management, watching still in main file
+- **Testing improved**: Database and batch processing now use pure, testable functions
+- **Maintainability improved**: Core functions extracted to focused modules
 
+## Module Structure (Updated)
+
+### ✅ Completed (Phase 1)
 ```
 src/main/worker/
-├── index.ts                 (Main worker entry - thin orchestration layer ~200 lines)
+├── index.ts                 (1,498 lines - improved from 1,855)
+├── utils/
+│   └── fileUtils.ts         ✅ (File hash, bundle detection)
 ├── database/
-│   ├── DatabaseManager.ts   (LanceDB operations, table management)
-│   ├── FileStatusManager.ts (File status tracking)
-│   └── SearchService.ts     (Search functionality)
+│   ├── migration.ts         ✅ (DB version 5, migration logic)
+│   └── operations.ts        ✅ (mergeRows, deleteByPath, write queue)
+├── batch/
+│   └── processor.ts         ✅ (Batch processing, cross-file bug fix)
+├── fileStatus.ts            ✅ (File status tracking)
+└── search.ts                ✅ (Search & stats operations)
+```
+
+### 🔄 Original Proposed Structure (For Future Phases)
+```
+src/main/worker/
+├── index.ts                 (Target: thin orchestration layer ~200-400 lines)
+├── database/
+│   ├── migration.ts         ✅ DONE
+│   ├── operations.ts        ✅ DONE
+│   └── [Future: More DB abstractions]
 ├── processing/
-│   ├── FileProcessor.ts     (File parsing and chunking)
-│   ├── ChunkingService.ts   (Text chunking logic)
-│   └── EmbeddingService.ts  (HTTP wrapper for Python sidecar /embed API)
+│   ├── FileProcessor.ts     (File parsing and chunking - future)
+│   ├── ChunkingService.ts   (Text chunking logic - future)
+│   └── EmbeddingService.ts  (HTTP wrapper - future)
+├── batch/
+│   └── processor.ts         ✅ DONE
 ├── queue/
-│   ├── FileQueue.ts         (Already exists - legacy, may be superseded)
-│   ├── EmbeddingQueue.ts    (✅ Already extracted - producer-consumer pattern)
-│   └── QueueProcessor.ts    (Queue processing logic)
+│   ├── FileQueue.ts         (Already exists in core/)
+│   ├── EmbeddingQueue.ts    (✅ Already in core/)
+│   └── QueueProcessor.ts    (Queue processing logic - future)
 ├── scanning/
-│   ├── FileScanner.ts       (Scan directories for files)
-│   ├── FileWatcher.ts       (File system watching)
+│   ├── FileScanner.ts       (Already in core/)
+│   ├── FileWatcher.ts       (File system watching - future)
 │   └── ReindexService.ts    (Already exists)
 ├── services/
-│   ├── PythonSidecarManager.ts  (Python sidecar HTTP server management)
-│   └── WorkerMessageHandler.ts (Handle parent port messages)
-└── utils/
-    ├── FileHasher.ts        (File hash calculations)
-    └── MemoryMonitor.ts     (Memory management utilities)
+│   ├── PythonSidecarManager.ts  (Already exists)
+│   └── WorkerMessageHandler.ts (Handle parent port - future)
+├── utils/
+│   └── fileUtils.ts         ✅ DONE
+├── fileStatus.ts            ✅ DONE
+└── search.ts                ✅ DONE
 ```
 
 ## Component Specifications

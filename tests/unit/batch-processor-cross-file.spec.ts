@@ -34,7 +34,7 @@ vi.mock('@lancedb/lancedb', () => ({
 }));
 
 // Import after mocks are set up
-import { processBatchToRows } from '../../src/main/worker/index';
+import { processBatchToRows } from '../../src/main/worker/batch/processor';
 
 describe('Batch Processor - Cross-File Contamination Bug (REAL CODE TEST)', () => {
   it('should preserve correct file paths for chunks from multiple files in same batch', async () => {

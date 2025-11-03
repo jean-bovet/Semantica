@@ -34,7 +34,13 @@ src/main/
 │   ├── embedding/  # Embedding queue and processing
 │   └── reindex/    # Re-indexing and folder management
 ├── services/       # Application services layer
-├── worker/         # Worker thread entry point
+├── worker/         # Worker thread (modularized, 1,498 lines)
+│   ├── database/   # DB operations, migration (v5)
+│   ├── batch/      # Batch processing
+│   ├── utils/      # File utilities
+│   ├── fileStatus.ts
+│   ├── search.ts
+│   └── index.ts    # Worker entry point
 ├── parsers/        # File format parsers
 ├── startup/        # Application startup coordination
 └── utils/          # Shared utilities
@@ -57,7 +63,7 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- Unit tests: 505 tests (all passing, in `tests/unit/`)
+- Unit tests: 515 tests (all passing, in `tests/unit/`)
 - Integration tests: 8 tests (in `tests/integration/`, includes Python sidecar integration)
 - E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
 
@@ -70,6 +76,10 @@ Documentation is organized under `/docs/`:
 - LanceDB requires initialization with dummy data
 - File status tracked in separate table
 - Avoid complex WHERE clauses (not yet implemented)
+- **Database Version**: 5 (current)
+  - Version tracked in `.db-version` file
+  - Version 5: Fixed cross-file contamination bug in batch processing
+  - Migration handled automatically by `worker/database/migration.ts`
 
 ### Build System Notes
 - **Electron Version**: 38.4.0 (upgraded from 33.x)

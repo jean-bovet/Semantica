@@ -25,7 +25,7 @@ vi.mock('@lancedb/lancedb', () => ({
 }));
 
 // Import after mocks are set up
-import { checkDatabaseVersion, migrateDatabaseIfNeeded, writeDatabaseVersion } from '../../src/main/worker/index';
+import { checkDatabaseVersion, migrateDatabaseIfNeeded, writeDatabaseVersion } from '../../src/main/worker/database/migration';
 
 describe('Database Version Migration', () => {
   let testDir: string;

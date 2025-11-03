@@ -73,11 +73,18 @@ The main process follows a strict initialization order to prevent IPC errors:
 
 **Important**: Never load the window content before registering IPC handlers. The renderer process may attempt to call handlers immediately upon load, causing errors if handlers aren't registered yet.
 
-### 2. Worker Thread (`src/main/worker/index.ts`)
-- Entry point for the worker thread
+### 2. Worker Thread (`src/main/worker/`)
+- Entry point: `index.ts` (1,498 lines, modularized from 1,855 lines)
 - Coordinates between core business logic and services
 - Manages lifecycle and initialization
 - Build output: `dist/worker.cjs`
+- **Modularized structure** (Phase 1 completed):
+  - `database/migration.ts` - Database version 5 management
+  - `database/operations.ts` - Database CRUD operations
+  - `batch/processor.ts` - Batch processing (fixed cross-file contamination bug)
+  - `utils/fileUtils.ts` - File utilities
+  - `fileStatus.ts` - File status tracking
+  - `search.ts` - Search & statistics
 
 #### Core Business Logic (`src/main/core/`)
 Organized by domain:

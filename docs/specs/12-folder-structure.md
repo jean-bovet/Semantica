@@ -146,13 +146,14 @@ Application services provide high-level operations using core domain logic:
 
 ### `src/main/worker/`
 
-Worker thread implementation with Python sidecar integration:
+Worker thread implementation with Python sidecar integration. Refactored to 1,498 lines (from 1,855) with modular structure:
 
-- **`index.ts`**: Worker thread entry point
+- **`index.ts`**: Worker thread entry point (1,498 lines)
   - Initializes core components
   - Sets up IPC communication
   - Manages worker lifecycle
   - Orchestrates file processing
+  - Uses extracted modules for focused functionality
 
 - **`WorkerStartup.ts`**: Startup state machine
   - Manages 9-stage initialization sequence
@@ -169,6 +170,56 @@ Worker thread implementation with Python sidecar integration:
   - Makes HTTP requests to Python sidecar API
   - Handles retries and error recovery
   - Timeout management (30s default)
+
+#### `utils/` - File Utilities
+
+Worker utility functions:
+
+- **`fileUtils.ts`**: File operations
+  - `getFileHash()`: Calculate file hash from size/mtime
+  - `isInsideBundle()`: Check if file is in macOS bundle
+
+#### `database/` - Database Operations
+
+Database management and migration:
+
+- **`migration.ts`**: Database version management (current: v5)
+  - `checkDatabaseVersion()`: Check if migration needed
+  - `migrateDatabaseIfNeeded()`: Perform migration
+  - `writeDatabaseVersion()`: Write version file
+  - Version 5: Fixed cross-file contamination in batch processing
+
+- **`operations.ts`**: Database CRUD operations
+  - `mergeRows()`: Queue-based row insertion
+  - `deleteByPath()`: Delete chunks by file path
+  - `maybeCreateIndex()`: Create vector index when needed
+  - `createWriteQueueState()`: Manage concurrent writes
+
+#### `batch/` - Batch Processing
+
+Embedding batch processing:
+
+- **`processor.ts`**: Batch processor implementation
+  - `processBatchToRows()`: Pure function to process batches
+  - `createBatchProcessor()`: Factory for batch processor
+  - Fixed bug: Each chunk uses its own file path (not shared)
+  - File stats caching to avoid redundant fs.stat() calls
+
+#### `fileStatus.ts` - File Status Management
+
+Track file indexing status:
+
+- `updateFileStatus()`: Update file status in database
+  - Tracks indexed, failed, error, deleted states
+  - Records chunk count, parser version, error messages
+
+#### `search.ts` - Search Operations
+
+Vector search and statistics:
+
+- `search()`: Perform semantic search on vector database
+- `getStats()`: Get database statistics and folder stats
+- Interfaces: SearchResult, DatabaseStats, FolderStats
 
 #### `embeddings/` - Embedder Implementations
 

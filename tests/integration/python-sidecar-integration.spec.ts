@@ -157,46 +157,29 @@ describe('Python Sidecar Integration (Real Sidecar)', () => {
       backpressureThreshold: 50
     });
 
-    // Initialize with the EXACT same batch processor as worker/index.ts
+    // Initialize with the REAL batch processor from production code
+    // Import the pure function to use with custom file stats provider
+    const { processBatchToRows } = await import('../../src/main/worker/batch/processor');
+
+    // Create custom batch processor using the real processBatchToRows with mock file stats
     embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
-      console.log('Batch processor called with:', {
-        hasChunks: !!batch.chunks,
-        chunksLength: batch.chunks?.length,
-        hasVectors: !!batch.vectors,
-        vectorsType: typeof batch.vectors,
-        vectorsIsArray: Array.isArray(batch.vectors),
-        vectorsLength: batch.vectors?.length,
-        batchKeys: Object.keys(batch)
-      });
-
       try {
-        // Extract file metadata from the first chunk
-        const filePath = batch.chunks[0].metadata.filePath;
+        // Mock file stats provider (test doesn't need real files)
+        const mockFileStatsProvider = async (filePath: string) => {
+          return { mtime: Date.now() };
+        };
 
-        console.log('Creating database rows...');
-        console.log('batch.vectors:', batch.vectors);
-        console.log('batch.vectors[0]:', batch.vectors?.[0]);
+        // Use the REAL production code to process batch to rows
+        const rows = await processBatchToRows(batch, mockFileStatsProvider);
 
-        // Create database rows (this is where the error happens in the app)
-        const rows = batch.chunks.map((chunk: any, idx: number) => {
-          console.log(`Processing chunk ${idx}:`, {
-            chunkText: chunk.text.substring(0, 50),
-            vectorExists: !!batch.vectors[idx],
-            vectorIsArray: Array.isArray(batch.vectors[idx]),
-            vectorLength: batch.vectors[idx]?.length
-          });
-
-          return {
-            id: `test-${idx}`,
-            path: filePath,
-            text: chunk.text,
-            vector: batch.vectors[idx], // This is where "Cannot read properties of undefined (reading '0')" happens
-            offset: chunk.metadata.offset
-          };
+        console.log('Mock table received rows:', rows.length);
+        console.log('First row sample:', {
+          hasVector: !!rows[0]?.vector,
+          vectorIsArray: Array.isArray(rows[0]?.vector),
+          vectorLength: rows[0]?.vector?.length
         });
 
-        console.log('Batch processed successfully, rows:', rows.length);
-        processedBatches.push({ chunks: batch.chunks, rows });
+        processedBatches.push({ chunks: rows.map(r => ({ text: r.text, offset: r.offset })), rows });
       } catch (error) {
         console.error('Batch processor error:', error);
         batchProcessorError = error as Error;
