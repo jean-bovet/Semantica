@@ -37,9 +37,11 @@ export const PARSER_REGISTRY: Record<string, ParserDefinition> = {
     label: 'PDF',
     category: 'document' as const,
     parser: () => import('./pdf').then(m => m.parsePdf),
-    version: 1,
+    version: 3,
     versionHistory: {
-      1: "Initial pdf-parse implementation"
+      1: "Initial pdf-parse implementation",
+      2: "Async file reading to prevent blocking",
+      3: "OCR support for scanned PDFs"
     },
     enabledByDefault: true  // Memory issues solved with process isolation
   },

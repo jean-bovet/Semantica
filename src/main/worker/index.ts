@@ -324,9 +324,16 @@ async function handleFileOriginal(filePath: string) {
     // Special handling for PDF (backward compatibility)
     if (ext === 'pdf' && parsePdf) {
       try {
+        // Get OCR setting from config
+        const enableOCR = configManager?.getSettings().enableOCR ?? false;
+        const sidecarClient = sidecarService?.getClient();
+
         // Time PDF parsing
         const startParse = Date.now();
-        const pages = await parsePdf(filePath);
+        const pages = await parsePdf(filePath, {
+          enableOCR,
+          sidecarClient
+        });
         if (profiler.isEnabled()) {
           const metrics = profiler.fileMetrics.get(filePath);
           if (metrics) {

@@ -21,6 +21,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - **ML Model**: Python sidecar with sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768-dim)
 - **Embedding Service**: FastAPI HTTP server running locally on port 8421
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
+- **OCR Support**: macOS Vision framework via Python sidecar (ocrmac, pdf2image, pymupdf)
 - **Build System**: electron-builder 25.1.8 (see Build Notes below)
 
 ## Important Guidelines
@@ -64,9 +65,10 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- Unit tests: 543 tests (all passing, in `tests/unit/`)
+- Unit tests: 544 tests (all passing, in `tests/unit/`)
 - Integration tests: 8 tests (in `tests/integration/`, includes Python sidecar integration)
 - E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
+- OCR testing: Requires integration tests with real scanned PDF fixtures (unit test mocking not practical)
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
@@ -100,6 +102,16 @@ Documentation is organized under `/docs/`:
 - Clears all indexes for selected folders
 - Automatically starts indexing with current settings
 
+### OCR for Scanned PDFs
+- **Enabled by default** - automatically processes scanned PDFs
+- Can be toggled in Settings → File Types → "Enable OCR for scanned PDFs"
+- Uses macOS Vision framework (built into macOS 12+)
+- Automatically detects if PDF needs OCR (<50 chars/page threshold)
+- Supports 40+ languages (default: en-US)
+- Performance: ~2-3s per 10 pages, adds ~100-150MB peak memory
+- OCR setting is stored in app config and persists across restarts
+- To disable OCR: Uncheck in Settings and re-index affected folders
+
 ### Adding File Parser Support
 1. Create parser in `/src/main/parsers/`
 2. Export async function returning text string
@@ -114,10 +126,11 @@ Documentation is organized under `/docs/`:
 - File search available via status bar icon
 
 ## Known Limitations
-- Scanned PDFs require OCR (not supported)
 - Password-protected files cannot be indexed
 - Large files (>50MB) may cause timeouts
 - Binary formats need specific parsers
+- OCR quality depends on scan quality and resolution
+- OCR processing is slower than standard text extraction (~2-3s per 10 pages)
 
 ## Development Workflow
 

@@ -3,10 +3,12 @@ import { getFileTypeOptions, ParserKey } from '../../../shared/parserRegistry';
 
 interface FileTypesSettingsProps {
   fileTypes: Record<ParserKey, boolean>;
+  enableOCR?: boolean;
   onFileTypesChange: (selected: string[]) => void;
+  onOCRChange?: (enabled: boolean) => void;
 }
 
-function FileTypesSettings({ fileTypes, onFileTypesChange }: FileTypesSettingsProps) {
+function FileTypesSettings({ fileTypes, enableOCR = false, onFileTypesChange, onOCRChange }: FileTypesSettingsProps) {
   const fileTypeOptions = getFileTypeOptions();
 
   const handleToggle = (key: string, checked: boolean) => {
@@ -35,10 +37,23 @@ function FileTypesSettings({ fileTypes, onFileTypesChange }: FileTypesSettingsPr
           </label>
         ))}
       </div>
-      
-      <p className="info-note">
-        Note: Scanned PDFs without text layers cannot be indexed. OCR is required for such files.
-      </p>
+
+      <div className="settings-subsection" style={{ marginTop: '24px' }}>
+        <h3 className="subsection-title">OCR for Scanned PDFs</h3>
+        <label className="file-type-item">
+          <input
+            type="checkbox"
+            checked={enableOCR}
+            onChange={(e) => onOCRChange?.(e.target.checked)}
+            className="file-type-checkbox"
+          />
+          <span className="file-type-label">Enable OCR for scanned PDFs</span>
+        </label>
+        <p className="info-note" style={{ marginTop: '8px' }}>
+          Extract text from image-based PDFs using macOS Vision framework.
+          Enabled by default. May slow down indexing for scanned documents.
+        </p>
+      </div>
     </div>
   );
 }

@@ -17,7 +17,7 @@ describe('Parser Version Tracking', () => {
 
   describe('parserVersions', () => {
     it('should define version numbers for all supported file types', () => {
-      expect(PARSER_VERSIONS.pdf).toBe(1);
+      expect(PARSER_VERSIONS.pdf).toBe(3);
       expect(PARSER_VERSIONS.doc).toBe(2);
       expect(PARSER_VERSIONS.docx).toBe(1);
       expect(PARSER_VERSIONS.txt).toBe(4);
@@ -33,8 +33,8 @@ describe('Parser Version Tracking', () => {
     });
 
     it('should get parser version for any extension', () => {
-      expect(getParserVersion('pdf')).toBe(1);
-      expect(getParserVersion('PDF')).toBe(1);
+      expect(getParserVersion('pdf')).toBe(3);
+      expect(getParserVersion('PDF')).toBe(3);
       expect(getParserVersion('doc')).toBe(2);
       expect(getParserVersion('unknown')).toBe(0);
     });
@@ -104,7 +104,7 @@ describe('Parser Version Tracking', () => {
       const fileRecord: FileStatus = {
         path: '/test/file.pdf',
         status: 'indexed',
-        parser_version: 1,
+        parser_version: 3, // Current version
         chunk_count: 10,
         error_message: '',
         last_modified: new Date().toISOString(),
@@ -121,7 +121,7 @@ describe('Parser Version Tracking', () => {
       const fileRecord: FileStatus = {
         path: '/test/file.pdf',
         status: 'failed',
-        parser_version: 1,
+        parser_version: 3, // Current version
         chunk_count: 0,
         error_message: 'Parse error',
         last_modified: new Date().toISOString(),
@@ -139,7 +139,7 @@ describe('Parser Version Tracking', () => {
       const fileRecord: FileStatus = {
         path: '/test/file.pdf',
         status: 'failed',
-        parser_version: 1,
+        parser_version: 3, // Current version
         chunk_count: 0,
         error_message: 'Parse error',
         last_modified: new Date().toISOString(),
@@ -178,7 +178,7 @@ describe('Parser Version Tracking', () => {
       const textParser = await import('../../src/main/parsers/text');
       const rtfParser = await import('../../src/main/parsers/rtf');
 
-      expect(pdfParser.PARSER_VERSION).toBe(2);
+      expect(pdfParser.PARSER_VERSION).toBe(3);
       expect(docParser.PARSER_VERSION).toBe(2);
       expect(docxParser.PARSER_VERSION).toBe(1);
       expect(textParser.PARSER_VERSION).toBe(4);

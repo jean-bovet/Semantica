@@ -38,6 +38,28 @@ export interface SidecarInfoResponse {
   version: string;
 }
 
+export interface OCRDetectRequest {
+  path: string;
+}
+
+export interface OCRDetectResponse {
+  is_scanned: boolean;
+  page_count: number;
+  method: string;
+}
+
+export interface OCRExtractRequest {
+  path: string;
+  language?: string;
+  recognition_level?: 'accurate' | 'fast';
+}
+
+export interface OCRExtractResponse {
+  text: string;
+  pages: string[];
+  confidence: number;
+}
+
 export interface PythonSidecarClientConfig {
   baseUrl?: string;
   port?: number;
@@ -197,6 +219,69 @@ export class PythonSidecarClient {
     return this.fetch<SidecarInfoResponse>('/info', {
       method: 'GET',
     });
+  }
+
+  /**
+   * Detect if a PDF is scanned (image-based) and needs OCR
+   * @param filePath Absolute path to the PDF file
+   * @returns Detection result with page count and whether OCR is needed
+   */
+  async detectScannedPDF(filePath: string): Promise<OCRDetectResponse> {
+    logger.log('SIDECAR-CLIENT', `🔍 OCR detection request: ${filePath}`);
+
+    const payload: OCRDetectRequest = { path: filePath };
+
+    try {
+      const response = await this.fetch<OCRDetectResponse>('/ocr/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      logger.log('SIDECAR-CLIENT', `✅ OCR detection complete: is_scanned=${response.is_scanned}, pages=${response.page_count}`);
+      return response;
+    } catch (error) {
+      logger.log('SIDECAR-CLIENT', `❌ OCR detection failed: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Extract text from a scanned PDF using OCR (macOS Vision framework)
+   * @param filePath Absolute path to the PDF file
+   * @param options OCR options (language, recognition level)
+   * @returns Extracted text with per-page breakdown and confidence score
+   */
+  async extractWithOCR(
+    filePath: string,
+    options?: { language?: string; recognition_level?: 'accurate' | 'fast' }
+  ): Promise<OCRExtractResponse> {
+    logger.log('SIDECAR-CLIENT', `📸 OCR extraction request: ${filePath}`);
+
+    const payload: OCRExtractRequest = {
+      path: filePath,
+      language: options?.language || 'en-US',
+      recognition_level: options?.recognition_level || 'accurate',
+    };
+
+    const startTime = Date.now();
+
+    try {
+      const response = await this.fetch<OCRExtractResponse>('/ocr/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const duration = Date.now() - startTime;
+      logger.log('SIDECAR-CLIENT', `✅ OCR extraction complete: ${response.text.length} chars, ${response.pages.length} pages, ${(response.confidence * 100).toFixed(1)}% confidence in ${duration}ms`);
+
+      return response;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.log('SIDECAR-CLIENT', `❌ OCR extraction failed after ${duration}ms: ${error}`);
+      throw error;
+    }
   }
 
   /**

@@ -1,16 +1,25 @@
 import { promises as fsPromises } from 'fs';
 import { logger } from '../../shared/utils/logger';
+import type { PythonSidecarClient } from '../worker/PythonSidecarClient';
 const pdfParse = require('pdf-parse');
 
 // Parser version - single source of truth (imported by parserVersions.ts)
-export const PARSER_VERSION = 2; // Version 2: Async file reading to prevent blocking
+export const PARSER_VERSION = 3; // Version 3: OCR support for scanned PDFs
 
 export interface PDFPage {
   page: number;
   text: string;
 }
 
-export async function parsePdf(filePath: string): Promise<PDFPage[]> {
+export interface PDFParserOptions {
+  enableOCR?: boolean;
+  sidecarClient?: PythonSidecarClient;
+}
+
+export async function parsePdf(
+  filePath: string,
+  options?: PDFParserOptions
+): Promise<PDFPage[]> {
   try {
     const dataBuffer = await fsPromises.readFile(filePath);
 
@@ -44,11 +53,46 @@ export async function parsePdf(filePath: string): Promise<PDFPage[]> {
       // Restore original console.warn
       console.warn = originalWarn;
     }
-    
+
     // Check if we got any text
-    if (!data.text || data.text.trim().length === 0) {
+    const hasText = data?.text && data.text.trim().length > 0;
+
+    // If no text and OCR is enabled, try OCR
+    if (!hasText && options?.enableOCR && options?.sidecarClient) {
+      logger.info('INDEXING', `PDF ${filePath} has no text, attempting OCR...`);
+
+      try {
+        // Check if it's actually scanned
+        const detection = await options.sidecarClient.detectScannedPDF(filePath);
+
+        if (detection.is_scanned) {
+          logger.info('INDEXING', `Confirmed scanned PDF (${detection.page_count} pages), running OCR...`);
+
+          // Extract text via OCR
+          const ocrResult = await options.sidecarClient.extractWithOCR(filePath, {
+            recognition_level: 'accurate'
+          });
+
+          logger.info('INDEXING', `OCR extracted ${ocrResult.text.length} chars with ${(ocrResult.confidence * 100).toFixed(1)}% confidence`);
+
+          // Convert to PDFPage format
+          return ocrResult.pages.map((pageText, i) => ({
+            page: i + 1,
+            text: pageText
+          }));
+        } else {
+          logger.warn('INDEXING', `PDF ${filePath} not detected as scanned, but has no extractable text`);
+          throw new Error('PDF contains no extractable text and does not appear to be scanned');
+        }
+      } catch (ocrError: any) {
+        logger.error('INDEXING', `OCR failed for ${filePath}: ${ocrError.message}`);
+        throw new Error(`OCR failed: ${ocrError.message}`);
+      }
+    }
+
+    if (!hasText) {
       // PDF might be scanned/image-based
-      logger.warn('INDEXING', `PDF ${filePath} contains no extractable text (might be scanned/image-based)`);
+      logger.warn('INDEXING', `PDF ${filePath} contains no extractable text (OCR ${options?.enableOCR ? 'failed' : 'disabled'})`);
       throw new Error('PDF contains no extractable text');
     }
     

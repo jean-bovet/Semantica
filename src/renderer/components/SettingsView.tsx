@@ -22,6 +22,7 @@ function SettingsView() {
       return acc;
     }, {} as Record<ParserKey, boolean>)
   );
+  const [enableOCR, setEnableOCR] = useState(true);
   const [reindexing, setReindexing] = useState(false);
   const [progress, setProgress] = useState<any>(null);
   const [dataPath, setDataPath] = useState<string>('');
@@ -96,6 +97,9 @@ function SettingsView() {
       const settings = await window.api.settings.get();
       if (settings?.fileTypes) {
         setFileTypes(settings.fileTypes);
+      }
+      if (typeof settings?.enableOCR === 'boolean') {
+        setEnableOCR(settings.enableOCR);
       }
     } catch (e) {
       console.error('Failed to load settings:', e);
@@ -174,13 +178,23 @@ function SettingsView() {
       acc[key as ParserKey] = selected.includes(key);
       return acc;
     }, {} as Record<ParserKey, boolean>);
-    
+
     setFileTypes(newFileTypes);
-    
+
     try {
       await window.api.settings.update({ fileTypes: newFileTypes });
     } catch (e) {
       console.error('Failed to update file type settings:', e);
+    }
+  };
+
+  const handleOCRChange = async (enabled: boolean) => {
+    setEnableOCR(enabled);
+
+    try {
+      await window.api.settings.update({ enableOCR: enabled });
+    } catch (e) {
+      console.error('Failed to update OCR setting:', e);
     }
   };
 
@@ -223,7 +237,9 @@ function SettingsView() {
         return (
           <FileTypesSettings
             fileTypes={fileTypes}
+            enableOCR={enableOCR}
             onFileTypesChange={handleFileTypesChange}
+            onOCRChange={handleOCRChange}
           />
         );
       case 'indexing':

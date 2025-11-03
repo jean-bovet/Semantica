@@ -181,6 +181,24 @@ class FileEmbedResponse(BaseModel):
     chunks: List[str]
     vectors: List[List[float]]
 
+class OCRDetectRequest(BaseModel):
+    path: str
+
+class OCRDetectResponse(BaseModel):
+    is_scanned: bool
+    page_count: int
+    method: str
+
+class OCRExtractRequest(BaseModel):
+    path: str
+    language: str = "en-US"
+    recognition_level: Literal["accurate", "fast"] = "accurate"
+
+class OCRExtractResponse(BaseModel):
+    text: str
+    pages: List[str]
+    confidence: float
+
 _log_timing("Pydantic models defined")
 _log_timing("Registering routes...")
 
@@ -288,6 +306,99 @@ def chunk_text(s: str, size: int, overlap: int) -> List[str]:
         if end == n: break
         start = max(end - overlap, start + 1)
     return chunks
+
+# -------- OCR Endpoints --------
+
+@app.post("/ocr/detect", response_model=OCRDetectResponse)
+def detect_scanned_pdf(req: OCRDetectRequest):
+    """Detect if PDF needs OCR by checking text density"""
+    if not os.path.exists(req.path):
+        raise HTTPException(404, f"File not found: {req.path}")
+
+    try:
+        # Use pypdf for simple text extraction check
+        from pypdf import PdfReader
+
+        print(f"🔍 OCR detection request: {req.path}")
+        reader = PdfReader(req.path)
+
+        total_text = ""
+        for page in reader.pages:
+            total_text += page.extract_text() or ""
+
+        page_count = len(reader.pages)
+        avg_chars = len(total_text) / page_count if page_count > 0 else 0
+        is_scanned = avg_chars < 50  # Less than 50 chars/page = likely scanned
+
+        print(f"  Pages: {page_count}, avg chars/page: {avg_chars:.1f}, is_scanned: {is_scanned}")
+
+        return {
+            "is_scanned": is_scanned,
+            "page_count": page_count,
+            "method": "text_extraction"
+        }
+    except Exception as e:
+        print(f"❌ OCR detection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ocr/extract", response_model=OCRExtractResponse)
+def extract_with_ocr(req: OCRExtractRequest):
+    """Extract text from scanned PDF using macOS Vision framework"""
+    if not os.path.exists(req.path):
+        raise HTTPException(404, f"File not found: {req.path}")
+
+    try:
+        # Lazy imports to avoid slowing down server startup
+        from ocrmac import ocrmac
+        from pdf2image import convert_from_path
+        import tempfile
+
+        print(f"📸 OCR request: {req.path}, language={req.language}, level={req.recognition_level}")
+
+        # Convert PDF to images (one per page)
+        # Use lower DPI (200) for faster processing, higher (300) for better quality
+        images = convert_from_path(req.path, dpi=200)
+        print(f"  Converted {len(images)} pages to images")
+
+        pages_text = []
+        total_confidence = 0.0
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            for i, image in enumerate(images):
+                # Save image temporarily
+                img_path = Path(tmp_dir) / f"page_{i}.png"
+                image.save(img_path, "PNG")
+
+                # Run OCR using Vision framework
+                annotations = ocrmac.OCR(
+                    str(img_path),
+                    language_preference=[req.language],
+                    recognition_level=req.recognition_level
+                )
+
+                # Extract text and confidence
+                page_text = " ".join([item[0] for item in annotations])
+                page_confidence = sum([item[1] for item in annotations]) / len(annotations) if annotations else 0
+
+                pages_text.append(page_text)
+                total_confidence += page_confidence
+
+                print(f"  Page {i+1}/{len(images)}: {len(page_text)} chars, confidence={page_confidence:.2f}")
+
+        full_text = "\n\n".join(pages_text)
+        avg_confidence = total_confidence / len(images) if images else 0
+
+        print(f"✅ OCR complete: {len(full_text)} chars, avg confidence={avg_confidence:.2f}")
+
+        return {
+            "text": full_text,
+            "pages": pages_text,
+            "confidence": avg_confidence
+        }
+
+    except Exception as e:
+        print(f"❌ OCR failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Graceful shutdown
 @app.get("/shutdown")
