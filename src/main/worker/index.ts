@@ -23,7 +23,7 @@ import { shouldRestartEmbedder, bytesToMB } from '../utils/embedder-health';
 
 // Extracted modules
 import { getFileHash, isInsideBundle } from './utils/fileUtils';
-import { StatsCache } from './cache/StatsCache';
+import { WorkerLifecycle } from './lifecycle/WorkerLifecycle';
 import {
   checkDatabaseVersion,
   migrateDatabaseIfNeeded,
@@ -167,17 +167,22 @@ import { ConfigManager } from './config';
 import { scanDirectories, type ScanOptions } from '../core/indexing/directoryScanner';
 
 let db: any = null;
-let tbl: any = null;
-let fileStatusTable: any = null; // Table to track file status
+// Worker lifecycle state machine
+let lifecycle: WorkerLifecycle | null = null;
+
+// Legacy module-level variables (for runtime, not initialization)
 let modelReady: boolean | null = null; // Track if model is ready (null = not yet checked)
 let paused = false;
-let reindexService: ReindexService; // Service for managing re-indexing logic
 let watcher: any = null;
+
+// References to lifecycle services (populated after initialization)
+let tbl: any = null;
+let fileStatusTable: any = null;
 let configManager: ConfigManager | null = null;
 let sidecarEmbedder: PythonSidecarEmbedder | null = null;
 let sidecarService: PythonSidecarService | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
-let workerStartup: WorkerStartup | null = null; // New startup state machine
+let reindexService: ReindexService | null = null;
 
 // CPU-aware concurrency settings
 const concurrencySettings = calculateOptimalConcurrency();
@@ -212,205 +217,13 @@ const fileHashes = new Map<string, string>();
 const writeQueueState = createWriteQueueState();
 const folderStats = new Map<string, FolderStats>();
 
-// Cache for database stats (pre-calculated during startup for instant retrieval)
-const statsCache = new StatsCache();
-
 // Track if we've sent the files:loaded message
 declare global {
   var filesLoadedSent: boolean | undefined;
 }
 
 // Database version is now imported from ./database/migration
-
-async function initDB(dir: string, _userDataPath: string) {
-  try {
-    logger.log('DATABASE', '>>> initDB STARTED <<<');
-    emitStageProgress('db_init', 'Checking database version');
-    // Check database version and migrate if needed
-    const migrated = await migrateDatabaseIfNeeded(dir);
-    if (migrated) {
-      // Clear fileHashes to force re-indexing after migration
-      fileHashes.clear();
-    }
-
-    emitStageProgress('db_init', 'Initializing config manager');
-    // Initialize config manager
-    configManager = new ConfigManager(dir);
-
-    emitStageProgress('db_init', 'Connecting to database');
-    db = await lancedb.connect(dir);
-
-    // nomic-embed-text model uses 768-dimensional vectors
-    const EXPECTED_VECTOR_DIMENSION = 768;
-
-    tbl = await db.openTable('chunks').catch(async () => {
-      // Create table with initial schema
-      const initialData = [{
-        id: 'init',
-        path: '',
-        mtime: 0,
-        page: 0,
-        offset: 0,
-        text: '',
-        vector: new Array(EXPECTED_VECTOR_DIMENSION).fill(0),
-        type: 'init',
-        title: ''
-      }];
-
-      const table = await db.createTable('chunks', initialData, {
-        mode: 'create'
-      });
-
-      // Delete the initialization record
-      try {
-        await table.delete('id = "init"');
-      } catch (e: any) {
-        logger.log('DATABASE', 'Could not delete init record (may not exist):', e?.message || e);
-      }
-
-      return table;
-    });
-
-    logger.log('DATABASE', 'Database initialized');
-
-    // Write database version marker
-    await writeDatabaseVersion(dir);
-
-    emitStageProgress('db_init', 'Creating file status table');
-    // Initialize file status table (optional - won't fail if it doesn't work)
-    try {
-      fileStatusTable = await initializeFileStatusTable(db);
-    } catch (e) {
-      logger.error('FILE-STATUS', 'Failed to initialize file status table:', e);
-      fileStatusTable = null;
-    }
-
-    // Initialize folderStats early from config so db.stats() can show folder count immediately
-    // (Must happen before slow fileHashes loading so StatusBar sees folders on first call)
-    const configForFolders = await configManager!.getConfig();
-    const foldersToWatch = configForFolders.watchedFolders || [];
-    for (const folder of foldersToWatch) {
-      folderStats.set(folder, { total: 0, indexed: 0 });
-    }
-    logger.log('WATCHER', `Pre-initialized folderStats for ${foldersToWatch.length} folders`);
-
-    // Pre-calculate and cache stats IMMEDIATELY (before slow fileHashes loading)
-    // This ensures cache is ready when StatusBar mounts, even if initDB is still running
-    emitStageProgress('db_load', 'Calculating stats...');
-    try {
-      const stats = await statsCache.get(() => getStats(tbl, fileHashes, folderStats, fileStatusTable));
-      logger.log('DATABASE', `Stats pre-calculated: ${stats.indexedFiles} files, ${stats.folderStats.length} folders`);
-    } catch (error) {
-      logger.error('DATABASE', 'Failed to pre-calculate stats:', error);
-      // Continue without cache - will calculate on demand
-    }
-
-    // Load existing indexed files to prevent re-indexing
-    emitStageProgress('db_load', 'Loading existing indexed files');
-    try {
-      // Get all unique file paths from the index
-      const allRows = await tbl.query()
-        .select(['path'])
-        .limit(100000)
-        .toArray();
-      
-      // Build fileHashes map from existing index
-      const uniquePaths = new Set<string>();
-      allRows.forEach((row: any) => {
-        if (row.path) {
-          uniquePaths.add(row.path);
-        }
-      });
-      
-      let processed = 0;
-      const total = uniquePaths.size;
-      for (const filePath of uniquePaths) {
-        try {
-          await fs.promises.access(filePath);
-          const hash = await getFileHash(filePath);
-          fileHashes.set(filePath, hash);
-        } catch (_e) {
-          // File doesn't exist, skip
-        }
-        processed++;
-        // Report progress every 100 files or at the end
-        if (processed % 100 === 0 || processed === total) {
-          const progress = Math.round((processed / total) * 100);
-          emitStageProgress('db_load', `Loaded ${processed}/${total} files`, progress);
-        }
-      }
-
-      logger.log('DATABASE', `Loaded ${fileHashes.size} existing indexed files`);
-    } catch (_e) {
-      logger.log('DATABASE', 'No existing files in index');
-    }
-    
-    // Initialize ReindexService with the file status table
-    reindexService = new ReindexService(fileStatusTable, {
-      log: (msg: string) => logger.log('REINDEX', msg),
-      error: (msg: string, error?: any) => logger.error('REINDEX', msg, error)
-    });
-    
-    // Migrate existing indexed files to file status table (one-time migration)
-    if (fileStatusTable) {
-      const migrated = await migrateIndexedFilesToStatus(tbl, fileStatusTable, fileHashes);
-      if (migrated > 0) {
-        logger.log('FILE-STATUS', `Created ${migrated} missing file status records`);
-      }
-    }
-    
-    // Defer heavy reindexing work to after ready signal
-    setTimeout(async () => {
-      try {
-        // Migrate existing files to include parser versions
-        await reindexService.migrateExistingFiles();
-        
-        // Check for parser upgrades and queue files for re-indexing
-        const reindexResult = await reindexService.checkForParserUpgrades();
-        fileQueue.add(reindexResult.filesToReindex);
-
-        // Start processing if files were added
-        if (reindexResult.filesToReindex.length > 0) {
-          processQueue();
-        }
-        
-        // Notify parent if there were upgrades
-        if (Object.keys(reindexResult.upgradeSummary).length > 0 && parentPort) {
-          parentPort.postMessage({
-            type: 'parser-upgrade',
-            payload: reindexResult.upgradeSummary
-          });
-        }
-      } catch (err) {
-        logger.error('REINDEX', 'Error during reindex check:', err);
-      }
-    }, 100); // Small delay to ensure ready message is sent first
-    
-    // Do auto-start synchronously during init to avoid UI flash
-    const config = await configManager!.getConfig();
-    const savedFolders = config.watchedFolders || [];
-
-    if (savedFolders.length > 0) {
-      emitStageProgress('folder_scan', `Scanning ${savedFolders.length} folder(s)`);
-      logger.log('WATCHER', 'Auto-starting watch on saved folders:', savedFolders);
-      await startWatching(savedFolders, config.settings?.excludePatterns || ['node_modules', '.git', '*.tmp', '.DS_Store']);
-    } else {
-      logger.log('WATCHER', 'No saved folders to watch');
-      emitStageProgress('folder_scan', 'No folders to scan');
-    }
-
-    // Setup profiling if enabled
-    setupProfiling();
-
-    logger.log('DATABASE', '>>> initDB COMPLETING - emitting final ready <<<');
-    emitStageProgress('ready', 'Ready');
-    logger.log('WORKER', 'Worker ready');
-    logger.log('DATABASE', '>>> initDB COMPLETED <<<');
-  } catch (error) {
-    logger.error('DATABASE', 'Failed to initialize database:', error);
-    throw error;
-  }
-}
+// initDB function removed - now handled by WorkerLifecycle
 
 // Health check for embedder pool
 let healthCheckInterval: NodeJS.Timeout | null = null;
@@ -433,7 +246,7 @@ async function handleFileOriginal(filePath: string) {
       await deleteByPath(tbl, filePath);
       fileHashes.delete(filePath);
       await updateFileStatus(fileStatusTable, filePath, 'deleted', fileHashes);
-      statsCache.invalidate(); // Cache needs recalculation after file deletion
+      lifecycle?.getStatsCache().invalidate(); // Cache needs recalculation after file deletion
       return;
     }
 
@@ -620,7 +433,7 @@ async function handleFileOriginal(filePath: string) {
     // Update file status as successfully indexed
     const totalChunks = chunks.length;
     await updateFileStatus(fileStatusTable, filePath, 'indexed', fileHashes, undefined, totalChunks, parserVersion);
-    statsCache.invalidate(); // Cache needs recalculation after new file indexed
+    lifecycle?.getStatsCache().invalidate(); // Cache needs recalculation after new file indexed
     logger.log('INDEXING', `✅ Success: ${path.basename(filePath)} - ${totalChunks} chunks created`);
     
     // Clear references to help garbage collection
@@ -1048,48 +861,66 @@ parentPort!.on('message', async (msg: any) => {
         // Also provide fallback for dbDir
         const dbDir = msg.dbDir || path.join(userDataPath, 'data');
 
-        // Initialize Python sidecar FIRST for early fail-fast on Python issues
-        // This handles: Python deps check → sidecar start → model load → embedder init
+        // Initialize worker using WorkerLifecycle state machine
         (async () => {
           try {
-            workerStartup = new WorkerStartup();
+            // Create lifecycle with dependencies
+            lifecycle = new WorkerLifecycle({
+              emitStageProgress,
+              writeQueueState,
+              fileHashes,
+              folderStats,
+              startWatching
+            });
 
-            // Initialize sidecar without settings (will use defaults)
-            // Settings are only used for batch size which has a reasonable default
-            sidecarEmbedder = await workerStartup.initialize(undefined);
-            sidecarService = workerStartup.getSidecarService();
+            // Run full initialization sequence
+            const success = await lifecycle.initialize(dbDir, userDataPath);
 
-            if (!sidecarEmbedder) {
-              logger.error('WORKER', 'Startup failed - no embedder created');
+            if (!success) {
+              logger.error('WORKER', 'Startup failed - lifecycle initialization failed');
               return;
             }
 
-            // Now initialize database (after Python sidecar is ready)
-            await initDB(dbDir, userDataPath);
+            // Populate module-level variables from lifecycle
+            const { db: dbHandle, tbl: tblHandle, fileStatusTable: fileStatusTableHandle } = lifecycle.getDatabase();
+            db = dbHandle;
+            tbl = tblHandle;
+            fileStatusTable = fileStatusTableHandle;
+            configManager = lifecycle.getConfigManager();
+            sidecarEmbedder = lifecycle.getEmbedder();
+            sidecarService = lifecycle.getSidecarService();
+            embeddingQueue = lifecycle.getEmbeddingQueue();
+            reindexService = lifecycle.getReindexService();
+            modelReady = true;
 
-            // Get settings from config manager (now available after initDB)
-            const settings = configManager?.getSettings();
+            // Defer heavy reindexing work to after ready signal
+            setTimeout(async () => {
+              try {
+                if (!reindexService) return;
 
-            // Create embedding queue with batch processor
-            const batchSize = settings?.embeddingBatchSize ?? 32;
-            embeddingQueue = new EmbeddingQueue({
-              maxQueueSize: 2000,
-              batchSize,
-              maxTokensPerBatch: 7000, // Safe limit with ~1K buffer to prevent EOF errors
-              backpressureThreshold: 1000,
-              onProgress: (filePath: string, processed: number, total: number) => {
-                logger.log('EMBEDDING', `Progress: ${path.basename(filePath)} - ${processed}/${total} chunks`);
-              },
-              onFileComplete: (filePath: string) => {
-                logger.log('EMBEDDING', `✅ Completed: ${path.basename(filePath)}`);
+                // Migrate existing files to include parser versions
+                await reindexService.migrateExistingFiles();
+
+                // Check for parser upgrades and queue files for re-indexing
+                const reindexResult = await reindexService.checkForParserUpgrades();
+                fileQueue.add(reindexResult.filesToReindex);
+
+                // Start processing if files were added
+                if (reindexResult.filesToReindex.length > 0) {
+                  processQueue();
+                }
+
+                // Notify parent if there were upgrades
+                if (Object.keys(reindexResult.upgradeSummary).length > 0 && parentPort) {
+                  parentPort.postMessage({
+                    type: 'parser-upgrade',
+                    payload: reindexResult.upgradeSummary
+                  });
+                }
+              } catch (err) {
+                logger.error('REINDEX', 'Error during reindex check:', err);
               }
-            });
-
-            // Initialize with batch processor using sidecar embedder
-            embeddingQueue.initialize(sidecarEmbedder, createBatchProcessor(tbl, writeQueueState));
-
-            logger.log('WORKER', 'Embedding queue initialized');
-            modelReady = true; // Mark as ready for legacy code
+            }, 100); // Small delay to ensure ready message is sent first
 
             // Notify that files are loaded (for StartupCoordinator)
             if (!global.filesLoadedSent && parentPort) {
@@ -1275,7 +1106,10 @@ parentPort!.on('message', async (msg: any) => {
       case 'stats':
         // Use cached stats if available (pre-calculated during startup for instant response)
         // StatsCache automatically handles: waiting for in-progress calculations, deduplication, caching
-        const stats = await statsCache.get(() => getStats(tbl, fileHashes, folderStats, fileStatusTable));
+        if (!lifecycle) {
+          throw new Error('Worker not initialized');
+        }
+        const stats = await lifecycle.getStatsCache().get(() => getStats(tbl, fileHashes, folderStats, fileStatusTable));
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: stats });
         }
