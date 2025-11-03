@@ -48,6 +48,13 @@ function MainInterface() {
       setIndexProgress(normalizeProgress(progress));
     });
 
+    // Fetch immediately on mount to avoid delay
+    (async () => {
+      const progress = await window.api.indexer.progress();
+      setIndexProgress(normalizeProgress(progress));
+    })();
+
+    // Then poll every 2 seconds
     const interval = setInterval(async () => {
       const progress = await window.api.indexer.progress();
       setIndexProgress(normalizeProgress(progress));

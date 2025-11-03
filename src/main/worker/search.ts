@@ -81,17 +81,77 @@ export async function search(
  * Get database statistics including chunk count and folder-level stats
  *
  * @param tbl - LanceDB table instance
- * @param fileHashes - Map of file paths to hashes
- * @param folderStats - Map of folder paths to their statistics
+ * @param fileHashes - Map of file paths to hashes (fallback if fileStatusTable unavailable)
+ * @param folderStats - Map of folder paths to their statistics (fallback if fileStatusTable unavailable)
+ * @param fileStatusTable - Optional file status table for fast stats lookup
  * @returns Database statistics object
  */
 export async function getStats(
   tbl: any,
   fileHashes: Map<string, string>,
-  folderStats: Map<string, FolderStats>
+  folderStats: Map<string, FolderStats>,
+  fileStatusTable?: any | null
 ): Promise<DatabaseStats> {
   try {
     const count = await tbl.countRows();
+
+    // Fast path: Use file status table if available
+    if (fileStatusTable) {
+      try {
+        // Query all indexed files from file status table
+        // Fixed: Use correct LanceDB filter syntax with quotes around string value
+        const indexedRecords = await fileStatusTable.query()
+          .filter(`status = "indexed"`)
+          .toArray();
+
+        // Calculate folder stats from indexed files
+        const watchedFolders = Array.from(folderStats.keys());
+
+        // Handle empty folderStats gracefully (StatusBar may load before startWatching)
+        if (watchedFolders.length === 0) {
+          return {
+            totalChunks: count,
+            indexedFiles: indexedRecords.length,
+            folderStats: []
+          };
+        }
+
+        const folderCounts = new Map<string, { total: number; indexed: number }>();
+
+        // Initialize counts for all watched folders
+        for (const folder of watchedFolders) {
+          folderCounts.set(folder, {
+            total: folderStats.get(folder)?.total || 0,
+            indexed: 0
+          });
+        }
+
+        // Count indexed files per folder
+        for (const record of indexedRecords) {
+          for (const folder of watchedFolders) {
+            if (record.path.startsWith(folder)) {
+              const stats = folderCounts.get(folder)!;
+              stats.indexed++;
+              break; // File belongs to only one folder
+            }
+          }
+        }
+        return {
+          totalChunks: count,
+          indexedFiles: indexedRecords.length,
+          folderStats: Array.from(folderCounts.entries()).map(([folder, stats]) => ({
+            folder,
+            totalFiles: stats.total,
+            indexedFiles: stats.indexed
+          }))
+        };
+      } catch (e) {
+        // Log the error for debugging before falling back
+        logger.warn('DATABASE', 'Fast path failed, falling back to slow path:', e);
+      }
+    }
+
+    // Slow path: Use fileHashes and folderStats (original implementation)
     return {
       totalChunks: count,
       indexedFiles: fileHashes.size,
@@ -101,7 +161,8 @@ export async function getStats(
         indexedFiles: stats.indexed
       }))
     };
-  } catch (_error) {
+  } catch (error) {
+    logger.error('DATABASE', 'Failed to get stats:', error);
     return {
       totalChunks: 0,
       indexedFiles: 0,

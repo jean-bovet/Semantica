@@ -23,6 +23,7 @@ import { shouldRestartEmbedder, bytesToMB } from '../utils/embedder-health';
 
 // Extracted modules
 import { getFileHash, isInsideBundle } from './utils/fileUtils';
+import { StatsCache } from './cache/StatsCache';
 import {
   checkDatabaseVersion,
   migrateDatabaseIfNeeded,
@@ -40,7 +41,7 @@ import {
 } from './database/operations';
 import { updateFileStatus } from './fileStatus';
 import { processBatchToRows, createBatchProcessor } from './batch/processor';
-import { search, getStats, type FolderStats } from './search';
+import { search, getStats, type FolderStats, type DatabaseStats } from './search';
 import { performGracefulShutdown } from './shutdown/orchestrator';
 
 // Load mock setup if in test mode with mocks enabled
@@ -211,6 +212,9 @@ const fileHashes = new Map<string, string>();
 const writeQueueState = createWriteQueueState();
 const folderStats = new Map<string, FolderStats>();
 
+// Cache for database stats (pre-calculated during startup for instant retrieval)
+const statsCache = new StatsCache();
+
 // Track if we've sent the files:loaded message
 declare global {
   var filesLoadedSent: boolean | undefined;
@@ -220,6 +224,7 @@ declare global {
 
 async function initDB(dir: string, _userDataPath: string) {
   try {
+    logger.log('DATABASE', '>>> initDB STARTED <<<');
     emitStageProgress('db_init', 'Checking database version');
     // Check database version and migrate if needed
     const migrated = await migrateDatabaseIfNeeded(dir);
@@ -278,6 +283,26 @@ async function initDB(dir: string, _userDataPath: string) {
     } catch (e) {
       logger.error('FILE-STATUS', 'Failed to initialize file status table:', e);
       fileStatusTable = null;
+    }
+
+    // Initialize folderStats early from config so db.stats() can show folder count immediately
+    // (Must happen before slow fileHashes loading so StatusBar sees folders on first call)
+    const configForFolders = await configManager!.getConfig();
+    const foldersToWatch = configForFolders.watchedFolders || [];
+    for (const folder of foldersToWatch) {
+      folderStats.set(folder, { total: 0, indexed: 0 });
+    }
+    logger.log('WATCHER', `Pre-initialized folderStats for ${foldersToWatch.length} folders`);
+
+    // Pre-calculate and cache stats IMMEDIATELY (before slow fileHashes loading)
+    // This ensures cache is ready when StatusBar mounts, even if initDB is still running
+    emitStageProgress('db_load', 'Calculating stats...');
+    try {
+      const stats = await statsCache.get(() => getStats(tbl, fileHashes, folderStats, fileStatusTable));
+      logger.log('DATABASE', `Stats pre-calculated: ${stats.indexedFiles} files, ${stats.folderStats.length} folders`);
+    } catch (error) {
+      logger.error('DATABASE', 'Failed to pre-calculate stats:', error);
+      // Continue without cache - will calculate on demand
     }
 
     // Load existing indexed files to prevent re-indexing
@@ -364,6 +389,7 @@ async function initDB(dir: string, _userDataPath: string) {
     // Do auto-start synchronously during init to avoid UI flash
     const config = await configManager!.getConfig();
     const savedFolders = config.watchedFolders || [];
+
     if (savedFolders.length > 0) {
       emitStageProgress('folder_scan', `Scanning ${savedFolders.length} folder(s)`);
       logger.log('WATCHER', 'Auto-starting watch on saved folders:', savedFolders);
@@ -372,11 +398,14 @@ async function initDB(dir: string, _userDataPath: string) {
       logger.log('WATCHER', 'No saved folders to watch');
       emitStageProgress('folder_scan', 'No folders to scan');
     }
-    
+
     // Setup profiling if enabled
     setupProfiling();
 
+    logger.log('DATABASE', '>>> initDB COMPLETING - emitting final ready <<<');
+    emitStageProgress('ready', 'Ready');
     logger.log('WORKER', 'Worker ready');
+    logger.log('DATABASE', '>>> initDB COMPLETED <<<');
   } catch (error) {
     logger.error('DATABASE', 'Failed to initialize database:', error);
     throw error;
@@ -404,6 +433,7 @@ async function handleFileOriginal(filePath: string) {
       await deleteByPath(tbl, filePath);
       fileHashes.delete(filePath);
       await updateFileStatus(fileStatusTable, filePath, 'deleted', fileHashes);
+      statsCache.invalidate(); // Cache needs recalculation after file deletion
       return;
     }
 
@@ -590,6 +620,7 @@ async function handleFileOriginal(filePath: string) {
     // Update file status as successfully indexed
     const totalChunks = chunks.length;
     await updateFileStatus(fileStatusTable, filePath, 'indexed', fileHashes, undefined, totalChunks, parserVersion);
+    statsCache.invalidate(); // Cache needs recalculation after new file indexed
     logger.log('INDEXING', `✅ Success: ${path.basename(filePath)} - ${totalChunks} chunks created`);
     
     // Clear references to help garbage collection
@@ -1242,7 +1273,9 @@ parentPort!.on('message', async (msg: any) => {
         break;
 
       case 'stats':
-        const stats = await getStats(tbl, fileHashes, folderStats);
+        // Use cached stats if available (pre-calculated during startup for instant response)
+        // StatsCache automatically handles: waiting for in-progress calculations, deduplication, caching
+        const stats = await statsCache.get(() => getStats(tbl, fileHashes, folderStats, fileStatusTable));
         if (msg.id) {
           parentPort!.postMessage({ id: msg.id, payload: stats });
         }
