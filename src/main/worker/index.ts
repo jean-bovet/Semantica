@@ -204,7 +204,8 @@ declare global {
 // Version 2: 1024-dimensional vectors (Ollama bge-m3 model - buggy, deprecated)
 // Version 3: 768-dimensional vectors (Ollama nomic-embed-text - stable)
 // Version 4: 768-dimensional vectors (Python sidecar paraphrase-multilingual-mpnet-base-v2 - production)
-const DB_VERSION = 4;
+// Version 5: Fix cross-file contamination bug in batch processor (chunks from different files were stored with wrong file path)
+const DB_VERSION = 5;
 const DB_VERSION_FILE = '.db-version';
 
 /**
@@ -508,13 +509,88 @@ async function deleteByPath(filePath: string) {
     if (!filePath || !tbl) {
       return;
     }
-    
+
     const escaped = filePath.replace(/"/g, '\\"');
     const query = `path = "${escaped}"`;
     await tbl.delete(query);
   } catch (error) {
     logger.error('DATABASE', 'Failed to delete by path:', filePath, error);
   }
+}
+
+/**
+ * Pure function that processes a batch of embedded chunks into database rows.
+ *
+ * IMPORTANT: Each chunk in a batch can be from a DIFFERENT file, so we must use
+ * each chunk's OWN metadata.filePath, not assume all chunks are from the same file.
+ *
+ * This is a pure function for testability - it doesn't have side effects.
+ *
+ * @param batch - Batch containing chunks and their corresponding vectors
+ * @param fileStatsProvider - Function to get file stats (mtime) for a given path
+ * @returns Array of database rows ready to be inserted
+ */
+export async function processBatchToRows(
+  batch: { chunks: any[], vectors: number[][] },
+  fileStatsProvider: (filePath: string) => Promise<{ mtime: number }>
+): Promise<any[]> {
+  // Cache file stats to avoid redundant stat calls for chunks from the same file
+  const fileStatsCache = new Map<string, { mtime: number }>();
+
+  // Create database rows - each chunk uses its OWN file path
+  const rows = await Promise.all(batch.chunks.map(async (chunk: any, idx: number) => {
+    // Use THIS chunk's file path, not the first chunk's path
+    const chunkFilePath = chunk.metadata.filePath;
+    const fileExt = path.extname(chunkFilePath).slice(1).toLowerCase();
+
+    // Get or cache file stats for this file
+    let fileStats = fileStatsCache.get(chunkFilePath);
+    if (!fileStats) {
+      fileStats = await fileStatsProvider(chunkFilePath);
+      fileStatsCache.set(chunkFilePath, fileStats);
+    }
+
+    // Generate unique ID using THIS chunk's file path
+    const id = crypto.createHash('sha1')
+      .update(`${chunkFilePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
+      .digest('hex');
+
+    return {
+      id,
+      path: chunkFilePath, // Each chunk gets its OWN file path
+      mtime: fileStats.mtime,
+      page: chunk.metadata.page || 0,
+      offset: chunk.metadata.offset,
+      text: chunk.text,
+      vector: batch.vectors[idx],
+      type: fileExt,
+      title: path.basename(chunkFilePath)
+    };
+  }));
+
+  return rows;
+}
+
+/**
+ * Creates the batch processor callback for the embedding queue.
+ * This wraps the pure processBatchToRows function with database write logic.
+ *
+ * @returns Batch processor function
+ */
+export function createBatchProcessor() {
+  return async (batch: any) => {
+    // File stats provider that reads from filesystem
+    const fileStatsProvider = async (filePath: string) => {
+      const stat = await fs.promises.stat(filePath);
+      return { mtime: stat.mtimeMs };
+    };
+
+    // Process batch to rows using pure function
+    const rows = await processBatchToRows(batch, fileStatsProvider);
+
+    // Write to database
+    await mergeRows(rows);
+  };
 }
 
 async function getFileHash(filePath: string): Promise<string> {
@@ -1311,37 +1387,7 @@ parentPort!.on('message', async (msg: any) => {
             });
 
             // Initialize with batch processor using sidecar embedder
-            embeddingQueue.initialize(sidecarEmbedder, async (batch: any) => {
-              // Extract file metadata from the first chunk
-              const filePath = batch.chunks[0].metadata.filePath;
-              const fileExt = path.extname(filePath).slice(1).toLowerCase();
-
-              // Get file stats
-              const stat = await fs.promises.stat(filePath);
-              const mtime = stat.mtimeMs;
-
-              // Create database rows
-              const rows = batch.chunks.map((chunk: any, idx: number) => {
-                const id = crypto.createHash('sha1')
-                  .update(`${filePath}:${chunk.metadata.page || 0}:${chunk.metadata.offset}`)
-                  .digest('hex');
-
-                return {
-                  id,
-                  path: filePath,
-                  mtime,
-                  page: chunk.metadata.page || 0,
-                  offset: chunk.metadata.offset,
-                  text: chunk.text,
-                  vector: batch.vectors[idx],
-                  type: fileExt,
-                  title: path.basename(filePath)
-                };
-              });
-
-              // Write to database
-              await mergeRows(rows);
-            });
+            embeddingQueue.initialize(sidecarEmbedder, createBatchProcessor());
 
             logger.log('WORKER', 'Embedding queue initialized');
             modelReady = true; // Mark as ready for legacy code

@@ -29,7 +29,7 @@ import { checkDatabaseVersion, migrateDatabaseIfNeeded, writeDatabaseVersion } f
 
 describe('Database Version Migration', () => {
   let testDir: string;
-  const DB_VERSION = 4; // Current version (Python sidecar with paraphrase-multilingual-mpnet-base-v2)
+  const DB_VERSION = 5; // Current version (Fix cross-file contamination bug)
 
   beforeEach(async () => {
     // Create a temporary test directory
@@ -225,6 +225,38 @@ describe('Database Version Migration', () => {
     });
   });
 
+  describe('version-specific migrations', () => {
+    it('should migrate from version 4 to version 5 (fix cross-file contamination)', async () => {
+      // Simulate version 4 database
+      await fs.writeFile(path.join(testDir, '.db-version'), '4');
+
+      // Create some .lance directories (simulating corrupted database)
+      await fs.mkdir(path.join(testDir, 'chunks.lance'), { recursive: true });
+      await fs.mkdir(path.join(testDir, 'file_status.lance'), { recursive: true });
+
+      // Add some dummy files to the lance directories
+      await fs.writeFile(path.join(testDir, 'chunks.lance', 'data.lance'), 'old contaminated data');
+      await fs.writeFile(path.join(testDir, 'file_status.lance', 'data.lance'), 'old status data');
+
+      // Perform migration
+      const migrated = await migrateDatabaseIfNeeded(testDir);
+      expect(migrated).toBe(true);
+
+      // Write new version (migration deletes old version but doesn't write new one)
+      await writeDatabaseVersion(testDir);
+
+      // Verify old .lance directories were deleted (forcing re-index to fix contamination)
+      const chunksExists = await fs.access(path.join(testDir, 'chunks.lance')).then(() => true).catch(() => false);
+      const statusExists = await fs.access(path.join(testDir, 'file_status.lance')).then(() => true).catch(() => false);
+      expect(chunksExists).toBe(false);
+      expect(statusExists).toBe(false);
+
+      // Verify version was updated to 5
+      const versionContent = await fs.readFile(path.join(testDir, '.db-version'), 'utf-8');
+      expect(versionContent.trim()).toBe('5');
+    });
+  });
+
   describe('writeDatabaseVersion', () => {
     it('should write current version to file', async () => {
       await writeDatabaseVersion(testDir);
@@ -260,7 +292,7 @@ describe('Database Version Migration', () => {
   });
 
   describe('Full migration workflow', () => {
-    it('should complete full migration cycle from v1 to v4', async () => {
+    it('should complete full migration cycle from v1 to v5', async () => {
       // Setup: Create old database structure (v1: Xenova multilingual-e5-small)
       const chunksDir = path.join(testDir, 'chunks.lance');
       const statusDir = path.join(testDir, 'file_status.lance');
@@ -323,7 +355,7 @@ describe('Database Version Migration', () => {
       expect(statusExists).toBe(false);
 
       const newVersion = await fs.readFile(versionFile, 'utf-8');
-      expect(newVersion).toBe('4');
+      expect(newVersion).toBe('5');
 
       // Step 4: Verify no migration needed now
       const stillNeedsMigration = await checkDatabaseVersion(testDir);
