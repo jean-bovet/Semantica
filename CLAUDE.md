@@ -37,6 +37,7 @@ src/main/
 ├── worker/         # Worker thread (modularized, 1,498 lines)
 │   ├── database/   # DB operations, migration (v5)
 │   ├── batch/      # Batch processing
+│   ├── shutdown/   # Graceful shutdown orchestration
 │   ├── utils/      # File utilities
 │   ├── fileStatus.ts
 │   ├── search.ts
@@ -63,7 +64,7 @@ Documentation is organized under `/docs/`:
 - Run tests with `npm test` before committing
 - Maintain test coverage above 85%
 - Test file parsers with real document samples
-- Unit tests: 515 tests (all passing, in `tests/unit/`)
+- Unit tests: 543 tests (all passing, in `tests/unit/`)
 - Integration tests: 8 tests (in `tests/integration/`, includes Python sidecar integration)
 - E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
 

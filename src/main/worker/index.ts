@@ -41,6 +41,7 @@ import {
 import { updateFileStatus } from './fileStatus';
 import { processBatchToRows, createBatchProcessor } from './batch/processor';
 import { search, getStats, type FolderStats } from './search';
+import { performGracefulShutdown } from './shutdown/orchestrator';
 
 // Load mock setup if in test mode with mocks enabled
 // This must happen before any other code that might use fetch
@@ -1357,95 +1358,83 @@ parentPort!.on('message', async (msg: any) => {
         // Clean shutdown requested - wait for all operations to complete
         logger.log('WORKER', 'Worker shutting down - initiating graceful shutdown...');
 
-        // STEP 1: Stop accepting new work
-        if (watcher) {
-          await watcher.close();
-          watcher = null;
-          logger.log('WORKER', 'File watcher closed - no new files will be added');
-        }
-
-        // STEP 2: Wait for file queue to finish processing
-        logger.log('WORKER', 'Waiting for file queue to complete...');
-        let fileWaitCount = 0;
-        while (isProcessingActive || fileQueue.getStats().processing > 0) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          fileWaitCount++;
-          if (fileWaitCount % 10 === 0) { // Log every second
-            logger.log('WORKER', `Still waiting for ${fileQueue.getStats().processing} files to complete...`);
-          }
-        }
-        logger.log('WORKER', 'File queue completed');
-
-        // STEP 3: Wait for embedding queue to drain
-        if (embeddingQueue) {
-          logger.log('WORKER', 'Waiting for embedding queue to drain...');
-          const maxWait = 30000; // 30 seconds timeout
-          const startWait = Date.now();
-          while (embeddingQueue.getStats().queueDepth > 0 ||
-                 embeddingQueue.getStats().processingBatches > 0) {
-            if (Date.now() - startWait > maxWait) {
-              logger.warn('WORKER', 'Embedding queue drain timeout - forcing shutdown');
-              break;
+        // Use shutdown orchestrator for graceful shutdown
+        const shutdownResult = await performGracefulShutdown(
+          {
+            watcher,
+            fileQueue,
+            embeddingQueue,
+            writeQueueState,
+            sidecarEmbedder,
+            sidecarService,
+            db,
+            healthCheckInterval,
+            memoryMonitorInterval,
+            isProcessingActive,
+            profiler: process.env.PROFILE === 'true' ? profiler : undefined
+          },
+          {
+            embeddingQueueTimeoutMs: 30000,
+            writeQueueTimeoutMs: 10000,
+            enableProfiling: process.env.PROFILE === 'true',
+            onProgress: (step, details) => {
+              // Map shutdown steps to appropriate log messages
+              switch (step) {
+                case 'close_watcher':
+                  logger.log('WORKER', 'File watcher closed - no new files will be added');
+                  break;
+                case 'file_queue_wait':
+                  if (details.processing > 0) {
+                    logger.log('WORKER', `Still waiting for ${details.processing} files to complete...`);
+                  } else {
+                    logger.log('WORKER', 'File queue completed');
+                  }
+                  break;
+                case 'embedding_queue_wait':
+                  logger.log('WORKER', 'Waiting for embedding queue to drain...');
+                  break;
+                case 'write_queue_wait':
+                  logger.log('WORKER', 'Waiting for database writes to complete...');
+                  break;
+                case 'profiling_report':
+                  logger.log('PROFILING', '🔬 Generating performance report...');
+                  break;
+                case 'clear_memory_monitor':
+                  logger.log('WORKER', 'Memory monitoring stopped');
+                  break;
+                case 'sidecar_embedder_shutdown':
+                  logger.log('WORKER', 'Shutting down sidecar embedder...');
+                  break;
+                case 'sidecar_service_stop':
+                  logger.log('WORKER', 'Stopping Python sidecar service...');
+                  break;
+                case 'database_close':
+                  logger.log('WORKER', 'Closing database...');
+                  break;
+              }
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
           }
-          logger.log('WORKER', 'Embedding queue drained');
-        }
+        );
 
-        // STEP 4: Wait for database write queue to drain
-        logger.log('WORKER', 'Waiting for database writes to complete...');
-        const maxWriteWait = 10000; // 10 seconds
-        const startWriteWait = Date.now();
-        while (writeQueue.length > 0 || isWriting) {
-          if (Date.now() - startWriteWait > maxWriteWait) {
-            logger.warn('WORKER', `Write queue drain timeout - ${writeQueue.length} operations pending`);
-            break;
-          }
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        logger.log('WORKER', 'Database writes completed');
-
-        // Generate profiling report if enabled
-        if (process.env.PROFILE === 'true') {
-          const { profiler } = require('./profiling-integration');
-          if (profiler.isEnabled()) {
-            logger.log('PROFILING', '🔬 Generating performance report...');
-            await profiler.saveReport();
+        // Log any failed steps
+        for (const step of shutdownResult.steps) {
+          if (!step.success) {
+            if (step.timedOut) {
+              logger.warn('WORKER', `Shutdown step timed out: ${step.step}`);
+            } else if (step.error) {
+              logger.error('WORKER', `Shutdown step failed: ${step.step} - ${step.error}`);
+            }
           }
         }
 
-        // STEP 5: Stop monitoring
-        if (healthCheckInterval) {
-          clearInterval(healthCheckInterval);
-          healthCheckInterval = null;
+        // Log completion and exit
+        if (shutdownResult.success) {
+          logger.log('WORKER', 'Worker shutdown complete');
+          process.exit(0);
+        } else {
+          logger.warn('WORKER', 'Worker shutdown completed with errors');
+          process.exit(1);
         }
-
-        if (memoryMonitorInterval) {
-          clearInterval(memoryMonitorInterval);
-          memoryMonitorInterval = null;
-          logger.log('WORKER', 'Memory monitoring stopped');
-        }
-
-        // STEP 6: Shutdown Python sidecar
-        if (sidecarEmbedder) {
-          logger.log('WORKER', 'Shutting down sidecar embedder...');
-          await sidecarEmbedder.shutdown();
-        }
-
-        if (sidecarService) {
-          logger.log('WORKER', 'Stopping Python sidecar service...');
-          await sidecarService.stopSidecar();
-        }
-
-        // STEP 7: Now safe to close database - all operations complete
-        logger.log('WORKER', 'Closing database...');
-        if (db) {
-          await db.close();
-          logger.log('WORKER', 'Database closed successfully');
-        }
-
-        logger.log('WORKER', 'Worker shutdown complete');
-        process.exit(0);
     }
   } catch (error: any) {
     logger.error('WORKER', 'Worker message error:', error);

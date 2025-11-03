@@ -10,11 +10,15 @@
 >   - ✅ `batch/processor.ts` - Batch processing (fixed cross-file bug)
 >   - ✅ `fileStatus.ts` - File status management
 >   - ✅ `search.ts` - Search & statistics operations
+>   - ✅ `shutdown/types.ts` - Shutdown type definitions
+>   - ✅ `shutdown/queueDrainer.ts` - Generic queue draining logic
+>   - ✅ `shutdown/orchestrator.ts` - Graceful shutdown orchestration
 > - **Results:**
 >   - Worker reduced from 1,855 → 1,498 lines (357 lines, 19% reduction)
->   - All 515 unit tests passing
+>   - All 543 unit tests passing (added 28 shutdown tests)
 >   - Integration tests passing
 >   - Cross-file contamination bug fixed (DB v5)
+>   - Shutdown refactored to testable, modular architecture
 >
 > **Previous Update 2025-10-28:**
 > - Worker file had grown from 1543 to **1735 lines** (+192 lines since plan written)

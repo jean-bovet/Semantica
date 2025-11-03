@@ -127,9 +127,21 @@ Organized by domain:
   1. Main process `before-quit` event prevents default quit
   2. Sends `{type: 'shutdown'}` message to worker
   3. Waits for worker 'exit' event (3s timeout with fallback)
-  4. Worker shuts down Python sidecar (SIGTERM with 1-5s grace period)
-  5. Worker closes database and exits cleanly
+  4. Worker orchestrates graceful shutdown (via `shutdown/orchestrator.ts`):
+     a. Close file watcher (stop accepting new work)
+     b. Wait for file queue to drain (no timeout)
+     c. Wait for embedding queue to drain (30s timeout)
+     d. Wait for write queue to drain (10s timeout)
+     e. Generate profiling report (if enabled)
+     f. Clear monitoring intervals
+     g. Shutdown Python sidecar (SIGTERM with grace period)
+     h. Close database connection
+  5. Worker exits cleanly with detailed step results
   6. Main process calls `app.quit()` to complete shutdown
+  - Implementation uses modular architecture:
+    - `shutdown/queueDrainer.ts`: Pure async function for generic queue draining
+    - `shutdown/orchestrator.ts`: Coordinates all shutdown steps with timeouts
+    - `shutdown/types.ts`: TypeScript interfaces for shutdown process
 - Progress events for model downloading and loading
 
 ### 4. Startup System (`src/main/startup/`)

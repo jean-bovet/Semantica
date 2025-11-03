@@ -205,6 +205,29 @@ Embedding batch processing:
   - Fixed bug: Each chunk uses its own file path (not shared)
   - File stats caching to avoid redundant fs.stat() calls
 
+#### `shutdown/` - Graceful Shutdown Orchestration
+
+Coordinates graceful worker shutdown with queue draining:
+
+- **`types.ts`**: Shutdown type definitions
+  - `QueueStats`: Generic queue statistics interface
+  - `WaitForQueueOptions`: Configuration for queue draining
+  - `ShutdownDependencies`: Dependencies needed for shutdown
+  - `ShutdownOptions`: Configuration for shutdown process
+  - `ShutdownResult`: Per-step results tracking
+
+- **`queueDrainer.ts`**: Generic queue draining logic
+  - `waitForQueueToDrain()`: Pure async function for any queue type
+  - Configurable timeouts and poll intervals
+  - Progress callbacks for monitoring
+  - Highly testable (pure function with dependency injection)
+
+- **`orchestrator.ts`**: Graceful shutdown coordination
+  - `performGracefulShutdown()`: 8-step shutdown process
+  - Drains file queue, embedding queue, write queue (with timeouts)
+  - Shuts down Python sidecar and closes database
+  - Returns detailed per-step success/failure results
+
 #### `fileStatus.ts` - File Status Management
 
 Track file indexing status:

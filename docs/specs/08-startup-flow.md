@@ -327,6 +327,108 @@ Model successfully loaded into memory.
 
 **Effect:** Proceeds to Stage 7 (`sidecar_ready`)
 
+## Shutdown Flow
+
+### Graceful Shutdown Sequence
+
+When the app is quit, the system performs a coordinated shutdown to ensure no data loss:
+
+```mermaid
+graph TD
+    Start([User Quits App]) --> BeforeQuit[Main: before-quit Event]
+    BeforeQuit --> PreventDefault[Prevent Default Quit]
+    PreventDefault --> SendShutdown[Send shutdown Message to Worker]
+
+    SendShutdown --> CloseWatcher[Worker: Close File Watcher]
+    CloseWatcher --> FileQueue[Wait for File Queue<br/>No timeout]
+
+    FileQueue --> EmbeddingQueue[Wait for Embedding Queue<br/>30s timeout]
+    EmbeddingQueue --> WriteQueue[Wait for Write Queue<br/>10s timeout]
+
+    WriteQueue --> Profiling{Profiling<br/>Enabled?}
+    Profiling -->|Yes| SaveReport[Save Performance Report]
+    Profiling -->|No| ClearIntervals[Clear Monitoring Intervals]
+    SaveReport --> ClearIntervals
+
+    ClearIntervals --> ShutdownSidecar[Shutdown Python Sidecar]
+    ShutdownSidecar --> CloseDB[Close Database]
+    CloseDB --> WorkerExit[Worker Thread Exits]
+
+    WorkerExit --> MainQuit[Main: app.quit]
+    MainQuit --> End([App Terminates])
+
+    style Start fill:#ffccbc
+    style End fill:#c8e6c9
+    style FileQueue fill:#fff3e0
+    style EmbeddingQueue fill:#fff3e0
+    style WriteQueue fill:#fff3e0
+```
+
+### Shutdown Orchestration
+
+The shutdown process is coordinated by `src/main/worker/shutdown/orchestrator.ts`, which provides:
+
+**8-Step Process:**
+1. **Close watcher** - Stop accepting new files
+2. **File queue drain** - Wait for all files to complete processing (no timeout)
+3. **Embedding queue drain** - Wait for embeddings to complete (30s timeout)
+4. **Write queue drain** - Wait for database writes to complete (10s timeout)
+5. **Profiling report** - Generate performance report (if enabled)
+6. **Clear intervals** - Stop health check and memory monitoring
+7. **Sidecar shutdown** - Gracefully stop Python embedding service
+8. **Database close** - Close LanceDB connection
+
+**Key Features:**
+- **Pure function design**: Testable, modular shutdown logic
+- **Configurable timeouts**: Prevent indefinite hangs
+- **Progress callbacks**: Real-time visibility into shutdown steps
+- **Detailed results**: Per-step success/failure reporting
+- **Non-blocking timeouts**: Queue timeouts don't prevent full shutdown
+
+### Queue Draining
+
+The `shutdown/queueDrainer.ts` module provides a generic, pure async function for waiting on any queue:
+
+**Features:**
+- Configurable timeout and poll interval
+- Generic queue statistics interface
+- Custom empty-check predicates
+- Progress callbacks for monitoring
+- Highly testable (pure function)
+
+**Usage Example:**
+```typescript
+const drained = await waitForQueueToDrain({
+  queueName: 'embedding_queue',
+  getStats: () => embeddingQueue.getStats(),
+  isQueueEmpty: (stats) => stats.queueDepth === 0 && stats.processingBatches === 0,
+  timeoutMs: 30000,
+  onProgress: (stats, elapsed) => logger.log(`Queue: ${stats.queueDepth}`)
+});
+```
+
+### Timeout Handling
+
+**File Queue:** No timeout - ensures all discovered files are processed before shutdown
+
+**Embedding Queue:** 30s timeout - balances data integrity with reasonable shutdown time
+
+**Write Queue:** 10s timeout - database writes are critical, but must bound shutdown time
+
+**Timeout behavior:** If a queue times out, the shutdown continues (fails gracefully) but logs the timeout. This prevents the app from hanging indefinitely while still attempting to complete critical operations.
+
+### Worker Exit Protocol
+
+**Normal flow:**
+1. Worker completes all shutdown steps
+2. Returns `ShutdownResult` to main process
+3. Exits worker thread cleanly
+
+**Timeout fallback:**
+1. Main process waits 3s for worker exit
+2. If worker doesn't exit, main process forces quit
+3. Prevents indefinite hang on shutdown
+
 ## IPC Message Protocol
 
 ### Worker → Main → Renderer
