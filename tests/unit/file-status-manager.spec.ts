@@ -16,11 +16,11 @@ import {
 vi.mock('node:fs');
 
 // Mock shouldReindex
-vi.mock('../../src/main/core/reindex/reindexManager', () => ({
+vi.mock('../../src/main/services/ReindexService', () => ({
   shouldReindex: vi.fn()
 }));
 
-import { shouldReindex } from '../../src/main/core/reindex/reindexManager';
+import { shouldReindex } from '../../src/main/services/ReindexService';
 
 describe('FileStatusManager', () => {
   beforeEach(() => {

@@ -34,12 +34,54 @@ describe('ReindexService', () => {
 
   beforeEach(() => {
     mockFiles = [];
+
+    // Create a query builder that supports chaining
+    const createQueryBuilder = () => {
+      let filteredFiles = mockFiles;
+
+      const builder = {
+        filter: vi.fn((condition: string) => {
+          // Simple filter implementation for tests
+          if (condition.includes('status = "indexed"')) {
+            filteredFiles = mockFiles.filter(f => f.status === 'indexed');
+          } else if (condition.includes('status = "failed" OR status = "error"')) {
+            filteredFiles = mockFiles.filter(f => f.status === 'failed' || f.status === 'error');
+          }
+          return builder;
+        }),
+        select: vi.fn((columns: string[]) => {
+          // Select doesn't filter, just returns builder for chaining
+          return builder;
+        }),
+        toArray: vi.fn(async () => filteredFiles)
+      };
+
+      return builder;
+    };
+
     mockRepo = {
-      query: vi.fn(() => ({
-        toArray: vi.fn(async () => mockFiles)
-      })),
+      query: vi.fn(() => createQueryBuilder()),
       delete: vi.fn(),
-      add: vi.fn()
+      add: vi.fn((records: FileStatus[]) => {
+        // Validate required fields like LanceDB does
+        for (const record of records) {
+          if (!record.path || record.path === '') {
+            throw new Error('Missing required field: path');
+          }
+          if (!record.status) {
+            throw new Error('Missing required field: status');
+          }
+          // LanceDB requires all string fields to be present (not undefined/null)
+          // Check that all required FileStatus fields exist
+          const requiredFields = ['path', 'status', 'error_message', 'last_modified', 'indexed_at', 'file_hash', 'last_retry'];
+          for (const field of requiredFields) {
+            if (record[field as keyof FileStatus] === undefined || record[field as keyof FileStatus] === null) {
+              throw new Error(`Missing or null field: ${field}`);
+            }
+          }
+        }
+        return Promise.resolve();
+      })
     };
     
     mockLogger = {

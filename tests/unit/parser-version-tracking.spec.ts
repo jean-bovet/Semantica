@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PARSER_VERSIONS, getParserVersion, VERSION_HISTORY, getVersionHistory } from '../../src/main/worker/parserVersions';
-import { shouldReindex, FileStatus } from '../../src/main/core/reindex/reindexManager';
+import { ReindexService, FileStatus } from '../../src/main/services/ReindexService';
 import * as fs from 'node:fs';
 import * as crypto from 'node:crypto';
 
@@ -11,8 +11,12 @@ vi.mock('node:fs', () => ({
 }));
 
 describe('Parser Version Tracking', () => {
+  let reindexService: ReindexService;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Create service instance for testing shouldReindex logic
+    reindexService = new ReindexService(undefined, { log: vi.fn(), error: vi.fn() });
   });
 
   describe('parserVersions', () => {
@@ -59,12 +63,12 @@ describe('Parser Version Tracking', () => {
     });
 
     it('should return true for files never indexed', () => {
-      const result = shouldReindex('/test/file.pdf', undefined);
+      const result = reindexService.shouldReindex('/test/file.pdf', undefined);
       expect(result).toBe(true);
     });
 
     it('should return false for unsupported file types', () => {
-      const result = shouldReindex('/test/file.xyz', undefined);
+      const result = reindexService.shouldReindex('/test/file.xyz', undefined);
       expect(result).toBe(false);
     });
 
@@ -80,7 +84,7 @@ describe('Parser Version Tracking', () => {
         file_hash: 'abc123'
       };
 
-      const result = shouldReindex('/test/file.doc', fileRecord);
+      const result = reindexService.shouldReindex('/test/file.doc', fileRecord);
       expect(result).toBe(true); // Should reindex because doc parser is now v2
     });
 
@@ -96,7 +100,7 @@ describe('Parser Version Tracking', () => {
         file_hash: generateFileHash('/test/file.doc', mockFileStats)
       };
 
-      const result = shouldReindex('/test/file.doc', fileRecord);
+      const result = reindexService.shouldReindex('/test/file.doc', fileRecord);
       expect(result).toBe(false);
     });
 
@@ -112,7 +116,7 @@ describe('Parser Version Tracking', () => {
         file_hash: 'old-hash'
       };
 
-      const result = shouldReindex('/test/file.pdf', fileRecord);
+      const result = reindexService.shouldReindex('/test/file.pdf', fileRecord);
       expect(result).toBe(true); // Hash mismatch means file changed
     });
 
@@ -130,7 +134,7 @@ describe('Parser Version Tracking', () => {
         last_retry: dayAgo
       };
 
-      const result = shouldReindex('/test/file.pdf', fileRecord);
+      const result = reindexService.shouldReindex('/test/file.pdf', fileRecord);
       expect(result).toBe(true);
     });
 
@@ -148,7 +152,7 @@ describe('Parser Version Tracking', () => {
         last_retry: hourAgo
       };
 
-      const result = shouldReindex('/test/file.pdf', fileRecord);
+      const result = reindexService.shouldReindex('/test/file.pdf', fileRecord);
       expect(result).toBe(false);
     });
 
@@ -164,7 +168,7 @@ describe('Parser Version Tracking', () => {
         file_hash: 'abc123'
       };
 
-      const result = shouldReindex('/test/file.doc', fileRecord);
+      const result = reindexService.shouldReindex('/test/file.doc', fileRecord);
       expect(result).toBe(true); // Should reindex to add version
     });
   });
