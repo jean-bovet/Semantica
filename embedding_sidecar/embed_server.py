@@ -385,7 +385,7 @@ def extract_with_ocr(req: OCRExtractRequest):
                     str(img_path),
                     language_preference=[req.language],
                     recognition_level=req.recognition_level
-                )
+                ).recognize()
 
                 # Extract text and confidence
                 page_text = " ".join([item[0] for item in annotations])
