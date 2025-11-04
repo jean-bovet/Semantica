@@ -357,8 +357,19 @@ def extract_with_ocr(req: OCRExtractRequest):
 
         # Convert PDF to images (one per page)
         # Use lower DPI (200) for faster processing, higher (300) for better quality
-        images = convert_from_path(req.path, dpi=200)
-        print(f"  Converted {len(images)} pages to images")
+        try:
+            images = convert_from_path(req.path, dpi=200)
+            print(f"  Converted {len(images)} pages to images")
+        except Exception as pdf_error:
+            # Check if it's a poppler-related error
+            error_msg = str(pdf_error).lower()
+            if 'poppler' in error_msg or 'pdfinfo' in error_msg or 'pdftoppm' in error_msg:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Poppler not found. Install with: brew install poppler"
+                )
+            else:
+                raise HTTPException(status_code=500, detail=f"Failed to convert PDF to images: {str(pdf_error)}")
 
         pages_text = []
         total_confidence = 0.0

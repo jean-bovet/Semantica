@@ -354,10 +354,11 @@ const status = await service.getStatus(); // Check status
 
 **OCR Requirements (Optional):**
 - macOS 12 (Monterey) or later (for Vision framework)
+- **Poppler** system dependency: `brew install poppler` (provides pdfinfo, pdftoppm utilities)
 - Additional Python packages for OCR:
   - `ocrmac==1.0.0` - macOS Vision framework bindings
   - `pymupdf==1.24.14` - PDF rendering for OCR
-  - `pdf2image==1.17.0` - PDF to image conversion
+  - `pdf2image==1.17.0` - PDF to image conversion (requires poppler)
 - Additional ~200MB disk space for OCR dependencies
 
 **Note:** OCR functionality is macOS-only and automatically disabled on other platforms.

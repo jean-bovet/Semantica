@@ -42,9 +42,10 @@ export async function parsePdf(
 - `POST /ocr/extract` - Extract text using Vision framework
 
 **Dependencies:**
+- **System:** Poppler (`brew install poppler`) - PDF utilities (pdfinfo, pdftoppm)
 - `ocrmac==1.0.0` - macOS Vision bindings
 - `pymupdf==1.24.14` - PDF rendering
-- `pdf2image==1.17.0` - PDF to image conversion
+- `pdf2image==1.17.0` - PDF to image conversion (requires poppler)
 
 #### 3. macOS Vision Framework
 **Native API:** Vision.framework (macOS system library)

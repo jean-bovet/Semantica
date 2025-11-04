@@ -25,6 +25,7 @@ Output:
 import sys
 import json
 import importlib.util
+import shutil
 
 # Required dependencies
 REQUIRED_DEPS = [
@@ -35,6 +36,17 @@ REQUIRED_DEPS = [
     'torch',
     'pypdf'
 ]
+
+def check_poppler():
+    """Check if poppler utilities are installed (required for OCR)"""
+    pdfinfo = shutil.which('pdfinfo')
+    pdftoppm = shutil.which('pdftoppm')
+
+    return {
+        'installed': pdfinfo is not None and pdftoppm is not None,
+        'pdfinfo_path': pdfinfo,
+        'pdftoppm_path': pdftoppm
+    }
 
 def check_dependencies():
     """Check if all required dependencies are installed"""
@@ -58,11 +70,15 @@ def check_dependencies():
     # Get Python version
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
+    # Check poppler (optional for OCR)
+    poppler_status = check_poppler()
+
     result = {
         'all_present': all_present,
         'python_version': python_version,
         'deps': deps_status,
-        'missing': missing
+        'missing': missing,
+        'poppler': poppler_status
     }
 
     return result

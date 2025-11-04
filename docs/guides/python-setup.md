@@ -9,6 +9,29 @@ Semantica requires:
 - **pip** (Python package installer)
 - **2.2 GB free disk space** for dependencies
 
+### System Dependencies for OCR
+
+If you want to use the OCR feature for scanned PDFs, you also need:
+
+- **Poppler** - PDF rendering utilities required by pdf2image
+
+**Installation (macOS):**
+```bash
+brew install poppler
+```
+
+**Verification:**
+```bash
+which pdfinfo && which pdftoppm
+# Should output paths like /opt/homebrew/bin/pdfinfo
+```
+
+**What this provides:**
+- `pdfinfo` - Extracts PDF page count and metadata
+- `pdftoppm` - Converts PDF pages to images for OCR processing
+
+**Note:** Without poppler, OCR will fail with "Unable to get page count" errors.
+
 ## Quick Setup (Recommended)
 
 Install Python dependencies globally using your system Python:

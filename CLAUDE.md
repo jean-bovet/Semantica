@@ -106,6 +106,7 @@ Documentation is organized under `/docs/`:
 
 ### OCR for Scanned PDFs
 - **Enabled by default** - automatically processes scanned PDFs
+- **System requirement:** Poppler utilities (`brew install poppler`)
 - Can be toggled in Settings → File Types → "Enable OCR for scanned PDFs"
 - Uses macOS Vision framework (built into macOS 12+)
 - Automatically detects if PDF needs OCR (<50 chars/page threshold)

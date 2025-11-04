@@ -20,6 +20,7 @@ A privacy-first, offline semantic search application for macOS that indexes your
 - macOS 13.0 or later
 - Node.js 18+ and npm
 - **Python 3.9 or later** (for embedding service)
+- **Poppler** (for OCR support): `brew install poppler`
 - 8GB RAM recommended
 - ~3GB disk space for Python dependencies, models, and index
 
