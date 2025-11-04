@@ -64,7 +64,7 @@ function emitStageProgress(stage: StartupStage, message?: string, progress?: num
   // Use type-safe message builder for consistency
   const stageMessage = createStageMessage(stage, message, progress);
   parentPort?.postMessage(stageMessage);
-  logger.log('STARTUP', `Stage: ${stage}${message ? ` - ${message}` : ''}${progress !== undefined ? ` (${progress}%)` : ''}`);
+  // Note: Main process logs these messages - no need to log here
 }
 
 // Monitor memory usage
@@ -181,6 +181,7 @@ let fileStatusTable: any = null;
 let configManager: ConfigManager | null = null;
 let sidecarEmbedder: PythonSidecarEmbedder | null = null;
 let sidecarService: PythonSidecarService | null = null;
+let workerStartup: WorkerStartup | null = null;
 let embeddingQueue: EmbeddingQueue | null = null;
 let reindexService: ReindexService | null = null;
 
@@ -770,9 +771,9 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     if (supported && !fileQueue.isProcessing(p)) {
       // Check file status from cache or assume it's new
       const fileRecord = fileStatusCache?.get(p) || null;
-      
+
       // Use shouldReindex to determine if file needs processing
-      if (reindexService.shouldReindex(p, fileRecord)) {
+      if (reindexService && reindexService.shouldReindex(p, fileRecord)) {
         fileQueue.add(p);
         logger.log('QUEUE', `📥 Added: ${path.basename(p)} (Queue size: ${fileQueue.getStats().queued})`);
         // Start processing if not already active

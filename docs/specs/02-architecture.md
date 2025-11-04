@@ -79,12 +79,12 @@ The main process follows a strict initialization order to prevent IPC errors:
 - Manages lifecycle and initialization
 - Build output: `dist/worker.cjs`
 - **Modularized structure** (Phase 1 completed):
-  - `database/migration.ts` - Database version 5 management
+  - `database/migration.ts` - Database version 6 management (cosine metric)
   - `database/operations.ts` - Database CRUD operations
   - `batch/processor.ts` - Batch processing (fixed cross-file contamination bug)
   - `utils/fileUtils.ts` - File utilities
   - `fileStatus.ts` - File status tracking
-  - `search.ts` - Search & statistics
+  - `search.ts` - Search & statistics (cosine similarity scoring)
 
 #### Core Business Logic (`src/main/core/`)
 Organized by domain:

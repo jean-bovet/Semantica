@@ -8,7 +8,8 @@ import { logger } from '../../../shared/utils/logger';
 // Version 3: 768-dimensional vectors (Ollama nomic-embed-text - stable)
 // Version 4: 768-dimensional vectors (Python sidecar paraphrase-multilingual-mpnet-base-v2 - production)
 // Version 5: Fix cross-file contamination bug in batch processor (chunks from different files were stored with wrong file path)
-export const DB_VERSION = 5;
+// Version 6: Switch from L2 to cosine distance metric (aligns with Sentence Transformer training, improves search quality)
+export const DB_VERSION = 6;
 export const DB_VERSION_FILE = '.db-version';
 
 /**

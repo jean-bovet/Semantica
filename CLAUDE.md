@@ -36,7 +36,7 @@ src/main/
 │   └── reindex/    # Re-indexing and folder management
 ├── services/       # Application services layer
 ├── worker/         # Worker thread (modularized, 1,498 lines)
-│   ├── database/   # DB operations, migration (v5)
+│   ├── database/   # DB operations, migration (v6)
 │   ├── batch/      # Batch processing
 │   ├── shutdown/   # Graceful shutdown orchestration
 │   ├── utils/      # File utilities
@@ -79,10 +79,12 @@ Documentation is organized under `/docs/`:
 - LanceDB requires initialization with dummy data
 - File status tracked in separate table
 - Avoid complex WHERE clauses (not yet implemented)
-- **Database Version**: 5 (current)
+- **Database Version**: 6 (current)
   - Version tracked in `.db-version` file
+  - Version 6: Switched from L2 to cosine distance metric (aligns with Sentence Transformer training, improves search quality especially for cross-lingual queries)
   - Version 5: Fixed cross-file contamination bug in batch processing
   - Migration handled automatically by `worker/database/migration.ts`
+- **Vector Search Metric**: Cosine similarity (optimal for Sentence Transformer embeddings)
 
 ### Build System Notes
 - **Electron Version**: 38.4.0 (upgraded from 33.x)

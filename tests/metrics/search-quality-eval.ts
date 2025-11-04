@@ -202,7 +202,7 @@ const TEST_CASES: TestCase[] = [
     fileName: "cross-lingual-01.txt",
     fileContent: "La technologie moderne a transformé notre façon de vivre et de travailler. L'intelligence artificielle devient de plus en plus importante dans notre vie quotidienne.",
     searchQuery: "modern technology transforms life",
-    expectedMinScore: 0.55
+    expectedMinScore: 0.60
   },
   {
     name: "Cross-lingual: French query, English document",
@@ -210,7 +210,7 @@ const TEST_CASES: TestCase[] = [
     fileName: "cross-lingual-02.txt",
     fileContent: "Environmental protection is crucial for future generations. We must take action now to preserve our planet and its natural resources.",
     searchQuery: "protection de l'environnement pour les générations futures",
-    expectedMinScore: 0.55
+    expectedMinScore: 0.60
   },
   {
     name: "Cross-lingual: Mixed language document",

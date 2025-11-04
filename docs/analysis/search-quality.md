@@ -63,11 +63,13 @@ const results = await tbl.search(qvec)
 
 ### Distance Calculation
 ```typescript
-score: Math.max(0, 1 - (r._distance / 2))
+score: Math.max(0, 1 - r._distance)
 ```
-- Uses cosine distance (normalized)
-- Converts to similarity score (0-1 range)
-- Higher scores = better matches
+- Uses cosine distance directly (database configured with `metric: 'cosine'`)
+- LanceDB returns cosine distance (1 - cosine_similarity)
+- Converts to similarity score: `similarity = 1 - distance`
+- Score range: 0-1, where higher scores = better matches
+- Improved accuracy for cross-lingual queries (French ↔ English)
 
 ### Search Quality Factors
 

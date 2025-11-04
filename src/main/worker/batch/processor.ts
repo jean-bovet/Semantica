@@ -3,6 +3,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { mergeRows, type WriteQueueState } from '../database/operations';
 
+// Re-export WriteQueueState for external consumers
+export type { WriteQueueState };
+
 /**
  * Pure function that processes a batch of embedded chunks into database rows.
  *

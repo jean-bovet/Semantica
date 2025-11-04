@@ -169,7 +169,8 @@ export class WorkerLifecycle {
       }];
 
       const table = await this.db.createTable('chunks', initialData, {
-        mode: 'create'
+        mode: 'create',
+        metric: 'cosine' // Use cosine similarity (aligns with Sentence Transformer training)
       });
 
       // Delete the initialization record

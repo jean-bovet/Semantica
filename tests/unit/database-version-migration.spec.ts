@@ -29,7 +29,7 @@ import { checkDatabaseVersion, migrateDatabaseIfNeeded, writeDatabaseVersion } f
 
 describe('Database Version Migration', () => {
   let testDir: string;
-  const DB_VERSION = 5; // Current version (Fix cross-file contamination bug)
+  const DB_VERSION = 6; // Current version (Cosine metric for improved search quality)
 
   beforeEach(async () => {
     // Create a temporary test directory
@@ -226,9 +226,9 @@ describe('Database Version Migration', () => {
   });
 
   describe('version-specific migrations', () => {
-    it('should migrate from version 4 to version 5 (fix cross-file contamination)', async () => {
-      // Simulate version 4 database
-      await fs.writeFile(path.join(testDir, '.db-version'), '4');
+    it('should migrate from version 5 to version 6 (switch to cosine metric)', async () => {
+      // Simulate version 5 database
+      await fs.writeFile(path.join(testDir, '.db-version'), '5');
 
       // Create some .lance directories (simulating corrupted database)
       await fs.mkdir(path.join(testDir, 'chunks.lance'), { recursive: true });
@@ -251,9 +251,9 @@ describe('Database Version Migration', () => {
       expect(chunksExists).toBe(false);
       expect(statusExists).toBe(false);
 
-      // Verify version was updated to 5
+      // Verify version was updated to 6
       const versionContent = await fs.readFile(path.join(testDir, '.db-version'), 'utf-8');
-      expect(versionContent.trim()).toBe('5');
+      expect(versionContent.trim()).toBe('6');
     });
   });
 
@@ -292,7 +292,7 @@ describe('Database Version Migration', () => {
   });
 
   describe('Full migration workflow', () => {
-    it('should complete full migration cycle from v1 to v5', async () => {
+    it('should complete full migration cycle from v1 to v6', async () => {
       // Setup: Create old database structure (v1: Xenova multilingual-e5-small)
       const chunksDir = path.join(testDir, 'chunks.lance');
       const statusDir = path.join(testDir, 'file_status.lance');
@@ -327,7 +327,7 @@ describe('Database Version Migration', () => {
       expect(stillNeedsMigration).toBe(false);
     });
 
-    it('should complete full migration cycle from v3 to v4 (Ollama to Python sidecar)', async () => {
+    it('should complete full migration cycle from v3 to v6 (Ollama to Python sidecar with cosine)', async () => {
       // Setup: Create v3 database structure (Ollama nomic-embed-text, 768-dim)
       const chunksDir = path.join(testDir, 'chunks.lance');
       const statusDir = path.join(testDir, 'file_status.lance');
@@ -348,14 +348,14 @@ describe('Database Version Migration', () => {
       // Step 3: Write new version
       await writeDatabaseVersion(testDir);
 
-      // Verify: Old embeddings cleared (even though both are 768-dim, different models)
+      // Verify: Old embeddings cleared (even though both are 768-dim, different models/metric)
       const chunksExists = await fs.access(chunksDir).then(() => true).catch(() => false);
       const statusExists = await fs.access(statusDir).then(() => true).catch(() => false);
       expect(chunksExists).toBe(false);
       expect(statusExists).toBe(false);
 
       const newVersion = await fs.readFile(versionFile, 'utf-8');
-      expect(newVersion).toBe('5');
+      expect(newVersion).toBe('6');
 
       // Step 4: Verify no migration needed now
       const stillNeedsMigration = await checkDatabaseVersion(testDir);

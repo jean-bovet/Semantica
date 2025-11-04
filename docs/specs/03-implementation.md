@@ -286,7 +286,7 @@ Database schema is versioned to handle migrations and model changes:
 
 ```typescript
 // src/main/worker/database/migration.ts
-const DB_VERSION = 5; // Current version
+const DB_VERSION = 6; // Current version
 
 // Version history:
 // Version 1: 384-dimensional vectors (Xenova multilingual-e5-small)
@@ -294,6 +294,7 @@ const DB_VERSION = 5; // Current version
 // Version 3: 768-dimensional vectors (Ollama nomic-embed-text)
 // Version 4: 768-dimensional vectors (Python sidecar - production)
 // Version 5: Fixed cross-file contamination bug in batch processing
+// Version 6: Switched from L2 to cosine distance metric (aligns with Sentence Transformer training, improves cross-lingual search)
 ```
 
 Version is tracked in `.db-version` file in the database directory. When a version mismatch is detected, `migrateDatabaseIfNeeded()` deletes all `.lance` tables and forces re-indexing.

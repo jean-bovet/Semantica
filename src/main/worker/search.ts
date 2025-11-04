@@ -65,7 +65,9 @@ export async function search(
         page: r.page || 0,
         offset: r.offset || 0,
         text: r.text || '',
-        score: r._distance !== undefined ? Math.max(0, 1 - (r._distance / 2)) : 1,
+        // For cosine metric: _distance is cosine distance (1 - cosine_similarity)
+        // Convert to similarity: similarity = 1 - distance
+        score: r._distance !== undefined ? Math.max(0, 1 - r._distance) : 1,
         title: r.title || ''
       };
     });

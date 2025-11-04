@@ -183,10 +183,11 @@ Worker utility functions:
 
 Database management and migration:
 
-- **`migration.ts`**: Database version management (current: v5)
+- **`migration.ts`**: Database version management (current: v6)
   - `checkDatabaseVersion()`: Check if migration needed
   - `migrateDatabaseIfNeeded()`: Perform migration
   - `writeDatabaseVersion()`: Write version file
+  - Version 6: Switched from L2 to cosine distance metric
   - Version 5: Fixed cross-file contamination in batch processing
 
 - **`operations.ts`**: Database CRUD operations

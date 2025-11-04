@@ -3,7 +3,7 @@ import { logger } from '../../../shared/utils/logger';
 /**
  * Write queue state for managing concurrent database writes
  */
-interface WriteQueueState {
+export interface WriteQueueState {
   isWriting: boolean;
   writeQueue: Array<() => Promise<void>>;
 }
