@@ -74,19 +74,38 @@ Comprehensive unit tests in `tests/unit/cpu-concurrency.spec.ts` verify:
 
 Each parser is responsible for extracting text content from specific file formats:
 
-#### PDF Parser (v1)
-- **Library**: pdf-parse
-- **Limitations**: Text-based PDFs only, no OCR
-- **Error Handling**: Detects scanned PDFs, marks as failed
+#### PDF Parser (v3)
+- **Version 1**: Initial pdf-parse implementation (text-based only)
+- **Version 2**: Async file reading to prevent blocking
+- **Version 3**: OCR support for scanned PDFs via macOS Vision framework
+- **Library**: pdf-parse (primary), macOS Vision API via Python sidecar (OCR fallback)
+- **OCR Detection**: Automatic detection using text density (<50 chars/page threshold)
+- **Configuration**: `enableOCR` setting in app config (default: true)
+- **Performance**: Standard PDFs ~100ms/page, OCR adds ~200-300ms/page
+- **Memory**: Adds ~100-150MB peak memory for OCR processing
+
 ```typescript
 // src/main/parsers/pdf.ts
-export async function parsePdf(filePath: string): Promise<string> {
+export async function parsePdf(
+  filePath: string,
+  options?: { enableOCR?: boolean; sidecarClient?: PythonSidecarClient }
+): Promise<PDFPage[]> {
+  // Try standard text extraction first
   const dataBuffer = await fs.readFile(filePath);
   const data = await pdfParse(dataBuffer);
-  if (!data.text || data.text.trim().length === 0) {
-    throw new Error('PDF contains no extractable text');
+
+  // Check if OCR is needed (low text content)
+  const avgCharsPerPage = data.text.length / data.numpages;
+  const needsOCR = avgCharsPerPage < 50;
+
+  if (needsOCR && options?.enableOCR && options?.sidecarClient) {
+    // Use OCR via Python sidecar
+    const ocrResult = await options.sidecarClient.extractWithOCR(filePath);
+    return ocrResult.pages;
   }
-  return data.text;
+
+  // Return standard extraction
+  return [{ page: 1, text: data.text }];
 }
 ```
 
@@ -160,12 +179,15 @@ import { PARSER_VERSION as DOC_VERSION } from '../parsers/doc';
 import { PARSER_VERSION as TEXT_VERSION } from '../parsers/text';
 
 export const PARSER_VERSIONS: Record<string, number> = {
-  pdf: PDF_VERSION,   // Version 1: Initial pdf-parse
-  doc: DOC_VERSION,   // Version 2: Binary .doc support
+  pdf: PDF_VERSION,   // Version 3: OCR support for scanned PDFs
+  doc: DOC_VERSION,   // Version 2: Binary .doc support with word-extractor
   docx: DOCX_VERSION, // Version 1: Mammoth implementation
-  txt: TEXT_VERSION,  // Version 3: Multi-encoding support
-  md: TEXT_VERSION,   // Version 3: Uses text parser
-  rtf: RTF_VERSION    // Version 1: Basic RTF stripping
+  txt: TEXT_VERSION,  // Version 4: Enhanced ISO-8859-1 and legacy encoding support
+  md: TEXT_VERSION,   // Version 4: Uses text parser (same as txt)
+  rtf: RTF_VERSION,   // Version 1: Basic RTF stripping
+  xlsx: XLSX_VERSION, // Version 1: XLSX/XLS support with xlsx library
+  csv: CSV_VERSION,   // Version 1: CSV parsing with encoding detection
+  tsv: TSV_VERSION    // Version 1: TSV parsing with encoding detection
 };
 ```
 

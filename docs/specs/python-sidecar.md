@@ -90,6 +90,90 @@ Server and model information.
 
 ---
 
+## OCR Endpoints
+
+The sidecar provides OCR (Optical Character Recognition) capabilities for scanned PDFs using macOS Vision framework.
+
+### `POST /ocr/detect`
+
+Detects if a PDF file needs OCR processing by analyzing text content density.
+
+**Request:**
+```json
+{
+  "file_path": "/absolute/path/to/file.pdf"
+}
+```
+
+**Response:**
+```json
+{
+  "needs_ocr": true,
+  "avg_chars_per_page": 23.5,
+  "total_pages": 10,
+  "reason": "Low text content detected (23 chars/page < 50 threshold)"
+}
+```
+
+**Error Response (4xx/5xx):**
+```json
+{
+  "error": "File not found: /path/to/file.pdf"
+}
+```
+
+### `POST /ocr/extract`
+
+Extracts text from a PDF using macOS Vision API for OCR processing.
+
+**Request:**
+```json
+{
+  "file_path": "/absolute/path/to/scanned.pdf",
+  "options": {
+    "language": "en",  // Optional, defaults to "en"
+    "recognition_level": "accurate"  // Optional: "fast" or "accurate"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "Extracted text from first page..."
+    },
+    {
+      "page": 2,
+      "text": "Extracted text from second page..."
+    }
+  ],
+  "processing_time_ms": 2341,
+  "total_pages": 2
+}
+```
+
+**Error Response (4xx/5xx):**
+```json
+{
+  "error": "OCR failed: Vision framework not available (requires macOS 12+)"
+}
+```
+
+**Performance Characteristics:**
+- **Speed**: ~200-300ms per page for OCR
+- **Memory**: Adds ~100-150MB peak memory during processing
+- **Requirements**: macOS 12 (Monterey) or later
+
+**Limitations:**
+- macOS-only feature (uses Vision framework)
+- Performance depends on PDF quality and complexity
+- Language detection is automatic but can be specified
+
+---
+
 ## Progress Events
 
 The Python sidecar emits progress events via **stdout** during model loading to communicate startup progress to the TypeScript layer.
@@ -267,6 +351,16 @@ const status = await service.getStatus(); // Check status
 - Python 3.9 or later
 - pip (Python package installer)
 - 2.2 GB free disk space for dependencies
+
+**OCR Requirements (Optional):**
+- macOS 12 (Monterey) or later (for Vision framework)
+- Additional Python packages for OCR:
+  - `ocrmac==1.0.0` - macOS Vision framework bindings
+  - `pymupdf==1.24.14` - PDF rendering for OCR
+  - `pdf2image==1.17.0` - PDF to image conversion
+- Additional ~200MB disk space for OCR dependencies
+
+**Note:** OCR functionality is macOS-only and automatically disabled on other platforms.
 
 **Automatic Detection:**
 
