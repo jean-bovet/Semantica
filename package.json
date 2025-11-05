@@ -102,6 +102,18 @@
                 "repo": "Semantica"
             }
         ],
+        "extraResources": [
+            {
+                "from": "resources/python/${os}-${arch}",
+                "to": "python",
+                "filter": ["**/*"]
+            },
+            {
+                "from": "resources/poppler/${os}-${arch}",
+                "to": "poppler",
+                "filter": ["**/*"]
+            }
+        ],
         "mac": {
             "category": "public.app-category.productivity",
             "hardenedRuntime": true,
@@ -112,7 +124,11 @@
                 "dmg",
                 "zip"
             ],
-            "gatekeeperAssess": false
+            "gatekeeperAssess": false,
+            "binaries": [
+                "resources/poppler/${os}-${arch}/pdftoppm",
+                "resources/poppler/${os}-${arch}/pdfinfo"
+            ]
         },
         "win": {
             "icon": "build/icon.ico",

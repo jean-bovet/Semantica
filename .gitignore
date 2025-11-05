@@ -39,5 +39,14 @@ playwright/.cache/
 /embedding_sidecar/.venv
 /embedding_sidecar/__pycache__
 
+# Bundled dependencies (too large to commit)
+/resources/python/*/venv/
+/resources/python/*/Python.framework/
+/resources/python/*/*.tar.gz
+/resources/python/*/*.pkg
+/resources/poppler/*/pdftoppm
+/resources/poppler/*/pdfinfo
+/resources/poppler/*/lib/
+
 # Local update testing configuration
 dev-app-update.yml

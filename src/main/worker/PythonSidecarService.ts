@@ -7,6 +7,7 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
+import { app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PythonSidecarClient } from './PythonSidecarClient';
@@ -440,10 +441,24 @@ export class PythonSidecarService {
   /**
    * Get default Python path
    *
-   * Always uses system python3. If dependencies are not installed,
-   * the startup check will catch it and show setup instructions.
+   * In production (packaged app): Uses bundled Python from resources/python
+   * In development: Uses system python3
+   *
+   * Falls back to system python3 if bundled Python is not available.
    */
   private getDefaultPythonPath(): string {
+    if (app.isPackaged) {
+      // Production: Try to use bundled Python
+      const bundledPythonPath = path.join(process.resourcesPath, 'python', 'venv', 'bin', 'python3');
+      if (fs.existsSync(bundledPythonPath)) {
+        log('Using bundled Python:', bundledPythonPath);
+        return bundledPythonPath;
+      } else {
+        log('Warning: Bundled Python not found at', bundledPythonPath, '- falling back to system Python');
+      }
+    }
+
+    // Development or fallback: Use system Python
     return 'python3';
   }
 
@@ -453,8 +468,33 @@ export class PythonSidecarService {
    * Packaged Electron apps launched from Finder have a minimal PATH
    * that may not include Homebrew, user bin dirs, or other Python locations.
    * This ensures we find the same Python and packages as in development.
+   *
+   * In production, also adds bundled Poppler utilities to PATH for OCR support.
    */
   private getPythonEnv(): NodeJS.ProcessEnv {
+    const env = { ...process.env };
+
+    // Build PATH
+    const pathComponents: string[] = [];
+
+    // In production, add bundled Poppler to PATH
+    if (app.isPackaged) {
+      const popplerPath = path.join(process.resourcesPath, 'poppler');
+      if (fs.existsSync(popplerPath)) {
+        pathComponents.push(popplerPath);
+        log('Adding bundled Poppler to PATH:', popplerPath);
+
+        // Set DYLD_LIBRARY_PATH for Poppler's bundled dylibs
+        const popplerLibPath = path.join(popplerPath, 'lib');
+        if (fs.existsSync(popplerLibPath)) {
+          env.DYLD_LIBRARY_PATH = `${popplerLibPath}:${env.DYLD_LIBRARY_PATH || ''}`;
+          log('Set DYLD_LIBRARY_PATH for Poppler:', popplerLibPath);
+        }
+      } else {
+        log('Warning: Bundled Poppler not found at', popplerPath, '- OCR may not work');
+      }
+    }
+
     // Common Python installation paths (Intel Mac, Apple Silicon, system)
     const pythonPaths = [
       '/usr/local/bin',        // Homebrew on Intel Mac
@@ -465,14 +505,16 @@ export class PythonSidecarService {
       process.env.HOME + '/.local/bin',            // User local packages
     ];
 
-    // Prepend Python paths to existing PATH
-    const enhancedPath = [...pythonPaths, process.env.PATH || ''].join(':');
+    pathComponents.push(...pythonPaths);
 
-    return {
-      ...process.env,
-      PATH: enhancedPath,
-      PYTHONUNBUFFERED: '1'  // Force unbuffered output
-    };
+    // Prepend to existing PATH
+    pathComponents.push(env.PATH || '');
+    env.PATH = pathComponents.join(':');
+
+    // Force unbuffered output
+    env.PYTHONUNBUFFERED = '1';
+
+    return env;
   }
 
   /**
