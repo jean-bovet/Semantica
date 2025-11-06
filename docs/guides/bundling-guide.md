@@ -1,15 +1,17 @@
 # Bundling Guide: Python + Poppler
 
-This guide explains how to bundle Python runtime and Poppler utilities with Semantica for zero-installation user experience.
+This guide explains how to bundle Python runtime and Poppler utilities with Semantica.
 
-**Status:** Implementation Complete (Ready to Bundle)
-**Target:** v1.0+ (Public Release)
+**Status:** REQUIRED for all builds (development and production)
+**Implementation:** Complete
 
 ---
 
 ## Overview
 
-Bundling creates a self-contained application that includes:
+Semantica **requires** bundled Python and Poppler dependencies. The app will throw clear error messages if bundles are missing.
+
+**What gets bundled:**
 - Python 3.11 runtime (~50MB)
 - Python dependencies: PyTorch, transformers, etc. (~230MB)
 - Poppler utilities for OCR (~5-10MB)
@@ -18,11 +20,13 @@ Bundling creates a self-contained application that includes:
 **What's NOT bundled:**
 - Model weights (~450MB) - downloaded on first run from HuggingFace
 
-**Benefits:**
-- ✅ Zero technical setup for users
-- ✅ Professional "download and use" experience
+**Why required bundling?**
+- ✅ 100% consistency between development and production
+- ✅ Catch bundling issues immediately (no silent fallbacks)
+- ✅ Professional zero-setup user experience
 - ✅ OCR works out-of-box
 - ✅ GPU acceleration (MPS) preserved
+- ✅ No "works on my machine" issues
 
 ---
 
@@ -55,7 +59,38 @@ Before bundling, ensure you have:
 
 ---
 
-## Step 1: Bundle Python Runtime
+## Quick Start
+
+**For new developers or after updating dependencies:**
+
+```bash
+# One command to bundle everything (recommended)
+npm run bundle
+
+# Or run scripts individually:
+./scripts/bundle-python.sh    # 5-10 minutes
+./scripts/bundle-poppler.sh   # <1 minute
+```
+
+**Then run the app normally:**
+```bash
+npm run dev  # Automatic bundle check runs first
+```
+
+**If bundles are missing**, you'll see a clear error message:
+```
+❌ Bundled Python not found
+   Run: ./scripts/bundle-python.sh
+
+❌ Bundled Poppler not found
+   Run: ./scripts/bundle-poppler.sh
+```
+
+---
+
+## Detailed Steps
+
+### Step 1: Bundle Python Runtime
 
 This creates a self-contained Python environment with all dependencies.
 

@@ -19,10 +19,10 @@ A privacy-first, offline semantic search application for macOS that indexes your
 ### Prerequisites
 - macOS 13.0 or later
 - Node.js 18+ and npm
-- **Python 3.9 or later** (for embedding service)
-- **Poppler** (for OCR support): `brew install poppler`
+- **Python 3.9 or later** (for bundling dependencies)
+- **Homebrew** (for installing Poppler)
 - 8GB RAM recommended
-- ~3GB disk space for Python dependencies, models, and index
+- ~3GB disk space for bundled dependencies, models, and index
 
 ### Development
 
@@ -34,14 +34,18 @@ cd Semantica
 # Install Node dependencies
 npm install
 
-# Install Python dependencies (required for embeddings)
-python3 -m pip install -r embedding_sidecar/requirements.txt
+# Bundle Python and Poppler dependencies (REQUIRED)
+npm run bundle
+# This will:
+# - Create a self-contained Python environment (~280MB, 5-10 min)
+# - Bundle Poppler utilities for OCR (~10MB, <1 min)
+# - Download ~2.2GB of dependencies during build
 
 # Start development server
 npm run dev
 ```
 
-**Note:** The app uses your system Python installation. For detailed Python setup instructions and troubleshooting, see [docs/guides/python-setup.md](docs/guides/python-setup.md).
+**Note:** Bundled dependencies are required for both development and production. This ensures your dev environment exactly matches production. See [docs/guides/bundling-guide.md](docs/guides/bundling-guide.md) for details.
 
 This will:
 - Start Vite dev server for the UI (with HMR)

@@ -6,7 +6,10 @@
     "main": "dist/main.cjs",
     "private": true,
     "scripts": {
+        "bundle": "bash scripts/bundle-python.sh && bash scripts/bundle-poppler.sh",
+        "predev": "bash scripts/check-bundles.sh",
         "dev": "node scripts/setup-dev.js && concurrently -k -n VITE,BUILD,ELEC -c blue,magenta,green \"vite\" \"node esbuild.watch.mjs\" \"wait-on tcp:5173 && electron .\"",
+        "prebuild": "bash scripts/check-bundles.sh",
         "build": "tsc -b && node esbuild.build.mjs && vite build",
         "clean": "git clean -fdx -e '.env*' -e '.claude'",
         "dist": "npm run build && dotenv -e .env.local -- electron-builder",

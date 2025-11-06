@@ -97,25 +97,31 @@ Documentation is organized under `/docs/`:
   - v25.1.8 works perfectly with Electron 38 and handles optional deps correctly
 - **Security**: All modern Electron security practices enabled (context isolation, sandbox, secure IPC)
 
-### Python + Poppler Bundling (Optional)
-- **Status**: Implementation complete, bundling deferred for current beta
-- **Purpose**: Zero-installation UX for public release (no manual Python/Poppler setup)
+### Python + Poppler Bundling (REQUIRED)
+- **Status**: REQUIRED for all builds (development and production)
+- **Purpose**: Ensure 100% consistency between dev and prod environments
 - **Bundle size impact**: +290-300MB (Python ~280MB, Poppler ~10MB)
 - **What's bundled**:
   - Python 3.11 runtime with venv
   - PyTorch, transformers, sentence-transformers (includes MPS for Apple Silicon GPU)
   - Poppler utilities (pdftoppm, pdfinfo) with dylibs for OCR
 - **What's NOT bundled**: Model weights (~450MB, downloaded on first run)
+- **Setup (one-time)**:
+  - Run `npm run bundle` or scripts individually:
+    - `./scripts/bundle-python.sh` - Bundle Python (~5-10 min)
+    - `./scripts/bundle-poppler.sh` - Bundle Poppler (<1 min)
+  - Automatic validation: `npm run dev` checks bundles before starting
+  - Missing bundles trigger clear error messages with fix instructions
 - **Scripts**:
-  - `./scripts/bundle-python.sh` - Bundle Python runtime and dependencies
-  - `./scripts/bundle-poppler.sh` - Bundle Poppler utilities
-  - `./scripts/optimize-python-bundle.sh` - Optimize Python bundle size
-- **Configuration**: Already added to package.json (`extraResources`, `mac.binaries`)
-- **Code**: PythonSidecarService auto-detects and uses bundled deps in production
+  - `npm run bundle` - Bundle both Python and Poppler
+  - `./scripts/check-bundles.sh` - Validate bundles exist
+  - `./scripts/optimize-python-bundle.sh` - Optimize Python bundle size (auto-run)
+- **Configuration**: Configured in package.json (`extraResources`, `mac.binaries`, predev/prebuild hooks)
+- **Code**: PythonSidecarService requires bundled deps - throws error if missing (no fallback)
 - **Documentation**: See `/docs/guides/bundling-guide.md` and `/docs/specs/bundling-strategy.md`
 - **GPU Support**: MPS (Apple Silicon GPU) fully preserved - no performance impact
-- **When to bundle**: Public release (v1.0+), App Store distribution, or enterprise deployment
-- **Current approach**: Manual installation for beta testers (easier to iterate)
+- **Re-bundle when**: Updating `requirements.txt` or Poppler version
+- **Benefits**: Catch bundling issues early, no "works on my machine" problems
 
 ## Common Tasks
 

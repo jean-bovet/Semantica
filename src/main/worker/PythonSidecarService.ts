@@ -7,7 +7,6 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PythonSidecarClient } from './PythonSidecarClient';
@@ -411,6 +410,16 @@ export class PythonSidecarService {
   }
 
   /**
+   * Detect if running in packaged app
+   *
+   * In worker threads, we can't use app.isPackaged from Electron
+   * Instead, detect from __dirname path
+   */
+  private isPackaged(): boolean {
+    return __dirname.includes('app.asar');
+  }
+
+  /**
    * Get project root directory based on runtime context
    *
    * Handles different scenarios:
@@ -420,7 +429,7 @@ export class PythonSidecarService {
    */
   private getProjectRoot(): string {
     // Detect if running from bundled asar archive
-    if (__dirname.includes('app.asar')) {
+    if (this.isPackaged()) {
       // In packaged app: __dirname is like /app.asar/dist
       // Python files are in app.asar.unpacked/ (not app.asar)
       const asarIndex = __dirname.indexOf('app.asar');
@@ -441,71 +450,94 @@ export class PythonSidecarService {
   /**
    * Get default Python path
    *
-   * In production (packaged app): Uses bundled Python from resources/python
-   * In development: Uses system python3
-   *
-   * Falls back to system python3 if bundled Python is not available.
+   * REQUIRES bundled Python in resources/python/{platform}/venv/bin/python3
+   * Throws error if not found (no fallback to system Python)
    */
   private getDefaultPythonPath(): string {
-    if (app.isPackaged) {
-      // Production: Try to use bundled Python
-      const bundledPythonPath = path.join(process.resourcesPath, 'python', 'venv', 'bin', 'python3');
-      if (fs.existsSync(bundledPythonPath)) {
-        log('Using bundled Python:', bundledPythonPath);
-        return bundledPythonPath;
-      } else {
-        log('Warning: Bundled Python not found at', bundledPythonPath, '- falling back to system Python');
-      }
+    // Always use project root for bundle base (works in dev and prod)
+    const bundleBasePath = this.getProjectRoot();
+
+    // Detect platform
+    const arch = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+
+    // Check for bundled Python (REQUIRED)
+    const bundledPythonPath = path.join(
+      bundleBasePath,
+      'resources/python',
+      arch,
+      'venv/bin/python3'
+    );
+
+    if (!fs.existsSync(bundledPythonPath)) {
+      const errorMsg = `
+╔════════════════════════════════════════════════════════════════╗
+║                  BUNDLED PYTHON NOT FOUND                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+Expected location: ${bundledPythonPath}
+
+Semantica requires bundled Python dependencies. Please run:
+
+    ./scripts/bundle-python.sh
+
+This will create a self-contained Python environment (~280MB).
+See docs/guides/bundling-guide.md for details.
+      `;
+      throw new Error(errorMsg);
     }
 
-    // Development or fallback: Use system Python
-    return 'python3';
+    log('Using bundled Python:', bundledPythonPath);
+    return bundledPythonPath;
   }
 
   /**
    * Build environment with comprehensive PATH for Python execution
    *
-   * Packaged Electron apps launched from Finder have a minimal PATH
-   * that may not include Homebrew, user bin dirs, or other Python locations.
-   * This ensures we find the same Python and packages as in development.
-   *
-   * In production, also adds bundled Poppler utilities to PATH for OCR support.
+   * REQUIRES bundled Poppler in resources/poppler/{platform}/
+   * Throws error if not found (no fallback to system Poppler)
    */
   private getPythonEnv(): NodeJS.ProcessEnv {
     const env = { ...process.env };
-
-    // Build PATH
     const pathComponents: string[] = [];
 
-    // In production, add bundled Poppler to PATH
-    if (app.isPackaged) {
-      const popplerPath = path.join(process.resourcesPath, 'poppler');
-      if (fs.existsSync(popplerPath)) {
-        pathComponents.push(popplerPath);
-        log('Adding bundled Poppler to PATH:', popplerPath);
+    // Always use project root for bundle base (works in dev and prod)
+    const bundleBasePath = this.getProjectRoot();
 
-        // Set DYLD_LIBRARY_PATH for Poppler's bundled dylibs
-        const popplerLibPath = path.join(popplerPath, 'lib');
-        if (fs.existsSync(popplerLibPath)) {
-          env.DYLD_LIBRARY_PATH = `${popplerLibPath}:${env.DYLD_LIBRARY_PATH || ''}`;
-          log('Set DYLD_LIBRARY_PATH for Poppler:', popplerLibPath);
-        }
-      } else {
-        log('Warning: Bundled Poppler not found at', popplerPath, '- OCR may not work');
-      }
+    // Detect platform
+    const arch = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+
+    // Check for bundled Poppler (REQUIRED for OCR)
+    const popplerPath = path.join(bundleBasePath, 'resources/poppler', arch);
+    const pdftoppmPath = path.join(popplerPath, 'pdftoppm');
+
+    if (!fs.existsSync(pdftoppmPath)) {
+      const errorMsg = `
+╔════════════════════════════════════════════════════════════════╗
+║                  BUNDLED POPPLER NOT FOUND                     ║
+╚════════════════════════════════════════════════════════════════╝
+
+Expected location: ${popplerPath}
+
+Semantica requires bundled Poppler utilities for OCR. Please run:
+
+    ./scripts/bundle-poppler.sh
+
+This will bundle PDF utilities (~10MB).
+See docs/guides/bundling-guide.md for details.
+      `;
+      throw new Error(errorMsg);
     }
 
-    // Common Python installation paths (Intel Mac, Apple Silicon, system)
-    const pythonPaths = [
-      '/usr/local/bin',        // Homebrew on Intel Mac
-      '/opt/homebrew/bin',     // Homebrew on Apple Silicon
-      '/opt/local/bin',        // MacPorts
-      '/Library/Frameworks/Python.framework/Versions/Current/bin', // Python.org installer
-      process.env.HOME + '/Library/Python/*/bin',  // User pip packages
-      process.env.HOME + '/.local/bin',            // User local packages
-    ];
+    // Add bundled Poppler to PATH
+    pathComponents.push(popplerPath);
+    log('Using bundled Poppler:', popplerPath);
 
-    pathComponents.push(...pythonPaths);
+    // Set DYLD_LIBRARY_PATH for bundled dylibs
+    const popplerLibPath = path.join(popplerPath, 'lib');
+    if (fs.existsSync(popplerLibPath)) {
+      env.DYLD_LIBRARY_PATH = `${popplerLibPath}:${env.DYLD_LIBRARY_PATH || ''}`;
+      log('Set DYLD_LIBRARY_PATH for Poppler:', popplerLibPath);
+    }
 
     // Prepend to existing PATH
     pathComponents.push(env.PATH || '');
