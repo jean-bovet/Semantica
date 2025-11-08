@@ -173,10 +173,9 @@ echo
 
 # Show next steps
 echo -e "${YELLOW}Next steps:${NC}"
-echo "1. Run './scripts/bundle-poppler.sh' to bundle Poppler utilities"
-echo "2. Update package.json with extraResources configuration"
-echo "3. Modify PythonSidecarService.ts to use bundled Python"
-echo "4. Build app: npm run package"
+echo "1. Run 'npm run dev' to start development with bundled Python"
+echo "2. Or run 'npm run build && npm run dist:mac' to create production build"
+echo "3. Bundle is automatically included via package.json extraResources"
 echo
 
 echo -e "${GREEN}Done!${NC}"

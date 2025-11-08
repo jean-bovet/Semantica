@@ -1,8 +1,20 @@
 # Bundling Strategy: Python Runtime + Poppler Utilities
 
-**Status:** Planning (Phase 3 of Python Sidecar Implementation - Deferred)
-**Last Updated:** 2025-11-04
-**Decision:** To Be Determined
+> **⚠️ HISTORICAL DOCUMENT**
+>
+> This is a **planning document from 2024** before the bundling strategy was implemented.
+>
+> **Current status (v1.0.4+):**
+> - ✅ Python bundling: **IMPLEMENTED** (see `/docs/guides/bundling-guide.md`)
+> - ❌ Poppler bundling: **ABANDONED** (OCR is no longer needed, see `/docs/specs/ocr-research-and-findings.md`)
+>
+> This document is preserved for historical context only.
+
+---
+
+**Original Status:** Planning (Phase 3 of Python Sidecar Implementation - Deferred)
+**Original Date:** 2025-11-04
+**Original Decision:** To Be Determined
 
 ---
 
