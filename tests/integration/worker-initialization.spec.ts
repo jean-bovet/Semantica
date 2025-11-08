@@ -34,28 +34,33 @@ describe('Worker Initialization Flow', () => {
     }
   });
   
-  it('should not send ready until initialization is complete', async () => {
+  it('should not send ready until initialization is complete', { timeout: 30000 }, async () => {
     // Create some test files
     fs.writeFileSync(path.join(testDir, 'docs', 'test1.txt'), 'Hello World');
     fs.writeFileSync(path.join(testDir, 'docs', 'test2.md'), '# Test Document');
-    
+
     worker = new Worker(path.join(__dirname, '../../dist/worker.cjs'));
-    
+
     // Track all messages
     worker.on('message', (msg) => {
       messages.push({ ...msg, timestamp: Date.now() });
     });
-    
+
     // Initialize worker
-    worker.postMessage({ 
+    worker.postMessage({
       type: 'init',
       dbDir: path.join(testDir, 'db')
     });
-    
-    // Wait for ready message
-    await new Promise<void>((resolve) => {
+
+    // Wait for ready message (with 30s timeout for Python sidecar startup)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Worker did not send ready message within 30s'));
+      }, 30000);
+
       const checkReady = () => {
         if (messages.some(m => m.type === 'ready')) {
+          clearTimeout(timeout);
           resolve();
         } else {
           setTimeout(checkReady, 50);
@@ -138,7 +143,7 @@ describe('Worker Initialization Flow', () => {
     expect(readyReceived).toBe(true);
   });
   
-  it('should queue files found during initialization', async () => {
+  it('should queue files found during initialization', { timeout: 30000 }, async () => {
     // Create files to be indexed
     fs.writeFileSync(path.join(testDir, 'docs', 'new1.txt'), 'New file 1');
     fs.writeFileSync(path.join(testDir, 'docs', 'new2.txt'), 'New file 2');
@@ -179,11 +184,16 @@ describe('Worker Initialization Flow', () => {
       }
     });
     
-    // Wait for progress response
-    await new Promise(resolve => {
+    // Wait for progress response (with 30s timeout for Python sidecar startup)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Worker did not respond to progress request within 30s'));
+      }, 30000);
+
       const check = () => {
         if (progressAfterReady) {
-          resolve(true);
+          clearTimeout(timeout);
+          resolve();
         } else {
           setTimeout(check, 50);
         }

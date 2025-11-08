@@ -6,7 +6,7 @@
     "main": "dist/main.cjs",
     "private": true,
     "scripts": {
-        "bundle": "bash scripts/bundle-python.sh && bash scripts/bundle-poppler.sh",
+        "bundle": "bash scripts/bundle-python.sh",
         "predev": "bash scripts/check-bundles.sh",
         "dev": "node scripts/setup-dev.js && concurrently -k -n VITE,BUILD,ELEC -c blue,magenta,green \"vite\" \"node esbuild.watch.mjs\" \"wait-on tcp:5173 && electron .\"",
         "prebuild": "bash scripts/check-bundles.sh",
@@ -74,8 +74,10 @@
         "wait-on": "^8.0.0"
     },
     "dependencies": {
+        "@cherrystudio/mac-system-ocr": "^0.2.7",
         "@lancedb/lancedb": "^0.7.0",
         "apache-arrow": "^15.0.0",
+        "canvas": "^3.2.0",
         "chardet": "^2.1.0",
         "chokidar": "^3.6.0",
         "color-name": "^2.0.0",
@@ -85,6 +87,7 @@
         "lucide-react": "^0.544.0",
         "mammoth": "^1.10.0",
         "pdf-parse": "^1.1.1",
+        "pdfjs-dist": "^5.4.394",
         "react": "^18.3.0",
         "react-dom": "^18.3.0",
         "word-extractor": "^1.0.4",
@@ -109,12 +112,9 @@
             {
                 "from": "resources/python/${os}-${arch}",
                 "to": "python",
-                "filter": ["**/*"]
-            },
-            {
-                "from": "resources/poppler/${os}-${arch}",
-                "to": "poppler",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             }
         ],
         "mac": {
@@ -127,11 +127,7 @@
                 "dmg",
                 "zip"
             ],
-            "gatekeeperAssess": false,
-            "binaries": [
-                "resources/poppler/${os}-${arch}/pdftoppm",
-                "resources/poppler/${os}-${arch}/pdfinfo"
-            ]
+            "gatekeeperAssess": false
         },
         "win": {
             "icon": "build/icon.ico",

@@ -20,7 +20,10 @@ async function buildFile(entry, outfile) {
       'chokidar',
       'pdf-parse',
       'mammoth',
-      'word-extractor'
+      'word-extractor',
+      'canvas',
+      '@cherrystudio/mac-system-ocr',
+      'pdfjs-dist'
     ],
     sourcemap: false,
     target: 'node18',

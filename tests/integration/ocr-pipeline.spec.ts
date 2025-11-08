@@ -1,54 +1,28 @@
 /**
  * Integration test for OCR Pipeline
- * Tests the complete OCR flow with the real Python sidecar
+ * Tests the complete OCR flow with Node.js native implementation
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PythonSidecarService } from '../../src/main/worker/PythonSidecarService';
-import { PythonSidecarClient } from '../../src/main/worker/PythonSidecarClient';
+import { describe, it, expect } from 'vitest';
+import { extractTextWithOCR, isScannedPDF } from '../../src/main/ocr';
 import path from 'path';
 
-describe('OCR Pipeline Integration (Real Sidecar)', () => {
-  let sidecarService: PythonSidecarService;
-  let sidecarClient: PythonSidecarClient;
+describe('OCR Pipeline Integration (Node.js Native)', () => {
   const testPdfPath = path.join(__dirname, '../fixtures/scanned-sample.pdf');
-
-  beforeAll(async () => {
-    console.log('Starting Python sidecar for OCR testing...');
-
-    // Create sidecar client and service
-    sidecarClient = new PythonSidecarClient({ port: 8421 });
-    sidecarService = new PythonSidecarService({
-      client: sidecarClient,
-      port: 8421,
-      autoRestart: false
-    });
-
-    // Start the sidecar
-    const started = await sidecarService.startSidecar();
-    expect(started).toBe(true);
-
-    console.log('Python sidecar initialized successfully');
-  }, 60000); // 60s timeout for startup
-
-  afterAll(async () => {
-    console.log('Stopping Python sidecar...');
-    if (sidecarService) {
-      await sidecarService.stopSidecar();
-    }
-  });
 
   it('should extract text from PDF using OCR', async () => {
     console.log('Testing OCR extraction with:', testPdfPath);
 
-    // Call the OCR extraction endpoint
-    const result = await sidecarClient.extractWithOCR(testPdfPath, {
-      recognition_level: 'accurate'
+    // Call the Node.js native OCR
+    const result = await extractTextWithOCR(testPdfPath, {
+      recognition_level: 'accurate',
+      dpi: 200
     });
 
     console.log('OCR result:', {
       textLength: result.text.length,
       confidence: result.confidence,
+      pageCount: result.pages.length,
       hasText: result.text.length > 0
     });
 
@@ -57,6 +31,9 @@ describe('OCR Pipeline Integration (Real Sidecar)', () => {
     expect(result.text).toBeDefined();
     expect(typeof result.text).toBe('string');
     expect(result.text.length).toBeGreaterThan(0);
+    expect(result.pages).toBeDefined();
+    expect(Array.isArray(result.pages)).toBe(true);
+    expect(result.pages.length).toBeGreaterThan(0);
     expect(result.confidence).toBeDefined();
     expect(typeof result.confidence).toBe('number');
     expect(result.confidence).toBeGreaterThanOrEqual(0);
@@ -66,7 +43,7 @@ describe('OCR Pipeline Integration (Real Sidecar)', () => {
   it('should extract expected text content from test PDF', async () => {
     console.log('Testing OCR text content accuracy...');
 
-    const result = await sidecarClient.extractWithOCR(testPdfPath, {
+    const result = await extractTextWithOCR(testPdfPath, {
       recognition_level: 'accurate'
     });
 
@@ -85,7 +62,7 @@ describe('OCR Pipeline Integration (Real Sidecar)', () => {
   it('should use fast recognition level when requested', async () => {
     console.log('Testing OCR with fast recognition level...');
 
-    const result = await sidecarClient.extractWithOCR(testPdfPath, {
+    const result = await extractTextWithOCR(testPdfPath, {
       recognition_level: 'fast'
     });
 
@@ -100,7 +77,7 @@ describe('OCR Pipeline Integration (Real Sidecar)', () => {
   it('should handle OCR with custom language preference', async () => {
     console.log('Testing OCR with custom language...');
 
-    const result = await sidecarClient.extractWithOCR(testPdfPath, {
+    const result = await extractTextWithOCR(testPdfPath, {
       recognition_level: 'accurate',
       language: 'fr-FR' // French language
     });
@@ -111,6 +88,17 @@ describe('OCR Pipeline Integration (Real Sidecar)', () => {
     expect(result.confidence).toBeDefined();
   }, 30000);
 
+  it('should detect scanned PDFs correctly', async () => {
+    console.log('Testing scanned PDF detection...');
+
+    const isScanned = await isScannedPDF(testPdfPath);
+
+    console.log('Is scanned:', isScanned);
+
+    // The test file is a scanned PDF
+    expect(isScanned).toBe(true);
+  }, 10000);
+
   it('should handle errors gracefully for non-existent files', async () => {
     console.log('Testing error handling for non-existent file...');
 
@@ -118,7 +106,7 @@ describe('OCR Pipeline Integration (Real Sidecar)', () => {
 
     // Should throw an error
     await expect(
-      sidecarClient.extractWithOCR(nonExistentPath)
+      extractTextWithOCR(nonExistentPath)
     ).rejects.toThrow();
   }, 10000);
 });

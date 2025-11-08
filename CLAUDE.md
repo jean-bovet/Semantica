@@ -21,7 +21,7 @@ Semantica is an Electron-based application that provides offline semantic search
 - **ML Model**: Python sidecar with sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768-dim)
 - **Embedding Service**: FastAPI HTTP server running locally on port 8421
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
-- **OCR Support**: macOS Vision framework via Python sidecar (ocrmac, pdf2image, pymupdf)
+- **OCR Support**: macOS Vision framework via Node.js native bindings (@cherrystudio/mac-system-ocr)
 - **Build System**: electron-builder 25.1.8 (see Build Notes below)
 
 ## Important Guidelines
@@ -97,31 +97,33 @@ Documentation is organized under `/docs/`:
   - v25.1.8 works perfectly with Electron 38 and handles optional deps correctly
 - **Security**: All modern Electron security practices enabled (context isolation, sandbox, secure IPC)
 
-### Python + Poppler Bundling (REQUIRED)
+### Python Bundling (REQUIRED)
 - **Status**: REQUIRED for all builds (development and production)
 - **Purpose**: Ensure 100% consistency between dev and prod environments
-- **Bundle size impact**: +290-300MB (Python ~280MB, Poppler ~10MB)
+- **Bundle size impact**: +640MB (Python runtime + dependencies)
+  - Previous bundle: ~690MB (with OCR deps)
+  - Current bundle: ~640MB (OCR deps removed)
+  - Net savings: ~50MB
 - **What's bundled**:
   - Python 3.11 runtime with venv
   - PyTorch, transformers, sentence-transformers (includes MPS for Apple Silicon GPU)
-  - Poppler utilities (pdftoppm, pdfinfo) with dylibs for OCR
+  - FastAPI, uvicorn, pydantic
 - **What's NOT bundled**: Model weights (~450MB, downloaded on first run)
 - **Setup (one-time)**:
-  - Run `npm run bundle` or scripts individually:
-    - `./scripts/bundle-python.sh` - Bundle Python (~5-10 min)
-    - `./scripts/bundle-poppler.sh` - Bundle Poppler (<1 min)
-  - Automatic validation: `npm run dev` checks bundles before starting
-  - Missing bundles trigger clear error messages with fix instructions
+  - Run `npm run bundle` to bundle Python (~5-10 min)
+  - Automatic validation: `npm run dev` checks bundle before starting
+  - Missing bundle triggers clear error message with fix instructions
 - **Scripts**:
-  - `npm run bundle` - Bundle both Python and Poppler
-  - `./scripts/check-bundles.sh` - Validate bundles exist
+  - `npm run bundle` - Bundle Python dependencies
+  - `./scripts/check-bundles.sh` - Validate bundle exists
   - `./scripts/optimize-python-bundle.sh` - Optimize Python bundle size (auto-run)
-- **Configuration**: Configured in package.json (`extraResources`, `mac.binaries`, predev/prebuild hooks)
+- **Configuration**: Configured in package.json (`extraResources`, predev/prebuild hooks)
 - **Code**: PythonSidecarService requires bundled deps - throws error if missing (no fallback)
 - **Documentation**: See `/docs/guides/bundling-guide.md` and `/docs/specs/bundling-strategy.md`
 - **GPU Support**: MPS (Apple Silicon GPU) fully preserved - no performance impact
-- **Re-bundle when**: Updating `requirements.txt` or Poppler version
+- **Re-bundle when**: Updating `requirements.txt`
 - **Benefits**: Catch bundling issues early, no "works on my machine" problems
+- **Note**: Poppler is no longer required - OCR is handled natively in Node.js (v1.0.4+)
 
 ## Common Tasks
 
@@ -132,14 +134,16 @@ Documentation is organized under `/docs/`:
 
 ### OCR for Scanned PDFs
 - **Enabled by default** - automatically processes scanned PDFs
-- **System requirement:** Poppler utilities (`brew install poppler`)
+- **Node.js native implementation** (v1.0.4+) - no external dependencies required
 - Can be toggled in Settings → File Types → "Enable OCR for scanned PDFs"
-- Uses macOS Vision framework (built into macOS 12+)
+- Uses macOS Vision framework via Node.js bindings (built into macOS 12+)
+- PDF rendering: pdfjs-dist (no Poppler required!)
 - Automatically detects if PDF needs OCR (<50 chars/page threshold)
 - Supports 40+ languages (default: en-US)
-- Performance: ~2-3s per 10 pages, adds ~100-150MB peak memory
+- Performance: ~76-266ms per page (faster than previous Python approach!)
 - OCR setting is stored in app config and persists across restarts
 - To disable OCR: Uncheck in Settings and re-index affected folders
+- **Implementation**: See `/src/main/ocr/` for the Node.js OCR module
 
 ### Adding File Parser Support
 1. Create parser in `/src/main/parsers/`
@@ -159,7 +163,7 @@ Documentation is organized under `/docs/`:
 - Large files (>50MB) may cause timeouts
 - Binary formats need specific parsers
 - OCR quality depends on scan quality and resolution
-- OCR processing is slower than standard text extraction (~2-3s per 10 pages)
+- OCR processing is slower than standard text extraction (~76-266ms per page, vs near-instant for text PDFs)
 
 ## Development Workflow
 

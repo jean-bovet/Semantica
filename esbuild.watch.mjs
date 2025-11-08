@@ -18,7 +18,10 @@ async function watch(entry, outfile) {
       'pdf-parse',
       'sharp',
       'mammoth',
-      'fsevents'
+      'fsevents',
+      'canvas',
+      '@cherrystudio/mac-system-ocr',
+      'pdfjs-dist'
     ],
     sourcemap: true,
     target: 'node18',

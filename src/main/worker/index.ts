@@ -327,13 +327,28 @@ async function handleFileOriginal(filePath: string) {
       try {
         // Get OCR setting from config
         const enableOCR = configManager?.getSettings().enableOCR ?? false;
-        const sidecarClient = sidecarService?.getClient();
 
         // Time PDF parsing
         const startParse = Date.now();
         const pages = await parsePdf(filePath, {
           enableOCR,
-          sidecarClient
+          // Note: OCR is now Node.js native, no sidecar dependency
+
+          // Progress callback for OCR operations
+          onOCRProgress: (processed: number, total: number) => {
+            // Send OCR progress message to main process
+            if (parentPort) {
+              parentPort.postMessage({
+                type: 'ocr:progress',
+                payload: {
+                  filePath,
+                  processed,
+                  total,
+                  percentage: Math.round((processed / total) * 100)
+                }
+              });
+            }
+          }
         });
         if (profiler.isEnabled()) {
           const metrics = profiler.fileMetrics.get(filePath);

@@ -491,57 +491,12 @@ See docs/guides/bundling-guide.md for details.
   }
 
   /**
-   * Build environment with comprehensive PATH for Python execution
+   * Build environment for Python execution
    *
-   * REQUIRES bundled Poppler in resources/poppler/{platform}/
-   * Throws error if not found (no fallback to system Poppler)
+   * Note: Poppler is no longer required - OCR is handled natively in Node.js
    */
   private getPythonEnv(): NodeJS.ProcessEnv {
     const env = { ...process.env };
-    const pathComponents: string[] = [];
-
-    // Always use project root for bundle base (works in dev and prod)
-    const bundleBasePath = this.getProjectRoot();
-
-    // Detect platform
-    const arch = process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-
-    // Check for bundled Poppler (REQUIRED for OCR)
-    const popplerPath = path.join(bundleBasePath, 'resources/poppler', arch);
-    const pdftoppmPath = path.join(popplerPath, 'pdftoppm');
-
-    if (!fs.existsSync(pdftoppmPath)) {
-      const errorMsg = `
-╔════════════════════════════════════════════════════════════════╗
-║                  BUNDLED POPPLER NOT FOUND                     ║
-╚════════════════════════════════════════════════════════════════╝
-
-Expected location: ${popplerPath}
-
-Semantica requires bundled Poppler utilities for OCR. Please run:
-
-    ./scripts/bundle-poppler.sh
-
-This will bundle PDF utilities (~10MB).
-See docs/guides/bundling-guide.md for details.
-      `;
-      throw new Error(errorMsg);
-    }
-
-    // Add bundled Poppler to PATH
-    pathComponents.push(popplerPath);
-    log('Using bundled Poppler:', popplerPath);
-
-    // Set DYLD_LIBRARY_PATH for bundled dylibs
-    const popplerLibPath = path.join(popplerPath, 'lib');
-    if (fs.existsSync(popplerLibPath)) {
-      env.DYLD_LIBRARY_PATH = `${popplerLibPath}:${env.DYLD_LIBRARY_PATH || ''}`;
-      log('Set DYLD_LIBRARY_PATH for Poppler:', popplerLibPath);
-    }
-
-    // Prepend to existing PATH
-    pathComponents.push(env.PATH || '');
-    env.PATH = pathComponents.join(':');
 
     // Force unbuffered output
     env.PYTHONUNBUFFERED = '1';

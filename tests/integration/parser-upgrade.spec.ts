@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { ReindexService, FileStatus, QueryBuilder, FileStatusRepository } from '../../src/main/services/ReindexService';
-import { PARSER_VERSIONS } from '../../src/main/worker/parserVersions';
+import { PARSER_VERSIONS, getParserVersion } from '../../src/main/worker/parserVersions';
 
 describe('Parser Version Upgrade Integration', () => {
   let testDir: string;
@@ -162,12 +162,15 @@ describe('Parser Version Upgrade Integration', () => {
     const content = `${testFile}:${stats.size}:${stats.mtimeMs}`;
     const actualHash = require('crypto').createHash('md5').update(content).digest('hex');
 
+    // Get the current PDF parser version
+    const currentPdfVersion = getParserVersion('pdf');
+
     // Test failed file after 24 hours
     const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     const oldFailedRecord: FileStatus = {
       path: testFile,
       status: 'failed',
-      parser_version: 1,
+      parser_version: currentPdfVersion, // Use current parser version
       chunk_count: 0,
       error_message: 'Parse error',
       last_modified: new Date().toISOString(),
@@ -182,7 +185,7 @@ describe('Parser Version Upgrade Integration', () => {
     const recentFailedRecord: FileStatus = {
       path: testFile,
       status: 'failed',
-      parser_version: 1,
+      parser_version: currentPdfVersion, // Use current parser version
       chunk_count: 0,
       error_message: 'Parse error',
       last_modified: new Date().toISOString(),

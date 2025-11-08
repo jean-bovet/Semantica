@@ -24,7 +24,6 @@ fi
 # Paths
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BUNDLE="$PROJECT_ROOT/resources/python/$PLATFORM/venv/bin/python3"
-POPPLER_BUNDLE="$PROJECT_ROOT/resources/poppler/$PLATFORM/pdftoppm"
 
 MISSING=false
 
@@ -39,16 +38,7 @@ else
     echo -e "${GREEN}✅ Bundled Python found${NC}"
 fi
 
-# Check Poppler bundle
-if [ ! -f "$POPPLER_BUNDLE" ]; then
-    echo -e "${RED}❌ Bundled Poppler not found${NC}"
-    echo "   Expected: $POPPLER_BUNDLE"
-    echo "   Run: ${YELLOW}./scripts/bundle-poppler.sh${NC}"
-    echo
-    MISSING=true
-else
-    echo -e "${GREEN}✅ Bundled Poppler found${NC}"
-fi
+# Note: Poppler check removed - OCR is now handled natively in Node.js
 
 # Exit with error if anything missing
 if [ "$MISSING" = true ]; then
@@ -57,11 +47,10 @@ if [ "$MISSING" = true ]; then
     echo -e "${YELLOW}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo
     echo "Quick setup:"
-    echo -e "  ${GREEN}npm run bundle${NC}   # Runs both bundling scripts"
+    echo -e "  ${GREEN}npm run bundle${NC}   # Bundle Python dependencies (~5-10 minutes)"
     echo
-    echo "Or run individually:"
-    echo -e "  ${GREEN}./scripts/bundle-python.sh${NC}   # ~5-10 minutes"
-    echo -e "  ${GREEN}./scripts/bundle-poppler.sh${NC}  # <1 minute"
+    echo "Or run manually:"
+    echo -e "  ${GREEN}./scripts/bundle-python.sh${NC}"
     echo
     echo "See ${YELLOW}docs/guides/bundling-guide.md${NC} for details."
     echo
@@ -69,5 +58,5 @@ if [ "$MISSING" = true ]; then
 fi
 
 echo
-echo -e "${GREEN}✅ All bundles present - ready to run!${NC}"
+echo -e "${GREEN}✅ Python bundle present - ready to run!${NC}"
 exit 0
