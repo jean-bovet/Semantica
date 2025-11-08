@@ -120,10 +120,6 @@ function spawnWorker() {
       win?.webContents.send('files:loaded');
     } else if (msg.type === 'progress') {
       win?.webContents.send('indexer:progress', { ...msg.payload, initialized: true });
-    } else if (msg.type === 'ocr:progress') {
-      // Forward OCR progress to renderer for UI updates
-      win?.webContents.send('ocr:progress', msg.payload);
-      logger.log('OCR', `Progress: ${msg.payload.percentage}% (${msg.payload.processed}/${msg.payload.total} pages)`);
     } else if (msg.type === 'pipeline:status') {
       // Log pipeline status to main process console AND send to renderer console
       logger.log('PIPELINE-STATUS', msg.payload);
@@ -209,7 +205,7 @@ function sendToWorker(type: string, payload: any = {}): Promise<any> {
     worker.postMessage({ type, payload, id });
     
     // Use longer timeout for model operations and progress checks (5 minutes)
-    // Progress checks need longer timeout when worker is busy with OCR processing
+    // Progress checks need longer timeout when worker is busy processing large files
     const longTimeoutOps = ['checkModel', 'downloadModel', 'progress'];
     const timeout = longTimeoutOps.includes(type) ? 300000 : 30000;
     setTimeout(() => {

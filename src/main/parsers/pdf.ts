@@ -1,10 +1,9 @@
 import { promises as fsPromises } from 'fs';
 import { logger } from '../../shared/utils/logger';
-import { extractTextWithOCR, isScannedPDF } from '../ocr';
 const pdfParse = require('pdf-parse');
 
 // Parser version - single source of truth (imported by parserVersions.ts)
-export const PARSER_VERSION = 4; // Version 4: Node.js native OCR (no Python/Poppler dependency)
+export const PARSER_VERSION = 5; // Version 5: Enhanced PDF text extraction
 
 export interface PDFPage {
   page: number;
@@ -12,20 +11,12 @@ export interface PDFPage {
 }
 
 export interface PDFParserOptions {
-  enableOCR?: boolean;
-  // sidecarClient no longer needed - OCR is now native to Node.js
-
-  /**
-   * Progress callback for OCR operations
-   * @param processed Number of pages processed
-   * @param total Total number of pages
-   */
-  onOCRProgress?: (processed: number, total: number) => void;
+  // Reserved for future options
 }
 
 export async function parsePdf(
   filePath: string,
-  options?: PDFParserOptions
+  _options?: PDFParserOptions
 ): Promise<PDFPage[]> {
   try {
     const dataBuffer = await fsPromises.readFile(filePath);
@@ -64,45 +55,9 @@ export async function parsePdf(
     // Check if we got any text
     const hasText = data?.text && data.text.trim().length > 0;
 
-    // If no text and OCR is enabled, try OCR
-    if (!hasText && options?.enableOCR) {
-      logger.info('INDEXING', `PDF ${filePath} has no text, attempting OCR...`);
-
-      try {
-        // Check if it's actually scanned
-        const isScanned = await isScannedPDF(filePath);
-
-        if (isScanned) {
-          logger.info('INDEXING', `Confirmed scanned PDF, running Node.js native OCR...`);
-
-          // Extract text via OCR (using Node.js native implementation)
-          const ocrResult = await extractTextWithOCR(filePath, {
-            recognition_level: 'accurate',
-            language: 'en-US',
-            dpi: 200,
-            onProgress: options?.onOCRProgress
-          });
-
-          logger.info('INDEXING', `OCR extracted ${ocrResult.text.length} chars with ${(ocrResult.confidence * 100).toFixed(1)}% confidence`);
-
-          // Convert to PDFPage format
-          return ocrResult.pages.map((pageText, i) => ({
-            page: i + 1,
-            text: pageText
-          }));
-        } else {
-          logger.warn('INDEXING', `PDF ${filePath} not detected as scanned, but has no extractable text`);
-          throw new Error('PDF contains no extractable text and does not appear to be scanned');
-        }
-      } catch (ocrError: any) {
-        logger.error('INDEXING', `OCR failed for ${filePath}: ${ocrError.message}`);
-        throw new Error(`OCR failed: ${ocrError.message}`);
-      }
-    }
-
     if (!hasText) {
       // PDF might be scanned/image-based
-      logger.warn('INDEXING', `PDF ${filePath} contains no extractable text (OCR ${options?.enableOCR ? 'failed' : 'disabled'})`);
+      logger.warn('INDEXING', `PDF ${filePath} contains no extractable text (may be scanned/image-based)`);
       throw new Error('PDF contains no extractable text');
     }
     

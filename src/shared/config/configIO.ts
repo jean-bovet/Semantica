@@ -21,7 +21,6 @@ export interface AppConfig {
     fileTypes: FileTypes;
     embeddingBatchSize: number;
     embedderPoolSize: number;
-    enableOCR: boolean;
   };
   lastUpdated: string;
 }
@@ -59,8 +58,7 @@ export function getDefaultConfig(): AppConfig {
       ],
       fileTypes: getDefaultFileTypes(),
       embeddingBatchSize: 32,
-      embedderPoolSize: 2,
-      enableOCR: true
+      embedderPoolSize: 2
     },
     lastUpdated: new Date().toISOString()
   };
@@ -104,10 +102,7 @@ export function validateAndMigrateConfig(config: any): AppConfig {
         : 32,
       embedderPoolSize: typeof config.settings.embedderPoolSize === 'number'
         ? config.settings.embedderPoolSize
-        : 2,
-      enableOCR: typeof config.settings.enableOCR === 'boolean'
-        ? config.settings.enableOCR
-        : false
+        : 2
     };
   }
 

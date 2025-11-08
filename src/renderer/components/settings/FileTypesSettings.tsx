@@ -3,12 +3,10 @@ import { getFileTypeOptions, ParserKey } from '../../../shared/parserRegistry';
 
 interface FileTypesSettingsProps {
   fileTypes: Record<ParserKey, boolean>;
-  enableOCR?: boolean;
   onFileTypesChange: (selected: string[]) => void;
-  onOCRChange?: (enabled: boolean) => void;
 }
 
-function FileTypesSettings({ fileTypes, enableOCR = false, onFileTypesChange, onOCRChange }: FileTypesSettingsProps) {
+function FileTypesSettings({ fileTypes, onFileTypesChange }: FileTypesSettingsProps) {
   const fileTypeOptions = getFileTypeOptions();
 
   const handleToggle = (key: string, checked: boolean) => {
@@ -36,23 +34,6 @@ function FileTypesSettings({ fileTypes, enableOCR = false, onFileTypesChange, on
             <span className="file-type-label">{option.label}</span>
           </label>
         ))}
-      </div>
-
-      <div className="settings-subsection" style={{ marginTop: '24px' }}>
-        <h3 className="subsection-title">OCR for Scanned PDFs</h3>
-        <label className="file-type-item">
-          <input
-            type="checkbox"
-            checked={enableOCR}
-            onChange={(e) => onOCRChange?.(e.target.checked)}
-            className="file-type-checkbox"
-          />
-          <span className="file-type-label">Enable OCR for scanned PDFs</span>
-        </label>
-        <p className="info-note" style={{ marginTop: '8px' }}>
-          Extract text from image-based PDFs using macOS Vision framework.
-          Enabled by default. May slow down indexing for scanned documents.
-        </p>
       </div>
     </div>
   );

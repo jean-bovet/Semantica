@@ -325,31 +325,9 @@ async function handleFileOriginal(filePath: string) {
     // Special handling for PDF (backward compatibility)
     if (ext === 'pdf' && parsePdf) {
       try {
-        // Get OCR setting from config
-        const enableOCR = configManager?.getSettings().enableOCR ?? false;
-
         // Time PDF parsing
         const startParse = Date.now();
-        const pages = await parsePdf(filePath, {
-          enableOCR,
-          // Note: OCR is now Node.js native, no sidecar dependency
-
-          // Progress callback for OCR operations
-          onOCRProgress: (processed: number, total: number) => {
-            // Send OCR progress message to main process
-            if (parentPort) {
-              parentPort.postMessage({
-                type: 'ocr:progress',
-                payload: {
-                  filePath,
-                  processed,
-                  total,
-                  percentage: Math.round((processed / total) * 100)
-                }
-              });
-            }
-          }
-        });
+        const pages = await parsePdf(filePath);
         if (profiler.isEnabled()) {
           const metrics = profiler.fileMetrics.get(filePath);
           if (metrics) {

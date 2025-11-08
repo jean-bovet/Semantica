@@ -21,7 +21,6 @@ Semantica is an Electron-based application that provides offline semantic search
 - **ML Model**: Python sidecar with sentence-transformers (paraphrase-multilingual-mpnet-base-v2, 768-dim)
 - **Embedding Service**: FastAPI HTTP server running locally on port 8421
 - **File Parsers**: PDF, DOCX, DOC, RTF, TXT, MD, XLSX, XLS, CSV, TSV
-- **OCR Support**: macOS Vision framework via Node.js native bindings (@cherrystudio/mac-system-ocr)
 - **Build System**: electron-builder 25.1.8 (see Build Notes below)
 
 ## Important Guidelines
@@ -68,7 +67,6 @@ Documentation is organized under `/docs/`:
 - Unit tests: 544 tests (all passing, in `tests/unit/`)
 - Integration tests: 8 tests (in `tests/integration/`, includes Python sidecar integration)
 - E2E tests: 5 tests, all passing (requires NODE_ENV=production to load built HTML)
-- OCR testing: Requires integration tests with real scanned PDF fixtures (unit test mocking not practical)
 
 ### Memory Management
 - Worker process limited to 1500MB RSS
@@ -101,9 +99,6 @@ Documentation is organized under `/docs/`:
 - **Status**: REQUIRED for all builds (development and production)
 - **Purpose**: Ensure 100% consistency between dev and prod environments
 - **Bundle size impact**: +640MB (Python runtime + dependencies)
-  - Previous bundle: ~690MB (with OCR deps)
-  - Current bundle: ~640MB (OCR deps removed)
-  - Net savings: ~50MB
 - **What's bundled**:
   - Python 3.11 runtime with venv
   - PyTorch, transformers, sentence-transformers (includes MPS for Apple Silicon GPU)
@@ -123,7 +118,6 @@ Documentation is organized under `/docs/`:
 - **GPU Support**: MPS (Apple Silicon GPU) fully preserved - no performance impact
 - **Re-bundle when**: Updating `requirements.txt`
 - **Benefits**: Catch bundling issues early, no "works on my machine" problems
-- **Note**: Poppler is no longer required - OCR is handled natively in Node.js (v1.0.4+)
 
 ## Common Tasks
 
@@ -133,17 +127,14 @@ Documentation is organized under `/docs/`:
 - Automatically starts indexing with current settings
 
 ### OCR for Scanned PDFs
-- **Enabled by default** - automatically processes scanned PDFs
-- **Node.js native implementation** (v1.0.4+) - no external dependencies required
-- Can be toggled in Settings → File Types → "Enable OCR for scanned PDFs"
-- Uses macOS Vision framework via Node.js bindings (built into macOS 12+)
-- PDF rendering: pdfjs-dist (no Poppler required!)
-- Automatically detects if PDF needs OCR (<50 chars/page threshold)
-- Supports 40+ languages (default: en-US)
-- Performance: ~76-266ms per page (faster than previous Python approach!)
-- OCR setting is stored in app config and persists across restarts
-- To disable OCR: Uncheck in Settings and re-index affected folders
-- **Implementation**: See `/src/main/ocr/` for the Node.js OCR module
+- **Status**: NOT IMPLEMENTED
+- **Reason**: pdf.js inline image rendering incompatibility in Node.js
+- **Research**: See `/docs/specs/ocr-research-and-findings.md` for:
+  - Complete implementation attempt with Tesseract 5
+  - Root cause analysis (pdf.js "Image or Canvas expected" error)
+  - Recommended solution (PDFium sidecar)
+  - Future implementation path
+- **Current behavior**: PDFs with no extractable text will fail to index (scanned PDFs unsupported)
 
 ### Adding File Parser Support
 1. Create parser in `/src/main/parsers/`
@@ -162,8 +153,7 @@ Documentation is organized under `/docs/`:
 - Password-protected files cannot be indexed
 - Large files (>50MB) may cause timeouts
 - Binary formats need specific parsers
-- OCR quality depends on scan quality and resolution
-- OCR processing is slower than standard text extraction (~76-266ms per page, vs near-instant for text PDFs)
+- **Scanned PDFs not supported** - PDFs without embedded text layer will fail to index (see OCR research in `/docs/specs/ocr-research-and-findings.md`)
 
 ## Development Workflow
 

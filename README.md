@@ -38,7 +38,6 @@ npm run bundle
 # This will:
 # - Create a self-contained Python environment (~640MB, 5-10 min)
 # - Download ~2.2GB of dependencies during build
-# Note: Poppler is no longer required - OCR is handled natively in Node.js!
 
 # Start development server
 npm run dev
