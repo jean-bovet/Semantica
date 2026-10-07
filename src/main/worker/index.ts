@@ -638,7 +638,8 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     };
     
     const scanResult = scanDirectories(roots, scanOptions);
-    
+    logger.log('WATCHER', `Raw scan found: ${scanResult.files.length} files`);
+
     // Initialize our new classes
     const orchestrator = new ReindexOrchestrator();
     const scanner = new FileScanner();
@@ -651,7 +652,8 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     };
     
     const supportedFiles = scanner.filterSupportedFiles(scanResult.files, fileScannerConfig);
-    
+    logger.log('WATCHER', `After filtering: ${supportedFiles.length} supported files`);
+
     // Update folder stats for total files count
     for (const fullPath of supportedFiles) {
       for (const [folder, stats] of folderStats) {
@@ -663,12 +665,19 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
     }
     
     // Use ReindexOrchestrator to determine which files to index
+    const filesNotInQueue = supportedFiles.filter(f => !fileQueue.isProcessing(f));
+    const filesAlreadyInQueue = supportedFiles.length - filesNotInQueue.length;
+    if (filesAlreadyInQueue > 0) {
+      logger.log('WATCHER', `Excluding ${filesAlreadyInQueue} files already in queue`);
+    }
+
     const { toIndex, reasons } = orchestrator.determineFilesToReindex(
-      supportedFiles.filter(f => !fileQueue.isProcessing(f)), // Exclude files already in queue
+      filesNotInQueue, // Exclude files already in queue
       fileStatusCache || new Map(),
       forceReindex
     );
-    
+    logger.log('WATCHER', `Determined to index: ${toIndex.length} files (before hash check)`);
+
     // For modified files, we need to check actual file changes
     const filesToIndex: string[] = [];
     let hashChecks = 0;
@@ -707,7 +716,8 @@ async function startWatching(roots: string[], excludePatterns?: string[], forceR
         filesToIndex.push(filePath);
       }
     }
-    
+    logger.log('WATCHER', `Final to index: ${filesToIndex.length} files (after hash check)`);
+
     // Calculate statistics using the orchestrator
     const stats = orchestrator.calculateReindexStats(supportedFiles, fileStatusCache || new Map(), reasons);
     
