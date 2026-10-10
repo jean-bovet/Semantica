@@ -287,7 +287,7 @@ const FILE_TEST_CASES: TestCaseWithFile[] = [
   {
     name: "French legal document - Résiliation bail Neuchâtel",
     category: "real-file",
-    filePath: "/Users/bovet/Documents/Family/Jean/Courrier/2000/Lettre du 17 décembre.doc",
+    filePath: "/Users/example/Documents/Family/Jean/Courrier/2000/Lettre du 17 décembre.doc",
     searchQuery: "resiliation bail neuchatel pour depart usa",
     expectedMinScore: 0.80,  // 80% match expected (lowered for initial testing)
     expectedMaxScore: 0.95   // Allow some variance up to 95%

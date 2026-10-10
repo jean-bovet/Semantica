@@ -206,6 +206,6 @@ This fix is backward compatible and requires no migration. The recovery mechanis
 ## References
 
 - Original issue: Pipeline stuck with "2 batches processing"
-- Log analysis: `/Users/bovet/Desktop/stuck-logs.txt`
+- Log analysis: `/Users/example/Desktop/stuck-logs.txt`
 - Implementation: PR with commits for batch tracking and recovery
 - Tests: `tests/unit/embedding-queue.spec.ts`

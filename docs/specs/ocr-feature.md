@@ -314,7 +314,7 @@ export const PARSER_VERSION = 5; // Tesseract 5 + tessdata_best
 
 **Test Fixtures:**
 - `tests/fixtures/scanned-sample.pdf` (858 bytes, minimal test PDF)
-- `/Users/bovet/Downloads/Semantica Test Files/2015 - Book.pdf` (144 MB, real-world)
+- `/Users/example/Downloads/Semantica Test Files/2015 - Book.pdf` (144 MB, real-world)
 
 ## Limitations
 

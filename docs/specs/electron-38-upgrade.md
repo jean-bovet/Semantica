@@ -37,7 +37,7 @@ This document captures the key insights, challenges, and solutions from upgradin
 During packaging, electron-builder 26.x tries to scan all these directories and fails with:
 ```
 ENOENT: no such file or directory, scandir
-  '/Users/bovet/GitHub/FSS/node_modules/@lancedb/lancedb-darwin-x64'
+  '/Users/example/GitHub/FSS/node_modules/@lancedb/lancedb-darwin-x64'
 ```
 
 **Solution**: Downgrade to electron-builder 25.1.8, which:
