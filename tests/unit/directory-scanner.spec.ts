@@ -293,17 +293,17 @@ describe('Directory Scanner', () => {
     it('should handle the exact iTrain.app scenario', () => {
       // Recreate the exact structure from the user's log
       const mockStructure: Record<string, any> = {
-        '/Users/bovet/Documents': ['Family'],
-        '/Users/bovet/Documents/Family': ['Jean'],
-        '/Users/bovet/Documents/Family/Jean': ['Model Train'],
-        '/Users/bovet/Documents/Family/Jean/Model Train': ['Software'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software': ['iTrain', 'manual.pdf'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain': ['iTrain.app', 'readme.txt'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app': ['Contents'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents': ['Resources'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources': ['legal'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources/legal': ['java.xml'],
-        '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources/legal/java.xml': ['bcel.md']
+        '/Users/example/Documents': ['Family'],
+        '/Users/example/Documents/Family': ['Jean'],
+        '/Users/example/Documents/Family/Jean': ['Model Train'],
+        '/Users/example/Documents/Family/Jean/Model Train': ['Software'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software': ['iTrain', 'manual.pdf'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain': ['iTrain.app', 'readme.txt'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app': ['Contents'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents': ['Resources'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources': ['legal'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources/legal': ['java.xml'],
+        '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources/legal/java.xml': ['bcel.md']
       };
 
       mockFs.existsSync.mockReturnValue(true);
@@ -333,18 +333,18 @@ describe('Directory Scanner', () => {
         supportedExtensions: ['pdf', 'txt', 'md']
       };
 
-      const result = scanDirectory('/Users/bovet/Documents', options);
+      const result = scanDirectory('/Users/example/Documents', options);
 
       // Should find files outside the .app bundle
-      expect(result.files).toContain('/Users/bovet/Documents/Family/Jean/Model Train/Software/manual.pdf');
-      expect(result.files).toContain('/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/readme.txt');
+      expect(result.files).toContain('/Users/example/Documents/Family/Jean/Model Train/Software/manual.pdf');
+      expect(result.files).toContain('/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/readme.txt');
 
       // Should NOT find the file inside iTrain.app
-      const bcelPath = '/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources/legal/java.xml/bcel.md';
+      const bcelPath = '/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app/Contents/Resources/legal/java.xml/bcel.md';
       expect(result.files).not.toContain(bcelPath);
 
       // Should have skipped the iTrain.app bundle
-      expect(result.skippedBundles).toContain('/Users/bovet/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app');
+      expect(result.skippedBundles).toContain('/Users/example/Documents/Family/Jean/Model Train/Software/iTrain/iTrain.app');
     });
 
     it('should handle permission errors gracefully', () => {

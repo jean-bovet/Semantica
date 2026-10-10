@@ -133,7 +133,7 @@ npx tsx tests/search-accuracy-test.ts \
 **Example:**
 ```bash
 npx tsx tests/search-accuracy-test.ts \
-  "/Users/bovet/Documents/contract.pdf" \
+  "/Users/example/Documents/contract.pdf" \
   "payment terms and conditions" \
   0.75
 ```

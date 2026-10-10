@@ -224,7 +224,7 @@ describe('configIO', () => {
   describe('round-trip test', () => {
     it('can write and read back same config', () => {
       const original = getDefaultConfig();
-      original.watchedFolders = ['/Users/bovet/Dropbox', '/Users/bovet/Documents'];
+      original.watchedFolders = ['/Users/example/Dropbox', '/Users/example/Documents'];
       original.settings.cpuThrottle = 'high';
       original.settings.embeddingBatchSize = 64;
 
